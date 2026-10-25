@@ -217,7 +217,7 @@
 					{:else}
 						<div class="px-1 py-1 text-[13px]">{labelOf(ix, fact)}</div>
 					{/if}
-					<div class="truncate px-1 pb-0.5 text-[11px] text-muted-foreground">
+					<div class="px-1 pb-0.5 text-[11px] break-words text-muted-foreground">
 						{#if list === 'records'}
 							{users.length
 								? `Needed by ${users.map((u) => labelOf(ix, u.core.id)).join(', ')}`
@@ -317,7 +317,7 @@
 				class="h-8 min-w-0 flex-1 bg-transparent px-1 text-[13px] outline-none placeholder:text-muted-foreground"
 				placeholder={list === 'records'
 					? 'Add a fact, then Enter'
-					: 'Add something it needs, then Enter'}
+					: 'Add what it needs, then Enter'}
 				aria-label={list === 'records' ? 'Add a fact it records' : 'Add something it needs first'}
 				list={listId}
 				bind:value={name}

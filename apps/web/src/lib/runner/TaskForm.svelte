@@ -21,7 +21,7 @@
 	import type { TaskView } from '@casebook/store';
 	import FactField from './FactField.svelte';
 	import { links } from './links';
-	import { day, lowerFirst, names, relative, when } from './format';
+	import { day, lowerFirst, names, onlyWhen, relative, when } from './format';
 
 	type Failure = { code?: string; reason?: string; problems?: Record<string, string> };
 
@@ -59,7 +59,9 @@
 
 	const who = $derived(
 		view.you.canAct
-			? `You’re doing this as ${lowerFirst(view.you.role)}${view.you.others.length ? `; ${names(view.you.others)} can also do it` : ''}.`
+			? task.status === 'done'
+				? `You did this as ${lowerFirst(view.you.role)}.`
+				: `You’re doing this as ${lowerFirst(view.you.role)}${view.you.others.length ? `; ${names(view.you.others)} can also do it` : ''}.`
 			: `For ${names(task.holders, 'nobody yet')} (${lowerFirst(view.you.role)}).`
 	);
 
@@ -74,12 +76,17 @@
 	);
 
 	// A saved draft reopens the form where it was left; files wait for completion.
+	// A decision's outcome named after it, "Big spend? outcome", is asked as the decision itself.
 	const fields = $derived(
 		view.fields.map((f) => {
 			const saved = view.draft?.values[f.fact];
+			const asked =
+				task.kind === 'decision' && f.title === `${task.title} outcome`
+					? { ...f, title: task.title }
+					: f;
 			return saved && f.kind !== 'file'
-				? { ...f, current: { raw: saved, display: saved.join(', ') } }
-				: f;
+				? { ...asked, current: { raw: saved, display: saved.join(', ') } }
+				: asked;
 		})
 	);
 	const hasFiles = $derived(view.evidence.length > 0 || view.fields.some((f) => f.kind === 'file'));
@@ -103,7 +110,10 @@
 	let savedAt = $state<string>();
 	let saveFailed = $state<string>();
 	let savedNote = $state('');
-	const canSave = $derived(canAct && task.kind !== 'approval');
+	// Saving keeps typed values, so a task with nothing to record has nothing to save.
+	const canSave = $derived(
+		canAct && task.kind !== 'approval' && (view.fields.length > 0 || view.evidence.length > 0)
+	);
 	function draftBody() {
 		const body = new FormData(formEl);
 		for (const key of [...body.keys()]) if (!key.startsWith('value:')) body.delete(key);
@@ -213,7 +223,7 @@
 	<p class="mt-4 text-[14px] leading-relaxed text-foreground/85">{view.content}</p>
 {/if}
 {#if view.guard}
-	<p class="mt-2 text-[13px] text-muted-foreground">When: {lowerFirst(view.guard.text)}.</p>
+	<p class="mt-2 text-[13px] text-muted-foreground">{onlyWhen(view.guard.text)}.</p>
 {/if}
 {#if view.reviews}
 	<p class="mt-2 text-[13px] text-muted-foreground">
@@ -550,15 +560,18 @@
 						class="h-10 cursor-pointer rounded-lg bg-foreground px-5 text-[14px] font-medium text-background hover:bg-foreground/90"
 						>{verb}</button
 					>
-					<button
-						formaction="?/save"
-						formnovalidate
-						name="leave"
-						value="yes"
-						class="h-10 cursor-pointer rounded-lg border bg-card px-3 text-[14px] font-medium hover:bg-muted sm:px-4"
-						><span class="sm:hidden">Save</span><span class="hidden sm:inline">Save for later</span
-						></button
-					>
+					{#if canSave}
+						<button
+							formaction="?/save"
+							formnovalidate
+							name="leave"
+							value="yes"
+							class="h-10 cursor-pointer rounded-lg border bg-card px-3 text-[14px] font-medium hover:bg-muted sm:px-4"
+							><span class="sm:hidden">Save</span><span class="hidden sm:inline"
+								>Save for later</span
+							></button
+						>
+					{/if}
 					{#if task.status !== 'held'}
 						<button
 							type="button"
@@ -625,7 +638,7 @@
 						rows="2"
 						placeholder={helperName
 							? 'e.g. Which hospital sent the bill, and on what date?'
-							: 'e.g. The apostille hasn’t arrived yet'}
+							: 'e.g. A document I need hasn’t arrived yet'}
 						class="rounded-lg border bg-background px-3 py-2 text-[14px]"></textarea>
 					{#if problems.note || problems.text}<p class="text-[12px] font-medium text-destructive">
 							{problems.note ?? problems.text}

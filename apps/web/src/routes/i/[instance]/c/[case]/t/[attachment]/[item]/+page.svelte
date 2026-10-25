@@ -43,7 +43,9 @@
 	const forMe = $derived(view.questions.filter((q) => q.to.id === me && q.waiting));
 	const who = $derived(
 		view.you.canAct
-			? `You’re doing this as ${lowerFirst(view.you.role)}${view.you.others.length ? `; ${names(view.you.others)} can also do it` : ''}.`
+			? task.status === 'done'
+				? `You did this as ${lowerFirst(view.you.role)}.`
+				: `You’re doing this as ${lowerFirst(view.you.role)}${view.you.others.length ? `; ${names(view.you.others)} can also do it` : ''}.`
 			: `For ${names(task.holders, 'nobody yet')} (${lowerFirst(view.you.role)}).`
 	);
 </script>

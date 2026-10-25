@@ -17,6 +17,8 @@ export interface Notice {
 	details?: string[];
 	/** The notice is about an edit that Undo takes back. */
 	undo?: boolean;
+	/** The notice says a version was just published, so cases can be started of it. */
+	published?: boolean;
 }
 
 interface Failure {
@@ -123,7 +125,12 @@ export class Editor {
 			if (!definition) return undefined;
 			return { definitionId: definition.id, baseRevision: String(definition.revision ?? 0) };
 		});
-		if (result?.version !== undefined) this.#say('info', `Published version ${result.version}`);
+		if (result?.version !== undefined) {
+			this.#say('info', `Published version ${result.version}. New cases run it.`);
+			if (this.notice) this.notice.published = true;
+			clearTimeout(this.#timer);
+			this.#timer = setTimeout(() => (this.notice = undefined), 10000);
+		}
 	}
 
 	dismiss() {

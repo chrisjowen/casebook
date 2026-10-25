@@ -2,6 +2,7 @@
 	// Process summary: draft and publishing, the model's publish checks in plain language, roles,
 	// stages and facts. With `edit`, its name, purpose and roles change the draft; stages are built
 	// on the board, and every stage and fact here opens its details.
+	import { tick } from 'svelte';
 	import type { FactNode, Operation } from '@casebook/model';
 	import {
 		collectorsByFact,
@@ -13,7 +14,7 @@
 	import { glyphIcon } from '$lib/graph/glyphs';
 	import type { LoadedDefinition } from '$lib/definitions/types';
 	import { toneBar } from '$lib/graph/tones';
-	import { addRole, rename, type Edit } from '$lib/editor/ops';
+	import { addRole, rename } from '$lib/editor/ops';
 	import { getEditor } from '$lib/editor/editing.svelte';
 	import { draftStatus, publishBlocked } from '$lib/editor/status';
 	import Field from './Field.svelte';
@@ -52,13 +53,22 @@
 	] as const);
 	const blocked = $derived(publishBlocked(loaded));
 	const collectors = $derived(collectorsByFact(ix));
-	const run = async ({ ops, select }: Edit) => {
-		if (edit && (await edit(ops)) && select) onselect?.(select);
-	};
 	const renameFrom = async (field: HTMLInputElement, id: string) => {
 		const title = field.value.trim();
 		if (!title || !(await edit?.([rename(id, title)]))) field.value = labelOf(ix, id);
 	};
+	/** Adds a role and puts the cursor in its name, ready to type over "New role". */
+	let roleList = $state<HTMLElement>();
+	async function addNewRole() {
+		if (!edit || !(await edit(addRole(ix.document).ops))) return;
+		await tick();
+		const fields = roleList?.parentElement?.querySelectorAll<HTMLInputElement>(
+			'input[aria-label="Role name"]'
+		);
+		const last = fields?.[fields.length - 1];
+		last?.focus();
+		last?.select();
+	}
 	const small =
 		'flex cursor-pointer items-center gap-1.5 self-start text-[12px] text-muted-foreground hover:text-foreground';
 	const MAX_CHANGES = 8;
@@ -90,7 +100,7 @@
 					? ' (draft)'
 					: ''}</Field
 			>
-			<Field label="Owner">{ix.document.namespace.replaceAll('/', ' / ')}</Field>
+			<Field label="Workspace">{ix.document.namespace.replaceAll('/', ' / ')}</Field>
 		</div>
 		{#if ix.process?.core.source}<Field label="Taken from">{ix.process.core.source.doc}</Field>{/if}
 		<div class="grid grid-cols-3 gap-2 text-center">
@@ -192,6 +202,7 @@
 	</Group>
 
 	<Group title="Roles" count={ix.roles.length}>
+		<span bind:this={roleList} hidden></span>
 		{#each ix.roles as role, i (role.core.id)}
 			<div class="flex items-center gap-2 text-[12.5px]">
 				<span class={['size-2 shrink-0 rounded-full', toneBar[i % 6]]}></span>
@@ -211,9 +222,7 @@
 			</div>
 		{/each}
 		{#if edit}
-			<button class={small} onclick={() => run(addRole(ix.document))}
-				><Plus class="size-3.5" />Add role</button
-			>
+			<button class={small} onclick={addNewRole}><Plus class="size-3.5" />Add role</button>
 		{/if}
 	</Group>
 

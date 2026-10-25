@@ -687,7 +687,9 @@ function othersLine(a: LoadedAttachment, me: string, people: ReadonlyMap<string,
 			: acted
 				? 'Your part is done for now. Waiting on '
 				: 'Waiting on ';
-	return `${lead}${parts.join('; ')}.`;
+	const line = `${lead}${parts.join('; ')}`;
+	// A title such as "Big spend?" already ends the sentence.
+	return /[.?!]$/.test(line) ? line : `${line}.`;
 }
 
 function names(list: string[], role?: string): string {

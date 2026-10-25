@@ -32,7 +32,7 @@
 		<span
 			class="text-amber-800"
 			title="The draft has changes not yet published; the editor shows what changed."
-			>· Draft changes pending</span
+			>Draft changes pending</span
 		>
 	{/if}
 </span>

@@ -58,6 +58,7 @@
 		SquarePen,
 		Upload,
 		LoaderCircle,
+		Play,
 		Undo2,
 		FileSpreadsheet,
 		Search,
@@ -263,10 +264,10 @@
 <svelte:head
 	><title
 		>{splitting
-			? `Import ${wizard!.fileName}`
+			? `Import ${wizard!.fileName} · ${data.instance.name}`
 			: isMap || !active
-				? 'Process map'
-				: labelOf(active, active.process?.core.id)} · {data.instance.name}</title
+				? `Process map · ${data.instance.name}`
+				: `Edit · ${labelOf(active, active.process?.core.id)}`}</title
 	></svelte:head
 >
 
@@ -505,6 +506,13 @@
 									</ul>
 								{/if}
 							</div>
+							{#if editor.notice.published && loaded}
+								<a
+									href={links.newCase(data.instance.slug, { process: loaded.document.slug })}
+									class="-my-1 inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 font-medium text-brand hover:bg-brand-soft"
+									><Play class="size-3.5" />Start a case</a
+								>
+							{/if}
 							{#if editor.notice.undo && editor.undoable}
 								<button
 									class="-my-1 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 py-1 font-medium text-brand hover:bg-brand-soft"
