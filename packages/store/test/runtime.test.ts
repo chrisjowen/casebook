@@ -11,7 +11,7 @@ import {
 	createNamespace,
 	grantDelegation
 } from '../src/repository.js';
-import { publishDefinition } from '../src/definitions.js';
+import { createDefinition, publishDefinition } from '../src/definitions.js';
 import {
 	casebookPeople,
 	completeItem,
@@ -32,6 +32,7 @@ import {
 	replyToQuestion,
 	resolveQuestion,
 	resumeItem,
+	rolesWithoutHolders,
 	saveDraft,
 	skipItem,
 	startCase,
@@ -162,6 +163,10 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 			expect(c.processes[1]!.others).toBe(
 				'Your part is done for now. Waiting on Dana Cole — send the itemised invoice.'
 			);
+			// Sam has done nothing in the claim, so has no part that is done.
+			const forSam = await loadCase(db, users.sam, 'example-family', caseId);
+			if ('ok' in forSam) throw new Error(forSam.reason);
+			expect(forSam.processes[1]!.others).toBe('Waiting on Dana Cole — send the itemised invoice.');
 			const certificate = c.record.find(
 				(r) => r.fact === 'fact.local-birth-certificate' && !r.evidence
 			)!;
@@ -303,6 +308,34 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 				/cannot start a case of definition "incident-management".*one of its roles/
 			);
 			expectRefused(await startCase(db, users.devon, { definitionId }), 'invalid-input', /name/);
+		});
+
+		it('gives the starter the first task’s role when nobody holds it yet', async () => {
+			// A process made from scratch on the board: its Owner role is held by nobody.
+			const [sre] = await db
+				.select({ id: namespaces.id })
+				.from(namespaces)
+				.where(eq(namespaces.path, 'acme/eng/sre'));
+			const created = await createDefinition(db, users.olive, {
+				namespaceId: sre!.id,
+				title: 'Laptop request',
+				changePolicy: 'living'
+			});
+			if (!created.ok) throw new Error(created.reason);
+			expect(
+				await rolesWithoutHolders(db, created.definitionId, [
+					'role.owner',
+					'role.incident-commander'
+				])
+			).toEqual(['role.owner']);
+			const started = await startCase(db, users.olive, {
+				definitionId: created.definitionId,
+				title: 'Laptop for Ines'
+			});
+			if (!started.ok) throw new Error(started.reason);
+			const c = await loadCase(db, users.olive, 'acme', started.caseId);
+			if ('ok' in c) throw new Error(c.reason);
+			expect(c.mine.map((t) => [t.title, t.status])).toEqual([['First step', 'ready']]);
 		});
 
 		it('never lets a role held only on a case, a guest’s included, start a case', async () => {

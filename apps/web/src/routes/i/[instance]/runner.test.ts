@@ -49,7 +49,8 @@ vi.mock('$app/state', () => {
 				canCreate: allow
 			}
 		],
-		imports: []
+		imports: [],
+		canStart: allow
 	};
 	return { page: { url: new URL('http://localhost/i/example-family'), data: { shell } } };
 });

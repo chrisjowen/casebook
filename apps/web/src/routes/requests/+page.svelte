@@ -10,6 +10,7 @@
 
 	let { data }: PageProps = $props();
 	const justDone = $derived(page.url.searchParams.get('done'));
+	const savedTask = $derived(page.url.searchParams.get('saved'));
 	const waiting = $derived(
 		data.groups.flatMap((g) => g.requests).filter((r) => r.status !== 'done').length
 	);
@@ -31,6 +32,12 @@
 		{#if justDone}
 			<Notice
 				><span class="font-medium">Sent:</span> {justDone}. Thank you, they can see it now.</Notice
+			>
+		{:else if savedTask}
+			<Notice
+				><span class="font-medium">Saved “{savedTask}” for later.</span>
+				<span class="text-muted-foreground">It is still here, filled in as you left it.</span
+				></Notice
 			>
 		{/if}
 

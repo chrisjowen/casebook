@@ -6,6 +6,7 @@ import {
 	listInstances,
 	loadGuestTask,
 	loadRequests,
+	saveDraft,
 	startCase
 } from '@casebook/store';
 import { readForm } from './task-actions';
@@ -14,7 +15,10 @@ import { load as home } from '../../routes/+page.server';
 import { GET as file } from '../../routes/files/[id]/+server';
 import { actions as newCase } from '../../routes/i/[instance]/cases/new/+page.server';
 import { load as requests } from '../../routes/requests/+page.server';
-import { load as guestForm } from '../../routes/requests/[attachment]/[item]/+page.server';
+import {
+	actions as guestActions,
+	load as guestForm
+} from '../../routes/requests/[attachment]/[item]/+page.server';
 import { acme, family, taskView, user } from '$lib/runner/test-data';
 
 vi.mock('$lib/server/db', () => ({ getDb: () => ({}) }));
@@ -30,6 +34,7 @@ vi.mock('@casebook/store', async (importOriginal) => ({
 	findCaseFile: vi.fn(),
 	loadGuestTask: vi.fn(),
 	loadRequests: vi.fn(),
+	saveDraft: vi.fn(),
 	startCase: vi.fn()
 }));
 
@@ -199,5 +204,34 @@ describe('case files', () => {
 		vi.mocked(findCaseFile).mockResolvedValueOnce({ ok: false, code: 'not-found', reason: 'no' });
 		const error = await thrown(() => file({ params: { id: 'g' }, locals } as never));
 		expect(isHttpError(error) && error.status).toBe(404);
+	});
+});
+
+describe('Save for later', () => {
+	const save = (fields: Record<string, string>) => {
+		const body = new FormData();
+		for (const [key, value] of Object.entries(fields)) body.set(key, value);
+		const event = {
+			request: new Request('http://localhost/requests/a1/step.x?/save', { method: 'POST', body }),
+			locals,
+			params: { attachment: 'a1', item: 'step.x' }
+		};
+		return guestActions.save!(event as never);
+	};
+
+	it('saves the typed values and leaves for the list, saying it was saved', async () => {
+		vi.mocked(saveDraft).mockResolvedValue({ ok: true } as never);
+		const left = await thrown(() =>
+			save({ 'value:fact.amount': '1840', title: 'Send the invoice', leave: 'yes' })
+		);
+		expect(isRedirect(left) && left.location).toBe('/requests?saved=Send%20the%20invoice');
+		expect(vi.mocked(saveDraft).mock.calls[0]![2]).toMatchObject({
+			values: { 'fact.amount': ['1840'] }
+		});
+	});
+
+	it('stays on the task when saving as people type', async () => {
+		vi.mocked(saveDraft).mockResolvedValue({ ok: true } as never);
+		expect(await save({ 'value:fact.amount': '1840' })).toEqual({ saved: true });
 	});
 });

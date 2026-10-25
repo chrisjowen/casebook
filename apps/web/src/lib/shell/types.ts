@@ -38,6 +38,8 @@ export interface ShellData {
 	processes: ShellProcess[];
 	spaces: ShellSpace[];
 	imports: ShellImport[];
+	/** Whether there is a published process here the user may start a case of. */
+	canStart: Permission;
 }
 
 /** What the palette fetches when it opens: the user's cases and open tasks. */

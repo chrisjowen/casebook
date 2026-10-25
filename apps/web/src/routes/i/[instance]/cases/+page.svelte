@@ -23,11 +23,18 @@
 					Each case gathers the processes run for one person or thing. Open one to see them all.
 				</p>
 			</div>
-			<a
-				href={links.newCase(slug)}
-				class="flex h-9 items-center gap-1.5 rounded-lg bg-foreground px-3.5 text-[13px] font-medium text-background hover:bg-foreground/90"
-				><Plus class="size-4" />New case</a
-			>
+			{#if data.shell.canStart.allowed}
+				<a
+					href={links.newCase(slug)}
+					class="flex h-9 items-center gap-1.5 rounded-lg bg-foreground px-3.5 text-[13px] font-medium text-background hover:bg-foreground/90"
+					><Plus class="size-4" />New case</a
+				>
+			{:else}
+				<span
+					class="flex h-9 cursor-not-allowed items-center gap-1.5 rounded-lg border border-dashed px-3.5 text-[13px] text-muted-foreground"
+					title={data.shell.canStart.reason}><Plus class="size-4" />New case</span
+				>
+			{/if}
 		</header>
 
 		{#if data.cases.length === 0}

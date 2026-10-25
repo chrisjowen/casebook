@@ -24,6 +24,7 @@
 		instance,
 		processes,
 		createBlocked,
+		startBlocked,
 		onnewprocess,
 		onimport
 	}: {
@@ -32,6 +33,8 @@
 		processes: ShellProcess[];
 		/** Why the user cannot create processes here, when they cannot. */
 		createBlocked?: string;
+		/** Why the user cannot start a case here, when they cannot. */
+		startBlocked?: string;
 		onnewprocess: () => void;
 		onimport: () => void;
 	} = $props();
@@ -112,6 +115,7 @@
 				label: 'New case',
 				icon: Plus,
 				href: links.newCase(instance),
+				...(startBlocked ? { disabled: startBlocked } : {}),
 				top: true
 			},
 			{

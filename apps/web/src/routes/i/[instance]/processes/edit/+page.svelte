@@ -118,6 +118,8 @@
 	const proposal = $derived(wizard?.preview?.ok ? wizard.preview : undefined);
 	const boardIx = $derived(proposal ? indexDocument(proposal.document) : active);
 	const imported = $derived(new Map(wizard?.state.processes.map((p) => [p.slug, p]) ?? []));
+	/** Still choosing how to split the workbook: no process is open yet, so none is named. */
+	const splitting = $derived(wizard?.state.phase === 'split');
 	let assistantOpen = $state(true);
 
 	const editor = new Editor(() => loaded);
@@ -235,18 +237,23 @@
 	const failing = $derived(
 		loaded ? loaded.errors.length + loaded.issues.filter((i) => i.severity === 'error').length : 0
 	);
+	const warnings = $derived(
+		loaded ? loaded.issues.filter((i) => i.severity === 'warning').length : 0
+	);
 	const crumbs = $derived<Crumb[]>(
-		isMap || !active
-			? [{ label: `Process map · ${workspace?.label ?? ''}` }]
-			: [
-					{
-						label: labelOf(active, active.process?.core.id),
-						...(data.instance
-							? { href: links.process(data.instance.slug, active.document.slug) }
-							: {})
-					},
-					{ label: loaded?.can.edit.allowed ? 'Edit' : 'Board' }
-				]
+		splitting
+			? [{ label: `Import ${wizard!.fileName}` }]
+			: isMap || !active
+				? [{ label: `Process map · ${workspace?.label ?? ''}` }]
+				: [
+						{
+							label: labelOf(active, active.process?.core.id),
+							...(data.instance
+								? { href: links.process(data.instance.slug, active.document.slug) }
+								: {})
+						},
+						{ label: loaded?.can.edit.allowed ? 'Edit' : 'Board' }
+					]
 	);
 	const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 	const tab =
@@ -255,7 +262,11 @@
 
 <svelte:head
 	><title
-		>{isMap || !active ? 'Process map' : labelOf(active, active.process?.core.id)} · casebook</title
+		>{splitting
+			? `Import ${wizard!.fileName}`
+			: isMap || !active
+				? 'Process map'
+				: labelOf(active, active.process?.core.id)} · {data.instance.name}</title
 	></svelte:head
 >
 
@@ -265,7 +276,7 @@
 	instances={data.instances}
 	fill
 	{crumbs}
-	tabs={!isMap && loaded && data.instance
+	tabs={!isMap && !splitting && loaded && data.instance
 		? processTabs(
 				data.instance.slug,
 				{
@@ -278,7 +289,7 @@
 		: undefined}
 >
 	{#snippet actions()}
-		{#if !isMap && loaded && data.instance && workspace}
+		{#if !isMap && !splitting && loaded && data.instance && workspace}
 			<ProcessActions
 				instance={data.instance.slug}
 				process={{
@@ -301,7 +312,12 @@
 	{:else}
 		<div class="flex min-h-0 flex-1 bg-background">
 			<section class="flex min-w-0 flex-1 flex-col">
-				<div class="flex h-12 shrink-0 items-center gap-2 border-b bg-background px-3">
+				<div
+					class={[
+						'flex h-12 shrink-0 items-center gap-2 border-b bg-background px-3',
+						splitting && assistantOpen && 'hidden'
+					]}
+				>
 					{#if isMap}
 						<Select.Root
 							type="single"
@@ -327,17 +343,19 @@
 							><Network class="size-3.5" />How the processes here hand facts to each other</span
 						>
 					{/if}
-					<label
-						class="flex h-8 w-56 min-w-0 shrink items-center gap-2 rounded-lg bg-muted/70 px-2.5 text-[12.5px] text-muted-foreground focus-within:ring-2 focus-within:ring-brand-ring"
-					>
-						<Search class="size-3.5 shrink-0" />
-						<input
-							bind:value={query}
-							placeholder={isMap ? 'Find a process or fact' : 'Find on the board'}
-							aria-label="Find on the board"
-							class="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
-						/>
-					</label>
+					{#if !splitting}
+						<label
+							class="flex h-8 w-56 min-w-0 shrink items-center gap-2 rounded-lg bg-muted/70 px-2.5 text-[12.5px] text-muted-foreground focus-within:ring-2 focus-within:ring-brand-ring"
+						>
+							<Search class="size-3.5 shrink-0" />
+							<input
+								bind:value={query}
+								placeholder={isMap ? 'Find a process or fact' : 'Find on the board'}
+								aria-label="Find on the board"
+								class="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
+							/>
+						</label>
+					{/if}
 					{#if wizard}
 						<!-- While an import drafts several processes, hop between them here. -->
 						<div
@@ -374,14 +392,14 @@
 							onclick={() => (assistantOpen = true)}><Sparkles class="size-3.5" />Assistant</button
 						>
 					{/if}
-					{#if !isMap && active && loaded}
+					{#if !isMap && !splitting && active && loaded}
 						<Segmented
 							label="View"
 							value={data.view}
 							options={views}
 							onchange={(view) => nav({ view })}
 						/>
-						{#if loaded.policy === 'governed'}
+						{#if loaded.policy === 'governed' && loaded.can.edit.allowed}
 							<button
 								class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-brand px-2.5 text-[12.5px] font-medium text-white enabled:cursor-pointer enabled:hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
 								disabled={!!publishProblem || editor.busy}
@@ -505,7 +523,12 @@
 				<footer
 					class="flex h-8 shrink-0 items-center gap-4 overflow-hidden border-t bg-background px-4 text-[11.5px] whitespace-nowrap text-muted-foreground"
 				>
-					{#if !isMap && loaded && !editor.blocked}
+					{#if splitting}
+						<span
+							class="inline-flex items-center gap-1.5 rounded-md bg-brand-soft px-1.5 py-0.5 font-medium text-brand"
+							><FileSpreadsheet class="size-3" />Importing {wizard!.fileName}</span
+						>
+					{:else if !isMap && loaded && !editor.blocked}
 						<span
 							class="inline-flex items-center gap-1.5 rounded-md bg-brand-soft px-1.5 py-0.5 font-medium text-brand"
 							><SquarePen class="size-3" />Editing draft</span
@@ -517,7 +540,9 @@
 							><Eye class="size-3" />{isMap || !loaded ? 'Viewing definitions' : 'Read only'}</span
 						>
 					{/if}
-					{#if isMap}
+					{#if splitting}
+						<span>Nothing is created until you accept the split</span>
+					{:else if isMap}
 						<span>{indexes.length} {indexes.length === 1 ? 'process' : 'processes'}</span>
 						<span>{processLinks(indexes.map((ix) => ix.document)).length} links</span>
 						<button
@@ -549,6 +574,16 @@
 								><CircleAlert class="size-3" />{failing} publish {failing === 1
 									? 'problem'
 									: 'problems'}</button
+							>
+						{:else if warnings}<button
+								class="inline-flex cursor-pointer items-center gap-1 text-amber-700"
+								title="Publishing is allowed; open the details to see what to look at"
+								onclick={() => {
+									details = true;
+									nav({ sel: undefined });
+								}}
+								><TriangleAlert class="size-3" />Publish checks pass · {warnings}
+								{warnings === 1 ? 'warning' : 'warnings'}</button
 							>
 						{:else}<span class="inline-flex items-center gap-1 text-emerald-700"
 								><CircleCheck class="size-3" />Publish checks pass</span

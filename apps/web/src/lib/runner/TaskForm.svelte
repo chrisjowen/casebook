@@ -553,6 +553,8 @@
 					<button
 						formaction="?/save"
 						formnovalidate
+						name="leave"
+						value="yes"
 						class="h-10 cursor-pointer rounded-lg border bg-card px-3 text-[14px] font-medium hover:bg-muted sm:px-4"
 						><span class="sm:hidden">Save</span><span class="hidden sm:inline">Save for later</span
 						></button

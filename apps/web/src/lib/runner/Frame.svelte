@@ -299,6 +299,7 @@
 						<DropdownMenu.Content class={contentClass} align="start" sideOffset={6}>
 							<DropdownMenu.Item
 								class={itemClass}
+								disabled={shell?.canStart.allowed === false}
 								onSelect={() =>
 									goto(
 										links.newCase(instance.slug, {
@@ -310,7 +311,9 @@
 								<span class="flex-1">
 									<span class="block font-medium">New case</span>
 									<span class="block text-[12px] text-muted-foreground"
-										>Start running a process for someone or something</span
+										>{shell?.canStart.allowed === false
+											? shell.canStart.reason
+											: 'Start running a process for someone or something'}</span
 									>
 								</span>
 							</DropdownMenu.Item>
@@ -564,6 +567,7 @@
 		instance={instance.slug}
 		processes={shell.processes}
 		createBlocked={canCreate ? undefined : createReason}
+		startBlocked={shell.canStart.allowed ? undefined : shell.canStart.reason}
 		onnewprocess={() => (shellUi.newProcess = true)}
 		onimport={() => (shellUi.importing = true)}
 	/>

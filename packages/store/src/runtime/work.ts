@@ -679,7 +679,14 @@ function othersLine(a: LoadedAttachment, me: string, people: ReadonlyMap<string,
 		const doing = lowerFirst(s.item.title);
 		return s.status === 'held' ? `${who} — ${doing} (paused)` : `${who} — ${doing}`;
 	});
-	const lead = mine.length === 0 ? 'Your part is done for now. Waiting on ' : 'Also in progress: ';
+	// Only someone who has done something here has a part that is done.
+	const acted = a.events.some((e) => e.by === me || e.onBehalfOf === me);
+	const lead =
+		mine.length > 0
+			? 'Also in progress: '
+			: acted
+				? 'Your part is done for now. Waiting on '
+				: 'Waiting on ';
 	return `${lead}${parts.join('; ')}.`;
 }
 

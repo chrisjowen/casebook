@@ -492,6 +492,27 @@ async function roleHolders(
 	};
 }
 
+/**
+ * The roles, of those given, that nobody holds as a standing role on the definition's namespace or
+ * an ancestor. A case of it waits on nobody in such a role unless its starter names someone.
+ */
+export async function rolesWithoutHolders(
+	db: Queryable,
+	definitionId: string,
+	roles: string[]
+): Promise<string[]> {
+	const [definition] = await db
+		.select({ namespace: namespaces.path, accountId: namespaces.accountId })
+		.from(processDefinitions)
+		.innerJoin(namespaces, eq(namespaces.id, processDefinitions.namespaceId))
+		.where(eq(processDefinitions.id, definitionId));
+	if (!definition || roles.length === 0) return [];
+	// No case yet, so only standing bindings count.
+	const none = { id: '00000000-0000-0000-0000-000000000000', ...definition };
+	const holders = await roleHolders(db, [none]);
+	return roles.filter((role) => holders.of(none, role).length === 0);
+}
+
 /** Resolves groups to the users and agents in them, through nested groups. */
 async function groupMembersOf(db: Queryable, groups: string[]) {
 	const rows = groups.length
