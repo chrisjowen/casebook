@@ -175,6 +175,14 @@
 	const helperName = $derived(view.askable.find((p) => p.id === chosenHelper)?.name);
 	let skipping = $state(false);
 	let told = false;
+	const occurrence = $derived(task.lastDone?.at);
+	$effect(() => {
+		void occurrence;
+		savedAt = undefined;
+		saveFailed = undefined;
+		savedNote = '';
+		told = false;
+	});
 	/** Tells the others someone has started on it, once, as soon as the form is touched. */
 	function started() {
 		if (told || !canAct) return;

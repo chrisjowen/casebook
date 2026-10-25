@@ -952,7 +952,9 @@ async function taskView(
 				...(q.resolved ? { resolved: { by: p(q.resolved.by), at: q.resolved.at } } : {})
 			})),
 		askable:
-			withAskable && decision.allowed && isOpen(state.status) ? await askablePeople(db, c, me) : [],
+			withAskable && decision.allowed && isOpen(state.status) && item.kind !== 'approval'
+				? await askablePeople(db, c, me)
+				: [],
 		outline: outline(a, me, people),
 		others: othersLine(a, me, people),
 		...(draft ? { draft: { values: draft.values, by: p(draft.by), at: draft.at } } : {}),

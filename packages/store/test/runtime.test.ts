@@ -625,6 +625,8 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 			expect(await done(users.wren, 'step.write-rca', {}, true)).toMatchObject({ ok: true });
 
 			const approval = ref(attachmentId, 'approval.rca-sign-off');
+			const review = await loadTask(db, users.olive, 'acme', approval, { askable: true });
+			expect(review).toMatchObject({ you: { canAct: true }, askable: [] });
 			expectRefused(
 				await decideApproval(db, users.wren, { ...approval, approve: true }),
 				'access-denied',
