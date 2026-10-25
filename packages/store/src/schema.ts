@@ -228,6 +228,10 @@ export const draftRevisions = pgTable(
 			.references(() => processDefinitions.id),
 		revision: integer('revision').notNull(),
 		body: jsonb('body').notNull(),
+		/** The node operations that produced this revision from the one before (ADR 0019). */
+		ops: jsonb('ops').notNull().default([]),
+		/** The earlier revision whose body this one restores, as undo does. */
+		revertedTo: integer('reverted_to'),
 		authorId: uuid('author_id').notNull(),
 		authorKind: principalKind('author_kind').notNull(),
 		onBehalfOfId: uuid('on_behalf_of_id'),

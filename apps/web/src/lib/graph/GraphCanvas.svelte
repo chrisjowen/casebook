@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Read-only Svelte Flow canvas. Layout runs once per `layoutKey`; selection and search only
+	// Svelte Flow canvas. Layout runs once per `layoutKey`; selection and search only
 	// restyle nodes and edges, so the graph never jumps while someone is reading it.
 	import { SvelteFlow, Background, Controls, Panel, type Node, type Edge } from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
@@ -41,7 +41,15 @@
 		legend?: Snippet;
 	} = $props();
 
-	setGraphActions({ inspect: (id) => actions.inspect(id) });
+	setGraphActions({
+		inspect: (id) => actions.inspect(id),
+		get edits() {
+			return actions.edits;
+		},
+		get blocked() {
+			return actions.blocked;
+		}
+	});
 
 	const nodeTypes = {
 		card: CardNode,

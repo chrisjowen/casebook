@@ -8,6 +8,7 @@ tasks:
     command: 'tsc -p tsconfig.build.json'
     inputs:
       - 'src/**/*'
+      - 'fixtures/**/*'
       - 'schema/**/*'
       - 'tsconfig.build.json'
       - '/tsconfig.base.json'

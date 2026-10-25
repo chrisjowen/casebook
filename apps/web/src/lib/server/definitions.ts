@@ -1,43 +1,51 @@
 /**
- * The one place the web app gets process definitions from. Phase 1 loads the model package's
- * synthetic fixtures (ADR 0014); later phases swap this for the store without touching the UI.
+ * The one place the web app gets process definitions from: the store, read as the signed-in
+ * user, so only namespaces they can read appear, each with what they may do there.
  */
-import { checkPublish, type DefinitionDocument } from '@casebook/model';
-// The model package publishes its fixtures as source only, so they are imported by path.
-import {
-	birthRegistrationAbroad,
-	incidentManagement
-} from '../../../../../packages/model/fixtures/index.ts';
+import { listDefinitions, type Actor, type DefinitionForActor } from '@casebook/store';
 import type { LoadedDefinition, Workspace } from '$lib/definitions/types';
+import { getDb } from './db';
 
-const SOURCES: DefinitionDocument[] = [incidentManagement, birthRegistrationAbroad];
+/** Every namespace the actor can read, with its definitions, ordered by path. */
+export async function loadWorkspaces(actor: Actor): Promise<Workspace[]> {
+	const namespaces = await listDefinitions(getDb(), actor);
+	return namespaces.map(({ namespace, can, definitions }) => ({
+		id: namespace.id,
+		namespace: namespace.path,
+		label: namespaceLabel(namespace.path),
+		definitions: definitions.filter((d) => d.draft ?? d.published).map(toLoaded),
+		can
+	}));
+}
 
-/** Every definition, validated and publish-checked, grouped by owning namespace. */
-export function loadWorkspaces(): Workspace[] {
-	const byNamespace = new Map<string, LoadedDefinition[]>();
-	for (const document of SOURCES) {
-		const check = checkPublish(document);
-		const loaded: LoadedDefinition = {
-			document,
-			ok: check.ok,
-			errors: check.errors,
-			issues: check.issues
-		};
-		const list = byNamespace.get(document.namespace) ?? [];
-		list.push(loaded);
-		byNamespace.set(document.namespace, list);
-	}
-	return [...byNamespace]
-		.map(([namespace, definitions]) => ({
-			namespace,
-			label: namespaceLabel(namespace),
-			definitions
-		}))
-		.sort((a, b) => a.label.localeCompare(b.label));
+function toLoaded(d: DefinitionForActor): LoadedDefinition {
+	const document = (d.draft ?? d.published)!.document;
+	return {
+		id: d.id,
+		document,
+		ok: d.check.ok,
+		errors: d.check.errors,
+		issues: d.check.issues,
+		policy: d.changePolicy,
+		requiresApproval: d.publishRequiresApproval,
+		...(d.draft ? { revision: d.draft.number } : {}),
+		undoable: d.draft?.undoable ?? false,
+		...(d.published
+			? {
+					published: {
+						version: d.published.version,
+						at: d.published.publishedAt.toISOString(),
+						by: d.published.publishedByName
+					}
+				}
+			: {}),
+		changes: d.published ? d.changes.map((c) => c.summary) : [],
+		can: d.can
+	};
 }
 
 /** "acme/eng/sre" reads as "SRE", "personal/example-user/family" as "Family". */
-function namespaceLabel(namespace: string): string {
+export function namespaceLabel(namespace: string): string {
 	const last = namespace.split('/').at(-1) ?? namespace;
 	const words = last.split('-');
 	if (words.length === 1 && last.length <= 3) return last.toUpperCase();

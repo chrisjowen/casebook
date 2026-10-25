@@ -3,9 +3,10 @@ $schema: '../../.moon/cache/schemas/project.json'
 language: 'typescript'
 layer: 'application'
 
-# The app imports @casebook/model, which resolves to the package's built output.
+# The app imports @casebook/model and @casebook/store, which resolve to their built output.
 dependsOn:
   - 'model'
+  - 'store'
 
 tasks:
   dev:

@@ -952,6 +952,10 @@ describe.skipIf(!url)('store repository (Postgres)', () => {
 				}),
 				'publish-body-mismatch'
 			);
+			await expectRule(
+				publishVersion(db, { ...base, ...fields(), sourceRevisionId: draft.revision.id }),
+				'revision-already-published'
+			);
 
 			const explicit = await publishVersion(db, {
 				...base,

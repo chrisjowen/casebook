@@ -50,6 +50,9 @@ importers:
       '@casebook/model':
         specifier: workspace:*
         version: link:../../packages/model
+      '@casebook/store':
+        specifier: workspace:*
+        version: link:../../packages/store
       '@fontsource-variable/inter':
         specifier: 5.3.0
         version: 5.3.0
@@ -148,6 +151,9 @@ importers:
 
   packages/store:
     dependencies:
+      '@casebook/model':
+        specifier: workspace:*
+        version: link:../model
       drizzle-orm:
         specifier: 0.45.4
         version: 0.45.4(postgres@3.4.9)

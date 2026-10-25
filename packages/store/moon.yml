@@ -3,9 +3,15 @@ $schema: '../../.moon/cache/schemas/project.json'
 language: 'typescript'
 layer: 'library'
 
+# Definition editing and the seed build on @casebook/model, which resolves to its built output.
+dependsOn:
+  - 'model'
+
 tasks:
   build:
     command: 'tsc -p tsconfig.build.json'
+    deps:
+      - '^:build'
     inputs:
       - 'src/**/*'
       - 'tsconfig.build.json'
@@ -14,6 +20,8 @@ tasks:
       - 'dist'
   check:
     command: 'tsc -p tsconfig.json'
+    deps:
+      - '^:build'
     inputs:
       - 'src/**/*'
       - 'test/**/*'
@@ -28,9 +36,19 @@ tasks:
       - '/eslint.config.js'
   test:
     command: 'vitest run'
+    deps:
+      - '^:build'
     inputs:
       - 'src/**/*'
       - 'test/**/*'
       - 'drizzle/**/*'
       - 'vitest.config.ts'
       - '$DATABASE_URL'
+  # Migrates the database DATABASE_URL names and loads the demo data. Local use only.
+  seed:
+    command: 'node dist/cli/seed.js'
+    deps:
+      - '~:build'
+    options:
+      cache: false
+      runInCI: false

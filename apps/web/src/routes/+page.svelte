@@ -1,9 +1,14 @@
 <script lang="ts">
-	// Definition editor, phase 1: view and inspect process definitions. No cases or instances.
+	// Definition editor: view, inspect and edit process definitions stored in Postgres, as the
+	// signed-in user. Edits are draft revisions; governed processes publish explicitly, living ones
+	// publish every edit. No cases or instances.
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
-	import type { FactNode } from '@casebook/model';
+	import type { FactNode, Operation } from '@casebook/model';
+	import { Editor, setEditor } from '$lib/editor/editing.svelte';
+	import * as edits from '$lib/editor/ops';
+	import { draftStatus, publishBlocked } from '$lib/editor/status';
 	import TopBar from '$lib/editor/TopBar.svelte';
 	import IconRail, { type RailItem } from '$lib/editor/IconRail.svelte';
 	import Outline from '$lib/editor/Outline.svelte';
@@ -17,6 +22,7 @@
 	import {
 		indexDocument,
 		labelOf,
+		plainText,
 		processLinks,
 		sharedFactTypes,
 		type WorkItem
@@ -31,7 +37,10 @@
 		Info,
 		Eye,
 		CircleCheck,
-		CircleAlert
+		CircleAlert,
+		SquarePen,
+		Upload,
+		LoaderCircle
 	} from '@lucide/svelte';
 	import type { PageProps } from './$types';
 
@@ -62,6 +71,17 @@
 		selectedNode?.core.kind === 'fact' ? (selectedNode as FactNode) : undefined
 	);
 
+	const editor = new Editor(() => loaded);
+	setEditor(editor);
+	/** Saves an edit of the open draft, or is absent when the user cannot edit it. */
+	const edit = $derived(
+		editor.blocked === undefined ? (ops: Operation[]) => editor.apply(ops) : undefined
+	);
+	async function run({ ops, select }: edits.Edit) {
+		if ((await editor.apply(ops)) && select) nav({ sel: select });
+	}
+	const publishProblem = $derived(loaded && publishBlocked(loaded));
+
 	let query = $state('');
 	let outline = $state(true);
 	let details = $state(false);
@@ -89,8 +109,29 @@
 	}
 
 	const actions = {
-		inspect: (id: string) => nav({ sel: id })
+		inspect: (id: string) => nav({ sel: id }),
+		get blocked() {
+			return editor.blocked;
+		},
+		edits: {
+			addStep: (id: string) => run(edits.addStepAfter(active!.document, id)),
+			addFact: (id: string) => run(edits.addFact(active!.document, id)),
+			addCondition: (id: string) => run(edits.addCondition(active!.document, id)),
+			duplicate: (id: string) => run(edits.duplicate(active!.document, id)),
+			remove: async (id: string) => {
+				if ((await editor.apply(edits.remove(id).ops)) && selected === id) nav({ sel: undefined });
+			}
+		}
 	};
+
+	async function create(title: string, changePolicy: 'governed' | 'living') {
+		if (!workspace) return;
+		const slug = await editor.create(workspace.id, title, changePolicy);
+		if (slug) {
+			details = true;
+			nav({ ws: workspace.namespace, p: slug, sel: undefined });
+		}
+	}
 
 	function onrail(item: RailItem) {
 		const slug = data.slug ?? indexes[0]?.document.slug;
@@ -115,7 +156,9 @@
 				: selected
 	);
 	const layoutKey = $derived(
-		isMap ? `map:${workspace?.namespace}` : `${active?.document.slug}:${data.view}`
+		isMap
+			? `map:${workspace?.namespace}:${workspace?.definitions.map((d) => d.revision).join(',')}`
+			: `${active?.document.slug}:${data.view}:${loaded?.revision}`
 	);
 	const load = () => (isMap ? buildMap(indexes) : build(data.view as ViewId, active!));
 	const failing = $derived(
@@ -124,15 +167,19 @@
 </script>
 
 <svelte:head
-	><title>{isMap ? 'Process map' : labelOf(active, active?.process?.core.id)} · casebook</title
+	><title
+		>{isMap || !active ? 'Process map' : labelOf(active, active.process?.core.id)} · casebook</title
 	></svelte:head
 >
 
 <div class="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-	<TopBar bind:query />
+	<TopBar bind:query user={data.user} />
 
-	{#if !workspace || !active}
-		<p class="m-auto text-[13px] text-muted-foreground">No process definitions yet.</p>
+	{#if !workspace}
+		<p class="m-auto max-w-sm text-center text-[13px] text-muted-foreground">
+			{data.user.displayName} cannot read any namespace yet. Ask an account owner for access, or sign
+			in as another demo user.
+		</p>
 	{:else}
 		<div class="flex min-h-0 flex-1">
 			<IconRail
@@ -156,6 +203,7 @@
 					}}
 					onmap={() => nav({ p: 'map', sel: undefined })}
 					onshared={() => nav({ sel: 'shared' })}
+					oncreate={create}
 				/>
 			{/if}
 
@@ -193,20 +241,32 @@
 							>
 						{/each}
 					</div>
-					{#if !isMap}
+					{#if !isMap && active && loaded}
 						<Segmented
 							label="Graph view"
 							value={data.view}
 							options={views}
 							onchange={(view) => nav({ view })}
 						/>
+						{#if loaded.policy === 'governed'}
+							<button
+								class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-brand px-2.5 text-[12.5px] font-medium text-white enabled:cursor-pointer enabled:hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+								disabled={!!publishProblem || editor.busy}
+								title={publishProblem ??
+									`Publish the draft as version ${(loaded.published?.version ?? 0) + 1}`}
+								onclick={() => editor.publish()}
+								>{#if editor.busy}<LoaderCircle class="size-3.5 animate-spin" />{:else}<Upload
+										class="size-3.5"
+									/>{/if}Publish</button
+							>
+						{/if}
 						<button
 							class={[
 								'flex size-8 cursor-pointer items-center justify-center rounded-lg border',
 								details ? 'bg-muted' : 'hover:bg-muted'
 							]}
-							title="Process details and publish checks"
-							aria-label="Process details and publish checks"
+							title="Process details, publishing and checks"
+							aria-label="Process details, publishing and checks"
 							aria-pressed={details}
 							onclick={() => {
 								details = !details;
@@ -217,32 +277,75 @@
 				</div>
 
 				<main class="relative min-h-0 flex-1">
-					<GraphCanvas
-						{layoutKey}
-						{load}
-						{onselect}
-						{actions}
-						{query}
-						{focusId}
-						selectedId={canvasSelection}
-						readableZoom={isMap ? undefined : data.view === 'facts' ? 0.7 : 0.82}
-					>
-						{#snippet legend()}{#if !isMap}<Legend facts={data.view === 'facts'} />{/if}{/snippet}
-					</GraphCanvas>
+					{#if active}
+						<GraphCanvas
+							{layoutKey}
+							{load}
+							{onselect}
+							{actions}
+							{query}
+							{focusId}
+							selectedId={canvasSelection}
+							readableZoom={isMap ? undefined : data.view === 'facts' ? 0.7 : 0.82}
+						>
+							{#snippet legend()}{#if !isMap}<Legend facts={data.view === 'facts'} />{/if}{/snippet}
+						</GraphCanvas>
+					{:else}
+						<p class="absolute inset-0 m-auto h-fit text-center text-[13px] text-muted-foreground">
+							No processes in {workspace.namespace} yet.{#if workspace.can.create.allowed}
+								Use + next to Processes to start one.{/if}
+						</p>
+					{/if}
+					{#if editor.notice}
+						<div
+							role={editor.notice.tone === 'error' ? 'alert' : 'status'}
+							class={[
+								'absolute top-3 left-1/2 z-10 flex w-[min(560px,calc(100%-24px))] -translate-x-1/2 items-start gap-2 rounded-xl border bg-background px-3.5 py-2.5 text-[12.5px] shadow-md',
+								editor.notice.tone === 'error' && 'border-destructive/40'
+							]}
+						>
+							{#if editor.notice.tone === 'error'}<CircleAlert
+									class="mt-0.5 size-3.5 shrink-0 text-destructive"
+								/>{:else}<CircleCheck class="mt-0.5 size-3.5 shrink-0 text-emerald-600" />{/if}
+							<div class="min-w-0 flex-1">
+								<p>{active ? plainText(active, editor.notice.text) : editor.notice.text}</p>
+								{#if editor.notice.details}
+									<ul class="mt-1 flex flex-col gap-0.5 text-[11.5px] text-muted-foreground">
+										{#each editor.notice.details as line, i (i)}<li>
+												{active ? plainText(active, line) : line}
+											</li>{/each}
+									</ul>
+								{/if}
+							</div>
+							<button
+								class="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+								aria-label="Dismiss"
+								onclick={() => editor.dismiss()}><X class="size-3.5" /></button
+							>
+						</div>
+					{/if}
 				</main>
 
 				<footer
 					class="flex h-8 shrink-0 items-center gap-4 overflow-hidden border-t bg-background px-4 text-[11.5px] whitespace-nowrap text-muted-foreground"
 				>
-					<span
-						class="inline-flex items-center gap-1.5 rounded-md bg-brand-soft px-1.5 py-0.5 font-medium text-brand"
-						><Eye class="size-3" />Viewing definitions</span
-					>
+					{#if !isMap && loaded && !editor.blocked}
+						<span
+							class="inline-flex items-center gap-1.5 rounded-md bg-brand-soft px-1.5 py-0.5 font-medium text-brand"
+							><SquarePen class="size-3" />Editing draft</span
+						>
+					{:else}
+						<span
+							class="inline-flex items-center gap-1.5 rounded-md bg-brand-soft px-1.5 py-0.5 font-medium text-brand"
+							title={isMap ? undefined : editor.blocked}
+							><Eye class="size-3" />{isMap || !loaded ? 'Viewing definitions' : 'Read only'}</span
+						>
+					{/if}
 					{#if isMap}
 						<span>{indexes.length} {indexes.length === 1 ? 'process' : 'processes'}</span>
 						<span>{processLinks(indexes.map((ix) => ix.document)).length} links</span>
 						<span>{shared.length} shared fact types</span>
-					{:else}
+					{:else if active}
 						<span
 							>{active.work.length} steps and decisions · {active.stages.length} stages · {active
 								.facts.length} fact types · {active.roles.length} roles</span
@@ -255,13 +358,15 @@
 						{:else}<span class="inline-flex items-center gap-1 text-emerald-700"
 								><CircleCheck class="size-3" />Publish checks pass</span
 							>{/if}
-						<span>Version {active.document.version}</span>
+						{#if loaded}<span
+								>{`${loaded.policy === 'living' ? 'Living' : 'Draft'} · ${draftStatus(loaded)}`}</span
+							>{/if}
 					{/if}
-					<span class="ml-auto truncate">Workspace: {workspace.label}</span>
+					<span class="ml-auto truncate">Workspace: {workspace.label} ({workspace.namespace})</span>
 				</footer>
 			</section>
 
-			{#if inspectorOpen}
+			{#if inspectorOpen && active}
 				<aside
 					class="flex w-[360px] shrink-0 flex-col border-l bg-background"
 					aria-label="Inspector"
@@ -296,15 +401,30 @@
 							}}><X class="size-4" /></button
 						>
 					</div>
+					{#if !isMap && editor.blocked && selected !== 'shared'}
+						<p class="border-b bg-muted/40 px-5 py-2 text-[11.5px] text-muted-foreground">
+							{editor.blocked}
+						</p>
+					{/if}
 					<div class="no-scrollbar min-h-0 flex-1 overflow-y-auto">
 						{#if selectedItem}
-							<StepInspector ix={active} item={selectedItem} onfact={(id) => nav({ sel: id })} />
+							<StepInspector
+								ix={active}
+								item={selectedItem}
+								onfact={(id) => nav({ sel: id })}
+								{edit}
+							/>
 						{:else if selectedFact}
-							<FactInspector ix={active} fact={selectedFact} />
+							<FactInspector
+								ix={active}
+								fact={selectedFact}
+								{edit}
+								onremoved={() => nav({ sel: undefined })}
+							/>
 						{:else if selected === 'shared'}
 							<SharedFactsInspector {shared} />
 						{:else if loaded}
-							<ProcessInspector ix={active} {loaded} />
+							<ProcessInspector ix={active} {loaded} {edit} onselect={(id) => nav({ sel: id })} />
 						{/if}
 					</div>
 				</aside>
