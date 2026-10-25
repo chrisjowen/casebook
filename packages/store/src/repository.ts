@@ -64,6 +64,7 @@ export type StoreRule =
 	| 'definition-living'
 	| 'edit-publish-fields'
 	| 'revision-other-definition'
+	| 'revision-conflict'
 	| 'publish-body-missing'
 	| 'publish-body-mismatch'
 	| 'draft-author-kind'
@@ -429,6 +430,15 @@ export interface VersionFields {
 export interface NewDraftRevision {
 	definitionId: string;
 	body: unknown;
+	/** The node operations that produced the body from the previous revision (ADR 0019). */
+	ops?: unknown[];
+	/** The earlier revision whose body this one restores, as undo does. */
+	revertedTo?: number;
+	/**
+	 * The number the revision must get. When another edit got there first the write is refused,
+	 * so an edit computed from a stale head is never stored.
+	 */
+	revision?: number;
 	authorId: string;
 	/** Required for agent and service authors, forbidden for users (ADR 0009). */
 	onBehalfOfId?: string;
@@ -512,12 +522,21 @@ export async function appendDraftRevision(
 			.select({ revision: max(draftRevisions.revision) })
 			.from(draftRevisions)
 			.where(eq(draftRevisions.definitionId, input.definitionId));
+		const next = (last?.revision ?? 0) + 1;
+		if (input.revision !== undefined && input.revision !== next) {
+			throw new StoreRuleError(
+				'revision-conflict',
+				`the draft moved on: the next revision is ${next}, not ${input.revision}`
+			);
+		}
 		const [revision] = await tx
 			.insert(draftRevisions)
 			.values({
 				definitionId: input.definitionId,
-				revision: (last?.revision ?? 0) + 1,
+				revision: next,
 				body: input.body,
+				ops: input.ops ?? [],
+				revertedTo: input.revertedTo ?? null,
 				authorId: input.authorId,
 				authorKind,
 				onBehalfOfId: input.onBehalfOfId ?? null,

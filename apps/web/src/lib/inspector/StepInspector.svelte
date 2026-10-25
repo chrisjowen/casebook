@@ -1,7 +1,8 @@
 <script lang="ts">
 	// Definition inspector for a step or decision: what it collects, who does it, what it needs,
-	// when it runs, approvals and source. Read-only; nothing here is a form to fill in.
-	import type { ApprovalNode, FactNode } from '@casebook/model';
+	// when it runs, approvals and source. With `edit`, its fields change the draft; it is never a
+	// form for case data.
+	import type { ApprovalNode, FactId, FactNode, Operation } from '@casebook/model';
 	import {
 		collectorsByFact,
 		collectsOf,
@@ -17,7 +18,10 @@
 	import { roleTone } from '$lib/graph/layout';
 	import { toneBar } from '$lib/graph/tones';
 	import { glyphIcon } from '$lib/graph/glyphs';
+	import { factLink, rename } from '$lib/editor/ops';
 	import Field from './Field.svelte';
+	import EditText from './EditText.svelte';
+	import EditSelect from './EditSelect.svelte';
 	import Group from './Group.svelte';
 	import Expr from './Expr.svelte';
 	import FieldPreview from './FieldPreview.svelte';
@@ -31,11 +35,22 @@
 		ArrowLeft,
 		Eye,
 		ChevronRight,
-		UserPlus
+		UserPlus,
+		X
 	} from '@lucide/svelte';
 
-	let { ix, item, onfact }: { ix: ProcessIndex; item: WorkItem; onfact: (id: string) => void } =
-		$props();
+	let {
+		ix,
+		item,
+		onfact,
+		edit
+	}: {
+		ix: ProcessIndex;
+		item: WorkItem;
+		onfact: (id: string) => void;
+		/** Saves operations as an edit of the draft; absent when it cannot be edited. */
+		edit?: (ops: Operation[]) => Promise<boolean>;
+	} = $props();
 
 	const core = $derived(item.core);
 	const step = $derived(core.kind === 'step' ? core : undefined);
@@ -61,19 +76,50 @@
 		{ value: 'either', label: 'Either' }
 	] as const;
 	let preview = $state(false);
+
+	const id = $derived(core.id);
+	const set = (changes: Record<string, unknown>): Operation => ({
+		op: 'update_core',
+		id,
+		changes
+	});
+	const options = (nodes: { core: { id: string } }[]) =>
+		nodes.map((n) => ({ value: n.core.id, label: labelOf(ix, n.core.id) }));
+	const collected = $derived(collectsOf(item).map((c) => c.fact));
+	const uncollected = $derived(ix.facts.filter((f) => !collected.includes(f.core.id)));
+	const unrequired = $derived(ix.facts.filter((f) => !requiresOf(item).includes(f.core.id)));
+	const addSelect =
+		'h-8 w-full cursor-pointer rounded-lg border border-dashed bg-background px-2 text-[12px] text-muted-foreground outline-none hover:border-brand-ring focus:ring-2 focus:ring-brand-ring';
+	const removeButton =
+		'flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive';
 </script>
 
 <div class="flex flex-col">
 	<div class="flex flex-col gap-3.5 px-5 pt-4 pb-5">
-		<Field label={core.kind === 'decision' ? 'Decision' : 'Step'}>{labelOf(ix, core.id)}</Field>
+		<EditText
+			label={core.kind === 'decision' ? 'Decision' : 'Step'}
+			value={labelOf(ix, core.id)}
+			onsave={edit && ((title) => edit([rename(id, title)]))}
+		/>
 		<div class="grid grid-cols-2 gap-3">
-			<Field label="Stage">{labelOf(ix, core.stage)}</Field>
-			<Field label="Role">
+			<EditSelect
+				label="Stage"
+				value={core.stage}
+				options={options(ix.stages)}
+				onsave={edit &&
+					((stage) => edit([{ op: 'move_to_stage', id, stage: stage as typeof core.stage }]))}
+			/>
+			<EditSelect
+				label="Role"
+				value={core.role}
+				options={options(ix.roles)}
+				onsave={edit && ((role) => edit([set({ role })]))}
+			>
 				<span class="flex items-center gap-1.5"
 					><span class={['size-2 shrink-0 rounded-full', toneBar[roleTone(ix, core.role)]]}
 					></span>{labelOf(ix, core.role)}</span
 				>
-			</Field>
+			</EditSelect>
 		</div>
 		{#if role?.core.scope === 'case'}
 			<p class="-mt-1.5 text-[11px] text-muted-foreground">
@@ -88,21 +134,43 @@
 				aria-label="Who can complete it"
 			>
 				{#each actors as a (a.value)}
-					<span
-						role="radio"
-						aria-checked={core.actor === a.value}
-						aria-disabled="true"
-						class={[
-							'rounded-md py-1.5 text-center text-[12.5px]',
-							core.actor === a.value
-								? 'bg-background font-medium shadow-xs'
-								: 'text-muted-foreground'
-						]}>{a.label}</span
-					>
+					{#if edit}
+						<button
+							role="radio"
+							aria-checked={core.actor === a.value}
+							class={[
+								'cursor-pointer rounded-md py-1.5 text-center text-[12.5px]',
+								core.actor === a.value
+									? 'bg-background font-medium shadow-xs'
+									: 'text-muted-foreground hover:text-foreground'
+							]}
+							onclick={() => core.actor !== a.value && edit([set({ actor: a.value })])}
+							>{a.label}</button
+						>
+					{:else}
+						<span
+							role="radio"
+							aria-checked={core.actor === a.value}
+							aria-disabled="true"
+							class={[
+								'rounded-md py-1.5 text-center text-[12.5px]',
+								core.actor === a.value
+									? 'bg-background font-medium shadow-xs'
+									: 'text-muted-foreground'
+							]}>{a.label}</span
+						>
+					{/if}
 				{/each}
 			</div>
 		</div>
-		{#if item.content}<Field label="Guidance">{item.content}</Field>{/if}
+		<EditText
+			label="Guidance"
+			value={item.content}
+			multiline
+			placeholder="What people doing this should know"
+			onsave={edit &&
+				((content) => edit([{ op: 'set_content', id, content: content === '' ? null : content }]))}
+		/>
 	</div>
 
 	<Group title={core.kind === 'decision' ? 'Outcome' : 'Collects'} count={collectsOf(item).length}>
@@ -112,9 +180,9 @@
 				{@const type = factType(fact?.core.schema)}
 				{@const Glyph = glyphIcon[type.glyph]}
 				{@const evidence = evidenceFor(ix, item, collect.fact)}
-				<li>
+				<li class="flex items-start gap-1">
 					<button
-						class="flex w-full cursor-pointer flex-col gap-1 rounded-lg border px-3 py-2 text-left hover:border-brand-ring hover:bg-brand-soft/40"
+						class="flex min-w-0 flex-1 cursor-pointer flex-col gap-1 rounded-lg border px-3 py-2 text-left hover:border-brand-ring hover:bg-brand-soft/40"
 						onclick={() => onfact(collect.fact)}
 					>
 						<span class="flex items-center gap-2">
@@ -134,11 +202,33 @@
 							{#if fact?.core.schema['x-sensitivity'] === 'sensitive'}<span>Sensitive</span>{/if}
 						</span>
 					</button>
+					{#if edit && core.kind === 'step'}
+						<button
+							class="{removeButton} mt-1.5"
+							aria-label="Stop collecting {labelOf(ix, collect.fact)}"
+							title="Stop collecting this"
+							onclick={() => edit([factLink(id, 'collects', collect.fact, false)])}
+							><X class="size-3.5" /></button
+						>
+					{/if}
 				</li>
 			{:else}
 				<li class="text-[12px] text-muted-foreground">Nothing is recorded by this step.</li>
 			{/each}
 		</ul>
+		{#if edit && core.kind === 'step' && uncollected.length}
+			<select
+				class={addSelect}
+				aria-label="Collect another fact"
+				value=""
+				onchange={(e) => edit([factLink(id, 'collects', e.currentTarget.value as FactId, true)])}
+			>
+				<option value="" disabled>Collect another fact…</option>
+				{#each uncollected as f (f.core.id)}<option value={f.core.id}
+						>{labelOf(ix, f.core.id)}</option
+					>{/each}
+			</select>
+		{/if}
 		{#if step?.assigns?.length}
 			{#each step.assigns as assign (assign.role)}
 				<div
@@ -202,6 +292,15 @@
 									><FileText class="size-3" />{need.evidence}</span
 								>{/if}
 						</span>
+						{#if edit}
+							<button
+								class="{removeButton} order-last -my-1"
+								aria-label="No longer need {labelOf(ix, need.fact)}"
+								title="No longer needed first"
+								onclick={() => edit([factLink(id, 'requires', need.fact, false)])}
+								><X class="size-3.5" /></button
+							>
+						{/if}
 						{#if need.from.length}
 							<span
 								class="flex max-w-[45%] shrink-0 items-start gap-1 text-right text-[11px] text-muted-foreground"
@@ -218,15 +317,37 @@
 		{:else}
 			<p class="text-[12px] text-muted-foreground">Nothing. This can start straight away.</p>
 		{/if}
+		{#if edit && unrequired.length}
+			<select
+				class={addSelect}
+				aria-label="Need another fact first"
+				value=""
+				onchange={(e) => edit([factLink(id, 'requires', e.currentTarget.value as FactId, true)])}
+			>
+				<option value="" disabled>Need another fact first…</option>
+				{#each unrequired as f (f.core.id)}<option value={f.core.id}
+						>{labelOf(ix, f.core.id)}</option
+					>{/each}
+			</select>
+		{/if}
 	</Group>
 
 	<Group title="Condition">
-		{#if core.when}
+		{#if core.when && edit}
+			<EditText
+				label="When it runs"
+				value={core.when.text}
+				hint="Clear the text to remove the condition."
+				onsave={(text) => edit([set({ when: text === '' ? null : { ...core.when, text } })])}
+			/>
+		{:else if core.when}
 			<Field label="When it runs"
 				><span class="flex items-start gap-2"
 					><Split class="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />{core.when.text}</span
 				></Field
 			>
+		{/if}
+		{#if core.when}
 			{#if core.when.expr}
 				<div class="flex flex-col gap-1.5">
 					<div class="text-[12px] text-muted-foreground">Checked automatically</div>
@@ -251,6 +372,13 @@
 		{#if !core.when && !step?.repeat}<p class="text-[12px] text-muted-foreground">
 				Always runs once its inputs exist.
 			</p>{/if}
+		{#if !core.when && edit}
+			<button
+				class="flex cursor-pointer items-center gap-1.5 self-start text-[12px] text-muted-foreground hover:text-foreground"
+				onclick={() => edit([set({ when: { text: `Only when ${labelOf(ix, id)} is needed` } })])}
+				><Split class="size-3.5" />Add a condition</button
+			>
+		{/if}
 	</Group>
 
 	{#if core.kind === 'step'}

@@ -1,7 +1,15 @@
 <script lang="ts">
 	// Definition outline: workspace, then processes > stages > steps and decisions, plus the
-	// workspace's shared fact types and roles.
-	import { ChevronDown, ChevronRight, Workflow, Network, Users, Signpost } from '@lucide/svelte';
+	// workspace's shared fact types and roles, and "New process" for those who may create one.
+	import {
+		ChevronDown,
+		ChevronRight,
+		Workflow,
+		Network,
+		Users,
+		Signpost,
+		Plus
+	} from '@lucide/svelte';
 	import * as Select from '$lib/components/ui/select';
 	import { labelOf, type ProcessIndex, type SharedFactType } from '$lib/graph/derive';
 	import type { Workspace } from '$lib/definitions/types';
@@ -17,7 +25,8 @@
 		onprocess,
 		onitem,
 		onmap,
-		onshared
+		onshared,
+		oncreate
 	}: {
 		workspaces: Workspace[];
 		workspace: Workspace;
@@ -31,7 +40,19 @@
 		onitem: (slug: string, id: string) => void;
 		onmap: () => void;
 		onshared: () => void;
+		/** Creates a process in the workspace; resolves once it is open. */
+		oncreate?: (title: string, changePolicy: 'governed' | 'living') => Promise<void>;
 	} = $props();
+
+	let creating = $state(false);
+	let title = $state('');
+	let policy = $state<'governed' | 'living'>('governed');
+	async function create(e: SubmitEvent) {
+		e.preventDefault();
+		await oncreate?.(title, policy);
+		creating = false;
+		title = '';
+	}
 
 	let expanded = $state<Record<string, boolean>>({});
 	let sharedOpen = $state(true);
@@ -54,7 +75,8 @@
 		>
 		<Select.Content>
 			{#each workspaces as w (w.namespace)}<Select.Item value={w.namespace} label={w.label}
-					>{w.label}</Select.Item
+					>{w.label}<span class="ml-auto pl-3 text-[11px] text-muted-foreground">{w.namespace}</span
+					></Select.Item
 				>{/each}
 		</Select.Content>
 	</Select.Root>
@@ -67,11 +89,56 @@
 			]}
 			onclick={onmap}><Network class="size-4 text-muted-foreground" />Process map</button
 		>
-		<div
-			class="mt-1.5 px-2 py-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase"
-		>
-			Processes
+		<div class="mt-1.5 flex items-center pl-2">
+			<span
+				class="flex-1 py-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase"
+				>Processes</span
+			>
+			<button
+				class="flex size-6 items-center justify-center rounded-md text-muted-foreground enabled:cursor-pointer enabled:hover:bg-background enabled:hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+				title={workspace.can.create.allowed
+					? 'New process'
+					: `New process: ${workspace.can.create.reason}`}
+				aria-label="New process"
+				disabled={!workspace.can.create.allowed || !oncreate}
+				onclick={() => (creating = !creating)}><Plus class="size-3.5" /></button
+			>
 		</div>
+		{#if creating}
+			<form
+				class="mb-1.5 flex flex-col gap-1.5 rounded-lg bg-background p-2 shadow-xs"
+				onsubmit={create}
+			>
+				<!-- svelte-ignore a11y_autofocus -->
+				<input
+					class="h-8 rounded-md bg-muted/70 px-2 text-[12.5px] outline-none focus:ring-2 focus:ring-brand-ring"
+					placeholder="Process name"
+					aria-label="Process name"
+					bind:value={title}
+					autofocus
+					required
+				/>
+				<select
+					class="h-8 cursor-pointer rounded-md bg-muted/70 px-1.5 text-[12px] outline-none"
+					aria-label="Change policy"
+					bind:value={policy}
+				>
+					<option value="governed">Governed: publish when ready</option>
+					<option value="living">Living: every edit goes live</option>
+				</select>
+				<div class="flex justify-end gap-1.5">
+					<button
+						type="button"
+						class="h-7 cursor-pointer rounded-md px-2 text-[12px] text-muted-foreground hover:bg-muted"
+						onclick={() => (creating = false)}>Cancel</button
+					>
+					<button
+						class="h-7 cursor-pointer rounded-md bg-brand px-2.5 text-[12px] font-medium text-white hover:opacity-90"
+						>Create</button
+					>
+				</div>
+			</form>
+		{/if}
 		{#each indexes as ix (ix.document.slug)}
 			{@const slug = ix.document.slug}
 			<div
@@ -131,6 +198,8 @@
 					{/each}
 				</div>
 			{/if}
+		{:else}
+			<p class="px-2 py-1 text-[12px] text-muted-foreground">No processes here yet.</p>
 		{/each}
 	</div>
 

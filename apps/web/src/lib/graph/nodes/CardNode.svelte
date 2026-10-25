@@ -136,5 +136,5 @@
 				>{/if}
 		</div>
 	{/if}
-	{#if menu}<NodeMenu id={data.id} onclose={() => (menu = false)} />{/if}
+	{#if menu}<NodeMenu id={data.id} kind={data.kind} onclose={() => (menu = false)} />{/if}
 </div>

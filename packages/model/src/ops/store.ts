@@ -4,9 +4,10 @@ import type { Revision } from './revisions.js';
 
 /**
  * Persistence for draft revisions and published versions, keyed by an opaque definition id.
- * `@casebook/store` is to implement this over its `draft_revisions` and `definition_versions`
- * tables; `InMemoryRevisionStore` is for tests. Both lists only grow, and numbering has no gaps,
- * which is how concurrent edits are detected.
+ * `InMemoryRevisionStore` is for tests. `@casebook/store` does not implement this: it records a
+ * living edit and its version in one transaction, so it composes `commit`, `undo` and `publish`
+ * itself (ADR 0020). Both lists only grow, and numbering has no gaps, which is how concurrent
+ * edits are detected.
  */
 export interface RevisionStore {
 	/** The draft's revisions, oldest first. */

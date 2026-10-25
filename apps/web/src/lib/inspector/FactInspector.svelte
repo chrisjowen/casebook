@@ -1,6 +1,9 @@
 <script lang="ts">
-	// Definition inspector for a fact type: schema, lookup, evidence, sensitivity, producers, consumers.
-	import type { FactNode } from '@casebook/model';
+	// Definition inspector for a fact type: schema, lookup, evidence, sensitivity, producers,
+	// consumers. With `edit`, its name, simple kinds, options and guidance change the draft.
+	import type { FactNode, Operation } from '@casebook/model';
+	import { Trash2 } from '@lucide/svelte';
+	import { remove, rename } from '$lib/editor/ops';
 	import {
 		collectsOf,
 		describeEvidence,
@@ -11,9 +14,22 @@
 		type ProcessIndex
 	} from '$lib/graph/derive';
 	import Field from './Field.svelte';
+	import EditText from './EditText.svelte';
+	import EditSelect from './EditSelect.svelte';
 	import Group from './Group.svelte';
 
-	let { ix, fact }: { ix: ProcessIndex; fact: FactNode } = $props();
+	let {
+		ix,
+		fact,
+		edit,
+		onremoved
+	}: {
+		ix: ProcessIndex;
+		fact: FactNode;
+		/** Saves operations as an edit of the draft; absent when it cannot be edited. */
+		edit?: (ops: Operation[]) => Promise<boolean>;
+		onremoved?: () => void;
+	} = $props();
 	const schema = $derived(fact.core.schema);
 	const type = $derived(factType(schema));
 	const options = $derived(
@@ -29,20 +45,69 @@
 		sensitive: 'Sensitive personal data'
 	} as const;
 	const lookup = $derived(schema['x-lookup']);
+
+	/** Kinds a person can pick here; others, such as lookups and documents, keep their schema. */
+	const KINDS = {
+		Text: { type: 'string' },
+		Number: { type: 'number' },
+		'Yes or no': { type: 'boolean' },
+		Date: { type: 'string', format: 'date' },
+		Choice: { type: 'string', enum: ['Yes', 'No'] }
+	} as const;
+	const simple = $derived(type.label in KINDS && !lookup && !schema['x-evidence']);
+	const id = $derived(fact.core.id);
+	const setSchema = (changes: Record<string, unknown>): Operation => ({
+		op: 'update_core',
+		id,
+		changes: { schema: changes }
+	});
+	const toKind = (label: string) =>
+		setSchema({ format: null, enum: null, ...KINDS[label as keyof typeof KINDS] });
 </script>
 
 <div class="flex flex-col">
 	<div class="flex flex-col gap-3.5 px-5 pt-4 pb-5">
-		<Field label="Fact type">{labelOf(ix, fact.core.id)}</Field>
+		<EditText
+			label="Fact type"
+			value={labelOf(ix, fact.core.id)}
+			onsave={edit && ((title) => edit([rename(id, title)]))}
+		/>
 		<div class="grid grid-cols-2 gap-3">
-			<Field label="Kind">{type.label}</Field>
+			<EditSelect
+				label="Kind"
+				value={type.label}
+				options={Object.keys(KINDS).map((k) => ({ value: k, label: k }))}
+				onsave={edit && simple ? (kind) => edit([toKind(kind)]) : undefined}
+			/>
 			<Field label="Sensitivity">{sensitivity[schema['x-sensitivity'] ?? 'none']}</Field>
 		</div>
 		{#if typeof schema.description === 'string'}<Field label="Description"
 				>{schema.description}</Field
 			>{/if}
-		{#if fact.content}<Field label="Guidance">{fact.content}</Field>{/if}
-		{#if options.length}
+		<EditText
+			label="Guidance"
+			value={fact.content}
+			multiline
+			placeholder="What this fact means and how to record it"
+			onsave={edit &&
+				((content) => edit([{ op: 'set_content', id, content: content === '' ? null : content }]))}
+		/>
+		{#if edit && simple && type.label === 'Choice'}
+			<EditText
+				label="Options"
+				value={options.join(', ')}
+				hint="Separate options with commas."
+				onsave={(text) =>
+					edit([
+						setSchema({
+							enum: text
+								.split(',')
+								.map((o) => o.trim())
+								.filter(Boolean)
+						})
+					])}
+			/>
+		{:else if options.length}
 			<div class="flex flex-col gap-1.5">
 				<div class="text-[12px] text-muted-foreground">Options</div>
 				<div class="flex flex-wrap gap-1.5">
@@ -86,4 +151,16 @@
 				No step needs it; it is an output of the process.
 			</p>{/each}
 	</Group>
+	{#if edit}
+		<Group title="Remove">
+			<button
+				class="flex cursor-pointer items-center gap-1.5 self-start rounded-lg border px-2.5 py-1.5 text-[12px] text-destructive hover:bg-destructive/5"
+				onclick={async () => (await edit(remove(id).ops)) && onremoved?.()}
+				><Trash2 class="size-3.5" />Delete this fact type</button
+			>
+			<p class="text-[11px] text-muted-foreground">
+				Only once no step collects or needs it any more.
+			</p>
+		</Group>
+	{/if}
 </div>
