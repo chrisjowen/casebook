@@ -69,8 +69,9 @@ export type Resource =
 export type ResourceType = Resource['type'];
 
 /**
- * Who is asking. An agent always acts on behalf of one user, group or service principal, and a
- * service may act on behalf of another principal; a user acts only for themselves (ADR 0009).
+ * Who is asking. An agent acts on behalf of the user it signed in as, or as its owning service's
+ * unattended agent; a service may act on behalf of another principal; a user acts only for
+ * themselves (ADR 0009, ADR 0017).
  */
 export interface Actor {
 	id: string;
