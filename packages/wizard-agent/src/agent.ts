@@ -675,7 +675,8 @@ function draftTools(
 	const process = processOf(state, session.processKey);
 	const shared = state.split?.shared ?? [];
 	const guard = refusals();
-	// A bare address in a source is taken to be on the process's sheet when it has only one.
+	// With `lenient`, a bare address in a source is taken to be on the process's sheet when it has
+	// only one, and the source's document is the upload.
 	const sheets = new Set(process.sources.map((s) => s.sheet));
 	const sheet = sheets.size === 1 ? [...sheets][0] : undefined;
 	const withSource = (value: unknown): unknown => {
@@ -746,7 +747,7 @@ function draftTools(
 			const existing = new Map(current.nodes.map((n) => [n.core.id as string, n]));
 			const skipped: string[] = [];
 			list.forEach((value, i) => {
-				const result = checkOperation(withSource(ctx.lenient ? tidyOperation(value) : value));
+				const result = checkOperation(ctx.lenient ? withSource(tidyOperation(value)) : value);
 				if (!result.valid) {
 					refused.push(`operation ${i + 1}: ${result.errors.map((e) => e.message).join('; ')}`);
 					return;

@@ -676,6 +676,56 @@ describe('a model that struggles', () => {
 		expect(state.turns).toEqual([]);
 	});
 
+	it('refuses the sources of a model that is not lenient unless they are complete', async () => {
+		const { state: split, drafts } = await acceptedSplit();
+		const stage = firstDraft[0] as Extract<Operation, { op: 'add_node' }>;
+		const withSourceOf = (source: unknown) => ({
+			...stage,
+			node: { core: { ...stage.node.core, source } }
+		});
+		const { ctx } = context(
+			[
+				call('apply_operations', {
+					operations: [
+						withSourceOf({ doc: 'other.xlsx', ref: "'Birth reg'!C3", inferred: false }),
+						withSourceOf({ doc: FILE, ref: 'C3', inferred: false })
+					]
+				}),
+				(messages) => {
+					const result = lastToolResult(messages);
+					expect(result).toMatch(/Nothing applied\./);
+					expect(result).toMatch(new RegExp(`operation 1 .*core\\.source\\.doc must be "${FILE}"`));
+					expect(result).toMatch(/operation 2 .*core\.source\.ref "C3" is not a cell reference/);
+					return answer('Drafted.')(messages);
+				},
+				answer('I could not draft it.')
+			],
+			drafts
+		);
+		const state = await wizard.draft(ctx, split, split.activeKey!);
+		expect(state.turns).toEqual([]);
+	});
+
+	it('completes the bare sources of a lenient model with the upload and its sheet', async () => {
+		const { state: split, drafts } = await acceptedSplit();
+		const stage = firstDraft[0] as Extract<Operation, { op: 'add_node' }>;
+		const { ctx } = context(
+			[
+				call('apply_operations', {
+					operations: [{ ...stage, node: { core: { ...stage.node.core, source: { ref: 'C3' } } } }]
+				}),
+				(messages) => {
+					expect(lastToolResult(messages)).toMatch(/Applied 1 of 1 operations/);
+					return answer('Drafted.')(messages);
+				}
+			],
+			drafts,
+			{ lenient: true }
+		);
+		const state = await wizard.draft(ctx, split, split.activeKey!);
+		expect(pendingTurn(state, state.activeKey!)?.ops).toEqual([stage]);
+	});
+
 	it('refuses a step that does not say who may do it, rather than guessing', async () => {
 		const { state: split, drafts } = await acceptedSplit();
 		const unsaid = firstDraft.map((op) => {
