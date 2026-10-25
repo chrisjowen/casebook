@@ -126,9 +126,9 @@ export function operatorLabel(op: RuleOp, kind: ConditionKind): string {
 		case 'lte':
 			return date ? 'is on or before' : 'is at most';
 		case 'set':
-			return 'has a value';
+			return kind === 'document' ? 'is attached' : 'has a value';
 		case 'empty':
-			return 'is empty';
+			return kind === 'document' ? 'is not attached' : 'is empty';
 		case 'contains':
 			return list ? 'includes' : 'contains';
 		case 'not-contains':
@@ -218,6 +218,8 @@ export function ruleOf(ast: GuardAst): Rule | undefined {
 		const inner = ruleOf(ast.operand);
 		if (inner?.op === 'one-of') return { ...inner, op: 'not-one-of' };
 		if (inner?.op === 'contains') return { ...inner, op: 'not-contains' };
+		if (inner?.op === 'set') return { ...inner, op: 'empty' };
+		if (inner?.op === 'empty') return { ...inner, op: 'set' };
 		return undefined;
 	}
 	if (ast.kind === 'call') {
@@ -357,8 +359,15 @@ export function literal(value: RuleValue): string {
 // Plain English
 // ---------------------------------------------------------------------------
 
-/** How a fact reads in a sentence: its plain name and kind. */
-export type FactInfo = (fact: string) => { name: string; kind: ConditionKind };
+/**
+ * How a fact reads in a sentence: its plain name and kind, and how one of its values reads when
+ * that is not the value itself, such as a person's name for their id.
+ */
+export type FactInfo = (fact: string) => {
+	name: string;
+	kind: ConditionKind;
+	valueName?: (value: string) => string;
+};
 
 /** An expression in plain English, or undefined when it does not parse. */
 export function describeGuard(expr: string, info: FactInfo): string | undefined {
@@ -371,8 +380,9 @@ export function describeGuard(expr: string, info: FactInfo): string | undefined 
 
 /** A rule in plain English: "Severity is SEV1 or SEV2". */
 export function describeRule(rule: Rule, info: FactInfo): string {
-	const { name, kind } = info(rule.fact);
-	const v = (value: unknown) => describeLiteral(value, kind);
+	const { name, kind, valueName } = info(rule.fact);
+	const v = (value: unknown) =>
+		valueName && typeof value === 'string' ? valueName(value) : describeLiteral(value, kind);
 	const many = () => orList(((rule.value as RuleValue[] | undefined) ?? []).map(v));
 	const n = rule.value as number;
 	switch (rule.op) {

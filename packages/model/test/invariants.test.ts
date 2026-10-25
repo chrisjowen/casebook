@@ -125,7 +125,7 @@ describe('checkInvariants', () => {
 			[
 				'unparsed-guard',
 				'/nodes/4/core/when/expr',
-				'step.assign-reviewer has a condition (when) whose code does not work: "case" is not something a guard can use. People will decide it by hand until it is fixed'
+				'step.assign-reviewer has a condition (when) whose code does not work: "case" is not a fact, helper or word a condition can use. People will decide it by hand until it is fixed'
 			]
 		]);
 	});

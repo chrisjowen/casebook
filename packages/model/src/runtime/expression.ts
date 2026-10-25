@@ -188,7 +188,10 @@ function tokenize(expr: string): Token[] {
 			if (known) tokens.push({ ...known, at, end: i } as Token);
 			else if (HELPERS.has(word[0])) tokens.push({ kind: 'name', value: word[0], at, end: i });
 			else {
-				throw new GuardSyntaxError(`"${word[0]}" is not something a guard can use`, at);
+				throw new GuardSyntaxError(
+					`"${word[0]}" is not a fact, helper or word a condition can use`,
+					at
+				);
 			}
 			continue;
 		}
@@ -529,7 +532,7 @@ function call(ast: GuardAst & { kind: 'call' }, scope: Scope): Value {
 			return fail(`count needs a list, not ${describeValue(list)}`);
 		}
 		default:
-			return fail(`"${ast.name}" is not something a guard can use`);
+			return fail(`"${ast.name}" is not a fact, helper or word a condition can use`);
 	}
 }
 

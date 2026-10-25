@@ -2,6 +2,7 @@
 	// The value side of a rule, shaped by the fact and the operator: choices to pick from, Yes or
 	// No, a date or today, a number of days or items, or text.
 	import { operandOf, type ConditionKind, type RuleOp, type RuleValue } from '@casebook/model';
+	import type { PersonView } from '@casebook/store';
 
 	let {
 		kind,
@@ -9,7 +10,8 @@
 		choices,
 		value,
 		onchange,
-		label
+		label,
+		people
 	}: {
 		kind: ConditionKind;
 		op: RuleOp;
@@ -18,6 +20,8 @@
 		onchange: (value: RuleValue | RuleValue[] | undefined) => void;
 		/** What the field is for, for screen readers: "Value for Severity". */
 		label: string;
+		/** Who a people fact can hold, once loaded. */
+		people?: PersonView[];
 	} = $props();
 
 	const operand = $derived(operandOf(op));
@@ -87,7 +91,20 @@
 		/>
 	{/if}
 {:else if operand === 'one'}
-	{#if kind === 'yesno'}
+	{#if kind === 'people' && people}
+		<select
+			class="{box} flex-1 cursor-pointer"
+			aria-label={label}
+			value={typeof value === 'string' ? value : ''}
+			onchange={(e) => onchange(e.currentTarget.value || undefined)}
+		>
+			<option value="" disabled>Pick someone</option>
+			{#each people as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
+			{#if typeof value === 'string' && value && !people.some((p) => p.id === value)}
+				<option {value}>{value}</option>
+			{/if}
+		</select>
+	{:else if kind === 'yesno'}
 		<div class="flex gap-1" role="radiogroup" aria-label={label}>
 			{#each [true, false] as b (b)}
 				<button

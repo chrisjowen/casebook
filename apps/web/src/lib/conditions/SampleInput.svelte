@@ -1,19 +1,28 @@
 <script lang="ts">
 	// One fact's sample value for a condition test, typed by the fact's kind. Clearing it means the
 	// fact is not recorded, which is a real state on a case.
+	import type { PersonView } from '@casebook/store';
 	import type { FactOption } from './conditions';
 
 	let {
 		fact,
 		choices,
+		people,
 		value,
 		onchange
 	}: {
 		fact: FactOption;
 		choices: string[] | undefined;
+		/** Who a people fact can hold, once loaded. */
+		people?: PersonView[];
 		value: unknown;
 		onchange: (value: unknown) => void;
 	} = $props();
+	const held = $derived(Array.isArray(value) ? value.map(String) : []);
+	const togglePerson = (id: string) => {
+		const next = held.includes(id) ? held.filter((p) => p !== id) : [...held, id];
+		onchange(next.length ? next : undefined);
+	};
 
 	const id = $derived(`sample-${fact.id}`);
 	const box =
@@ -74,6 +83,22 @@
 			value={typeof value === 'string' ? value.slice(0, 10) : ''}
 			oninput={(e) => set(e.currentTarget.value)}
 		/>
+	{:else if fact.kind === 'people' && people}
+		<div {id} role="group" aria-label={fact.name} class="flex flex-wrap gap-1">
+			{#each people as p (p.id)}
+				<button
+					type="button"
+					aria-pressed={held.includes(p.id)}
+					class={[
+						'h-7 cursor-pointer rounded-md border px-2 text-[12px]',
+						held.includes(p.id)
+							? 'border-brand-ring bg-brand-soft font-medium text-brand'
+							: 'text-muted-foreground hover:text-foreground'
+					]}
+					onclick={() => togglePerson(p.id)}>{p.name}</button
+				>
+			{/each}
+		</div>
 	{:else if fact.kind === 'people' || fact.kind === 'list'}
 		<input
 			{id}

@@ -12,7 +12,8 @@
 	} from '@casebook/model';
 	import { Plus, X } from '@lucide/svelte';
 	import type { ProcessIndex } from '$lib/graph/derive';
-	import { choicesOf, factInfo, type FactOption } from './conditions';
+	import type { PersonView } from '@casebook/store';
+	import { choicesOf, factInfo, type FactOption, type FactTiming } from './conditions';
 	import GroupEditor from './GroupEditor.svelte';
 	import ValuePicker from './ValuePicker.svelte';
 
@@ -21,7 +22,9 @@
 		ix,
 		options,
 		depth = 0,
-		onremove
+		onremove,
+		timing,
+		people
 	}: {
 		group: Group;
 		ix: ProcessIndex;
@@ -29,7 +32,13 @@
 		depth?: number;
 		/** Removes this group from the one it is in; absent for the top group. */
 		onremove?: () => void;
+		/** When each fact is recorded, seen from the step, to list facts known by then first. */
+		timing?: Map<string, FactTiming>;
+		/** Who a people fact can hold, once loaded. */
+		people?: PersonView[];
 	} = $props();
+	const known = $derived(timing ? options.filter((f) => timing.get(f.id) === 'before') : options);
+	const unknown = $derived(timing ? options.filter((f) => timing.get(f.id) !== 'before') : []);
 
 	const info = $derived(factInfo(ix));
 	const kindOf = (rule: Rule): ConditionKind => (rule.fact ? info(rule.fact).kind : 'text');
@@ -103,6 +112,8 @@
 				group={item}
 				{ix}
 				{options}
+				{timing}
+				{people}
 				depth={depth + 1}
 				onremove={() => group.items.splice(i, 1)}
 			/>
@@ -117,7 +128,16 @@
 					onchange={(e) => setFact(item, e.currentTarget.value)}
 				>
 					<option value="" disabled>Pick a fact</option>
-					{#each options as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
+					{#if unknown.length}
+						<optgroup label="Recorded before this step">
+							{#each known as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
+						</optgroup>
+						<optgroup label="Recorded by this step or later">
+							{#each unknown as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
+						</optgroup>
+					{:else}
+						{#each options as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
+					{/if}
 					{#if item.fact && !options.some((f) => f.id === item.fact)}
 						<option value={item.fact}>{name}</option>
 					{/if}
@@ -141,6 +161,7 @@
 						value={item.value}
 						onchange={(v) => (item.value = v)}
 						label="Value for {name}"
+						{people}
 					/>
 				{/if}
 				<button

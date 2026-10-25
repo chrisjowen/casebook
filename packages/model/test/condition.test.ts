@@ -18,7 +18,8 @@ const kinds: Record<string, ConditionKind> = {
 	'fact.resolved-at': 'date',
 	'fact.translation-required': 'yesno',
 	'fact.teams': 'list',
-	'fact.summary': 'text'
+	'fact.summary': 'text',
+	'fact.scan': 'document'
 };
 const info: FactInfo = (fact) => ({
 	name: fact
@@ -89,6 +90,7 @@ describe('toCondition and fromCondition', () => {
 		expect(fromCondition(toCondition('3 < fact.customers')!)).toBe('fact.customers > 3');
 		expect(fromCondition(toCondition('null == fact.x')!)).toBe('fact.x == null');
 		expect(fromCondition(toCondition('is_set(fact.x)')!)).toBe('fact.x != null');
+		expect(fromCondition(toCondition('not is_set(fact.x)')!)).toBe('fact.x == null');
 	});
 
 	it('leaves expressions without rows to the code view', () => {
@@ -122,6 +124,7 @@ describe('describeGuard', () => {
 		["fact.severity in ['SEV1', 'SEV2', 'SEV3']", 'Severity is SEV1, SEV2 or SEV3'],
 		['fact.translation-required == true', 'Translation required is Yes'],
 		['fact.resolved-at != null', 'Resolved at has a value'],
+		['fact.scan != null', 'Scan is attached'],
 		["fact.resolved-at < '2026-01-15'", 'Resolved at is before 15 Jan 2026'],
 		['fact.resolved-at >= today()', 'Resolved at is on or after today'],
 		['days_since(fact.resolved-at) > 3', 'Resolved at is more than 3 days ago'],
@@ -141,5 +144,16 @@ describe('describeGuard', () => {
 
 	it('is undefined for code that does not parse', () => {
 		expect(describeGuard('fact.a ==', info)).toBeUndefined();
+	});
+});
+
+describe('describeRule with value names', () => {
+	it('names people by name rather than id', () => {
+		const named: FactInfo = (fact) => ({
+			...info(fact),
+			kind: 'people',
+			valueName: (id) => (id === 'p1' ? 'Dana Cole' : id)
+		});
+		expect(describeGuard("contains(fact.teams, 'p1')", named)).toBe('Teams includes Dana Cole');
 	});
 });

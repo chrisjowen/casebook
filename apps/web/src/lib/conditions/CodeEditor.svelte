@@ -6,7 +6,7 @@
 	import { GUARD_HELPERS } from '@casebook/model';
 	import { BookOpen, ChevronRight, CircleCheck, TriangleAlert } from '@lucide/svelte';
 	import type { ProcessIndex } from '$lib/graph/derive';
-	import { checkCode, complete, type Completion } from './conditions';
+	import { checkCode, complete, helperExample, type Completion } from './conditions';
 
 	let {
 		ix,
@@ -19,6 +19,14 @@
 	let active = $state(0);
 	let reference = $state(false);
 	const problem = $derived(value.trim() ? checkCode(ix, value) : undefined);
+	// The check shows once typing pauses, so a half-typed name is not an error yet.
+	let settled = $state(value);
+	$effect(() => {
+		const typed = value;
+		const wait = setTimeout(() => (settled = typed), 700);
+		return () => clearTimeout(wait);
+	});
+	const shown = $derived(settled === value ? problem : undefined);
 	const listId = $derived(`code-suggestions-${ix.document.slug}`);
 
 	function suggest(force = false) {
@@ -48,6 +56,17 @@
 		field.focus();
 		field.setSelectionRange(cursor, cursor);
 		suggest();
+	}
+	/** Puts a helper's example at the cursor, as written for this process's facts. */
+	async function insert(text: string) {
+		const at = field?.selectionStart ?? value.length;
+		const end = field?.selectionEnd ?? at;
+		const pad = at > 0 && !/\s$/.test(value.slice(0, at)) ? ' ' : '';
+		value = `${value.slice(0, at)}${pad}${text}${value.slice(end)}`;
+		await tick();
+		const cursor = at + pad.length + text.length;
+		field?.focus();
+		field?.setSelectionRange(cursor, cursor);
 	}
 	function keydown(e: KeyboardEvent) {
 		e.stopPropagation();
@@ -80,12 +99,12 @@
 			bind:value
 			class={[
 				'min-h-[76px] w-full resize-y rounded-lg border bg-background px-3 py-2 font-mono text-[12.5px] leading-relaxed outline-none focus:ring-2',
-				problem ? 'border-destructive/50 focus:ring-destructive/30' : 'focus:ring-brand-ring'
+				shown ? 'border-destructive/50 focus:ring-destructive/30' : 'focus:ring-brand-ring'
 			]}
 			spellcheck="false"
 			autocomplete="off"
 			aria-label={label}
-			aria-invalid={!!problem}
+			aria-invalid={!!shown}
 			aria-autocomplete="list"
 			aria-controls={open ? listId : undefined}
 			aria-activedescendant={open ? `${listId}-${active}` : undefined}
@@ -138,20 +157,20 @@
 		{/if}
 	</div>
 
-	{#if problem}
+	{#if shown}
 		<div class="flex flex-col gap-1 text-[12px]" role="alert">
 			<span class="flex items-start gap-1.5 text-destructive"
-				><TriangleAlert class="mt-0.5 size-3.5 shrink-0" />{problem.message}</span
+				><TriangleAlert class="mt-0.5 size-3.5 shrink-0" />{shown.message}</span
 			>
 			<code
-				class="block overflow-x-auto rounded-md bg-muted/70 px-2 py-1 font-mono text-[11.5px] whitespace-pre text-muted-foreground"
-				>{value.slice(0, problem.at)}<mark
+				class="block rounded-md bg-muted/70 px-2 py-1 font-mono text-[11.5px] break-all whitespace-pre-wrap text-muted-foreground"
+				>{value.slice(0, shown.at)}<mark
 					class="rounded-sm bg-destructive/15 text-destructive underline decoration-destructive decoration-wavy underline-offset-2"
-					>{value.slice(problem.at, problem.at + problem.length) || ' '}</mark
-				>{value.slice(problem.at + problem.length)}</code
+					>{value.slice(shown.at, shown.at + shown.length) || ' '}</mark
+				>{value.slice(shown.at + shown.length)}</code
 			>
 		</div>
-	{:else if value.trim()}
+	{:else if value.trim() && !problem}
 		<span class="flex items-center gap-1.5 text-[12px] text-emerald-700 dark:text-emerald-400"
 			><CircleCheck class="size-3.5" />The code works.</span
 		>
@@ -169,16 +188,24 @@
 	{#if reference}
 		<dl class="flex flex-col gap-2 rounded-lg border bg-muted/30 p-2.5 text-[12px]">
 			{#each GUARD_HELPERS as h (h.name)}
+				{@const example = helperExample(ix, h.name, h.example)}
 				<div>
 					<dt class="font-mono text-[12px] font-medium">{h.signature}</dt>
 					<dd class="text-muted-foreground">{h.description}</dd>
-					<dd class="font-mono text-[11px] text-muted-foreground/90">{h.example}</dd>
+					<dd>
+						<button
+							type="button"
+							class="cursor-pointer rounded px-1 font-mono text-[11px] text-brand hover:bg-brand-soft"
+							title="Insert at the cursor"
+							onclick={() => insert(example)}>{example}</button
+						>
+					</dd>
 				</div>
 			{/each}
 			<div class="border-t pt-2 text-muted-foreground">
 				Compare with <code class="font-mono">== != &lt; &lt;= &gt; &gt;= in</code>, combine with
 				<code class="font-mono">and or not</code> and brackets, and write
-				<code class="font-mono">null</code> for nothing recorded.
+				<code class="font-mono">null</code> for nothing recorded. Click an example to insert it.
 			</div>
 		</dl>
 	{/if}

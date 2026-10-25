@@ -6,6 +6,8 @@
 import {
 	conditionKind,
 	describeGuard,
+	evaluateGuard,
+	guardReferences,
 	GUARD_HELPERS,
 	GuardSyntaxError,
 	parseGuard,
@@ -14,7 +16,14 @@ import {
 	type FactNode,
 	type GuardAst
 } from '@casebook/model';
-import { factType, labelOf, type FactGlyph, type ProcessIndex } from '$lib/graph/derive';
+import {
+	collectsOf,
+	factType,
+	labelOf,
+	type FactGlyph,
+	type ProcessIndex,
+	type WorkItem
+} from '$lib/graph/derive';
 
 export interface FactOption {
 	id: string;
@@ -43,13 +52,27 @@ export function splitRef(ref: string): { fact: string; path: string[] } {
 	return { fact: `${head}.${name}`, path };
 }
 
-/** How facts read in plain English in this process: "Address › city" for a property. */
-export function factInfo(ix: ProcessIndex): FactInfo {
+/** Someone a people fact can hold. */
+export interface Person {
+	id: string;
+	name: string;
+}
+
+/**
+ * How facts read in plain English in this process: "Address › city" for a property, and people
+ * by name when the instance's people are known.
+ */
+export function factInfo(ix: ProcessIndex, people?: Person[]): FactInfo {
 	return (ref) => {
 		const { fact, path } = splitRef(ref);
 		const node = ix.byId.get(fact) as FactNode | undefined;
 		const name = [labelOf(ix, fact), ...path].join(' › ');
-		return { name, kind: path.length ? 'text' : conditionKind(node?.core.schema) };
+		const kind = path.length ? 'text' : conditionKind(node?.core.schema);
+		const valueName =
+			kind === 'people' && people
+				? (id: string) => people.find((p) => p.id === id)?.name ?? id
+				: undefined;
+		return { name, kind, ...(valueName ? { valueName } : {}) };
 	};
 }
 
@@ -61,8 +84,12 @@ export function choicesOf(ix: ProcessIndex, ref: string): string[] | undefined {
 }
 
 /** A condition in plain English, or undefined when its code does not parse. */
-export function describe(ix: ProcessIndex, expr: string | undefined): string | undefined {
-	return expr ? describeGuard(expr, factInfo(ix)) : undefined;
+export function describe(
+	ix: ProcessIndex,
+	expr: string | undefined,
+	people?: Person[]
+): string | undefined {
+	return expr ? describeGuard(expr, factInfo(ix, people)) : undefined;
 }
 
 /** What is wrong with condition code, and where; undefined when it works. */
@@ -83,13 +110,19 @@ export function checkCode(ix: ProcessIndex, expr: string): CodeProblem | undefin
 	} catch (error) {
 		if (!(error instanceof GuardSyntaxError)) throw error;
 		const at = Math.min(error.at ?? 0, expr.length);
-		const length = /^[\w.-]+/.exec(expr.slice(at))?.[0].length ?? 1;
-		return { message: sentence(error.message), at, length };
+		const word = /^[\w.-]+/.exec(expr.slice(at))?.[0];
+		const near = word && /^[a-z_]/i.test(word) ? closestFact(ix, word) : undefined;
+		return {
+			message: `${sentence(error.message)}${near ? ` Did you mean ${near.name} (${near.id})?` : ''}`,
+			at,
+			length: word?.length ?? 1
+		};
 	}
 	for (const node of walk(ast)) {
 		if (node.kind === 'ref' && ix.byId.get(node.fact)?.core.kind !== 'fact') {
+			const near = closestFact(ix, node.fact);
 			return {
-				message: `This process has no fact called ${node.fact}.`,
+				message: `This process has no fact called ${node.fact}.${near ? ` Did you mean ${near.name} (${near.id})?` : ''}`,
 				at: node.span[0],
 				length: node.span[1] - node.span[0]
 			};
@@ -125,8 +158,12 @@ function* walk(ast: GuardAst): Generator<GuardAst> {
 	}
 }
 
-/** Today's date as YYYY-MM-DD, in UTC like the evaluator. */
-export const todayIso = () => new Date().toISOString().slice(0, 10);
+/** Today's local date as YYYY-MM-DD. */
+export function todayIso(): string {
+	const d = new Date();
+	const pad = (n: number) => String(n).padStart(2, '0');
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 const sentence = (text: string) => `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
 
@@ -234,4 +271,103 @@ function choicesBefore(ix: ProcessIndex, head: string): Suggestion[] {
 		detail: 'Choice',
 		insert: `'${c.replaceAll("'", "\\'")}'`
 	}));
+}
+
+/** The fact whose id or name is nearest to what was typed, when one is near enough. */
+export function closestFact(ix: ProcessIndex, typed: string): FactOption | undefined {
+	const t = typed.toLowerCase().replace(/^fact\./, '');
+	let best: { f: FactOption; d: number } | undefined;
+	for (const f of factOptions(ix)) {
+		const slug = f.id.slice('fact.'.length);
+		const name = f.name.toLowerCase();
+		if (t.length >= 2 && (slug.startsWith(t) || name.startsWith(t))) return f;
+		const d = Math.min(distance(t, slug), distance(t, name));
+		if (!best || d < best.d) best = { f, d };
+	}
+	return best && best.d <= Math.max(2, Math.floor(t.length / 3)) ? best.f : undefined;
+}
+
+function distance(a: string, b: string): number {
+	const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+	for (let i = 1; i <= a.length; i++) {
+		let prev = row[0]!;
+		row[0] = i;
+		for (let j = 1; j <= b.length; j++) {
+			const next = Math.min(row[j]! + 1, row[j - 1]! + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+			prev = row[j]!;
+			row[j] = next;
+		}
+	}
+	return row[b.length]!;
+}
+
+/**
+ * When each fact is recorded, seen from one step or decision: `before` when something in an
+ * earlier or the same stage records it, `self` when only this item does, `later` when only later
+ * stages do, and `never` when nothing in the process records it.
+ */
+export type FactTiming = 'before' | 'self' | 'later' | 'never';
+
+export function factTiming(ix: ProcessIndex, itemId: string): Map<string, FactTiming> {
+	const stageOf = (w: WorkItem) => ix.stages.findIndex((s) => s.core.id === w.core.stage);
+	const item = ix.work.find((w) => w.core.id === itemId);
+	const here = item ? stageOf(item) : Infinity;
+	const timing = new Map<string, FactTiming>();
+	for (const f of ix.facts) {
+		const collectors = ix.work.filter((w) => collectsOf(w).some((c) => c.fact === f.core.id));
+		const others = collectors.filter((w) => w.core.id !== itemId);
+		timing.set(
+			f.core.id,
+			others.some((w) => stageOf(w) <= here)
+				? 'before'
+				: collectors.some((w) => w.core.id === itemId)
+					? 'self'
+					: others.length
+						? 'later'
+						: 'never'
+		);
+	}
+	return timing;
+}
+
+/**
+ * The choices of a decision's outcome a step runs for: those its condition does not rule out
+ * when the outcome is that choice. Empty when its condition does not read the outcome.
+ */
+export function choicesRunning(item: WorkItem, outcome: string, choices: string[]): string[] {
+	const expr = item.core.when?.expr;
+	if (!expr) return [];
+	try {
+		if (!guardReferences(expr).facts.includes(outcome)) return [];
+		return choices.filter((c) => evaluateGuard(expr, { [outcome]: c }) !== false);
+	} catch {
+		return [];
+	}
+}
+
+/** A helper's example, with facts of this process where it has one of the right kind. */
+export function helperExample(ix: ProcessIndex, name: string, example: string): string {
+	const options = factOptions(ix);
+	const of = (...kinds: string[]) => options.find((f) => kinds.includes(f.kind))?.id;
+	const date = of('date');
+	const list = of('people', 'list');
+	const text = of('text', 'choice', 'lookup');
+	const any = options[0]?.id;
+	switch (name) {
+		case 'today':
+			return date ? `${date} < today()` : example;
+		case 'days_since':
+			return date ? `days_since(${date}) > 3` : example;
+		case 'add_days':
+			return date ? `${date} < add_days(today(), 7)` : example;
+		case 'contains':
+			return list ? `contains(${list}, '…')` : text ? `contains(${text}, '…')` : example;
+		case 'count':
+			return list ? `count(${list}) >= 2` : example;
+		case 'is_set':
+		case 'is_empty':
+			return any ? `${name}(${any})` : example;
+		default:
+			return example;
+	}
 }

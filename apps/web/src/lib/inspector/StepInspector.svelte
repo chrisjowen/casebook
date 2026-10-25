@@ -5,6 +5,7 @@
 	// data.
 	import type {
 		ApprovalNode,
+		Guard,
 		DecisionNode,
 		FactNode,
 		RoleId,
@@ -35,6 +36,7 @@
 		type WorkItem
 	} from '$lib/graph/derive';
 	import BranchTest from '$lib/conditions/BranchTest.svelte';
+	import { choicesRunning, factTiming } from '$lib/conditions/conditions';
 	import ConditionEditor from '$lib/conditions/ConditionEditor.svelte';
 	import { roleTone } from '$lib/graph/layout';
 	import { toneBar } from '$lib/graph/tones';
@@ -43,7 +45,6 @@
 		addRole,
 		addWork,
 		branchGuard,
-		branchOf,
 		duplicate,
 		moveToStage,
 		removeApproval,
@@ -64,7 +65,8 @@
 		ix,
 		item,
 		onselect,
-		edit
+		edit,
+		publishes = false
 	}: {
 		ix: ProcessIndex;
 		item: WorkItem;
@@ -72,6 +74,8 @@
 		onselect: (id: string | undefined) => void;
 		/** Saves an edit of the draft, or shows why not; absent when it cannot be edited. */
 		edit?: (e: Edit | string) => Promise<boolean>;
+		/** True when every saved edit publishes at once, as in a living process. */
+		publishes?: boolean;
 	} = $props();
 
 	const core = $derived(item.core);
@@ -100,8 +104,30 @@
 	let preview = $state(false);
 	let newChoice = $state('');
 	let branchFor = $state<string | undefined>();
-	/** The rule just added, which opens ready to build. */
-	let added = $state<'when' | 'repeat' | undefined>();
+	/** A rule being added, open to build and not saved until its Save. */
+	let adding = $state<'when' | 'repeat' | undefined>();
+	const timing = $derived(factTiming(ix, id));
+	const whenOutcome = $derived({
+		true: `${decision ? 'this decision' : 'this step'} runs`,
+		false: `${decision ? 'this decision' : 'this step'} is skipped`,
+		unknown: 'it waits until these are recorded'
+	});
+	const untilOutcome = {
+		true: 'it stops repeating',
+		false: 'it keeps repeating',
+		unknown: 'it keeps repeating until these are recorded'
+	};
+	const saveWhen = async (when: Guard, label: string) => {
+		const ok = await save({ ops: [setWhen(id, when)], label });
+		if (ok) adding = undefined;
+		return ok;
+	};
+	const saveUntil = async (until: Guard, label: string) => {
+		const repeat = step!.core.repeat ?? { until, every: 'PT1H' };
+		const ok = await save(set({ repeat: { ...repeat, until } }, label));
+		if (ok) adding = undefined;
+		return ok;
+	};
 	let testBranches = $state(false);
 	const INTERVALS = ['PT15M', 'PT30M', 'PT1H', 'PT4H', 'P1D', 'P7D'];
 	let branchName = $state('');
@@ -134,7 +160,12 @@
 	}
 	const branchSteps = (choice: string) =>
 		decision
-			? ix.work.filter((w) => w.core.id !== id && branchOf(w, decision.core.outcome) === choice)
+			? ix.work.filter(
+					(w) =>
+						w.core.id !== id &&
+						choicesRunning(w, decision.core.outcome, choices).includes(choice) &&
+						choicesRunning(w, decision.core.outcome, choices).length < choices.length
+				)
 			: [];
 	const focus = (el: HTMLInputElement) => el.focus();
 	const quiet =
@@ -359,44 +390,44 @@
 	</Group>
 
 	<Group title="Rules">
-		{#if core.when}
+		{#if core.when || adding === 'when'}
 			<ConditionEditor
 				{ix}
-				guard={core.when}
+				guard={core.when ?? { text: '' }}
 				label="Only when"
 				icon={Split}
 				lead="Only when"
-				open={added === 'when'}
-				outcome={{
-					true: `${decision ? 'this decision' : 'this step'} runs`,
-					false: `${decision ? 'this decision' : 'this step'} is skipped`,
-					unknown: 'it waits until these are recorded'
-				}}
-				onsave={edit && ((when, label) => save({ ops: [setWhen(id, when)], label }))}
+				open={adding === 'when'}
+				outcome={whenOutcome}
+				{publishes}
+				{timing}
+				onsave={edit && saveWhen}
 				onremove={edit &&
+					core.when &&
 					(() => save({ ops: [setWhen(id, null)], label: 'Removed the condition' }))}
+				oncancel={() => (adding = undefined)}
 				removeLabel="Remove the condition"
 			/>
 		{/if}
-		{#if step?.core.repeat}
+		{#if step && (step.core.repeat || adding === 'repeat')}
 			<ConditionEditor
 				{ix}
-				guard={step.core.repeat.until}
-				label="Repeats until"
+				guard={step.core.repeat?.until ?? { text: '' }}
+				label="Stops repeating when"
 				icon={Repeat}
 				lead="Until"
-				open={added === 'repeat'}
-				outcome={{
-					true: 'it stops repeating',
-					false: 'it keeps repeating',
-					unknown: 'it keeps repeating until these are recorded'
-				}}
-				onsave={edit &&
-					((until, label) => save(set({ repeat: { ...step!.core.repeat!, until } }, label)))}
+				open={adding === 'repeat'}
+				outcome={untilOutcome}
+				{publishes}
+				onsave={edit && saveUntil}
 				onremove={edit &&
+					step.core.repeat &&
 					(() => save(set({ repeat: null }, `${labelOf(ix, id)} no longer repeats`)))}
+				oncancel={() => (adding = undefined)}
 				removeLabel="Stop repeating"
 			/>
+		{/if}
+		{#if step?.core.repeat}
 			<label class="ml-5.5 flex items-center gap-2 text-[12px] text-muted-foreground">
 				Suggested every
 				<select
@@ -456,37 +487,19 @@
 				{/if}
 			</div>
 		{/if}
-		{#if !core.when && !step?.core.repeat && !approval}
+		{#if !core.when && !step?.core.repeat && !approval && !adding}
 			<p class="text-[12px] text-muted-foreground">Always runs once what it needs is recorded.</p>
 		{/if}
 		{#if edit}
 			<div class="flex flex-wrap gap-1.5">
-				{#if !core.when}
-					<button
-						class={quiet}
-						onclick={async () => {
-							added = 'when';
-							await save({
-								ops: [
-									setWhen(id, { text: `Only when ${labelOf(ix, id).toLowerCase()} is needed` })
-								],
-								label: 'Added a condition; build its rules here'
-							});
-						}}><Split class="size-3.5" />Only when…</button
+				{#if !core.when && adding !== 'when'}
+					<button class={quiet} onclick={() => (adding = 'when')}
+						><Split class="size-3.5" />Only when…</button
 					>
 				{/if}
-				{#if step && !step.core.repeat}
-					<button
-						class={quiet}
-						onclick={async () => {
-							added = 'repeat';
-							await save(
-								set(
-									{ repeat: { until: { text: 'Until it is no longer needed' }, every: 'PT1H' } },
-									`${labelOf(ix, id)} repeats every hour`
-								)
-							);
-						}}><Repeat class="size-3.5" />Repeats…</button
+				{#if step && !step.core.repeat && adding !== 'repeat'}
+					<button class={quiet} onclick={() => (adding = 'repeat')}
+						><Repeat class="size-3.5" />Repeats…</button
 					>
 				{/if}
 				{#if step && !approval}

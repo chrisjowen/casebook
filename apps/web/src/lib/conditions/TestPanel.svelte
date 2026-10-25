@@ -1,7 +1,8 @@
 <script lang="ts">
 	// Tests a condition with sample values: one input per fact it reads, or values filled from a
-	// case running the process. Shows the answer, what it is waiting for, and each part's answer so
-	// the part that failed is plain. Sample values are shared by every condition of the process.
+	// case running the process. Shows the answer, what it is waiting for, and each part's answer
+	// with the values behind it, so the part that failed is plain. Sample values are shared by
+	// every condition of the process while the editor is open.
 	import { page } from '$app/state';
 	import {
 		explainGuard,
@@ -9,31 +10,37 @@
 		GuardSyntaxError,
 		type GuardTrace
 	} from '@casebook/model';
-	import { CalendarDays, CircleCheck, CircleDashed, CircleX, TriangleAlert } from '@lucide/svelte';
+	import {
+		CalendarDays,
+		CircleCheck,
+		CircleDashed,
+		CircleMinus,
+		TriangleAlert
+	} from '@lucide/svelte';
 	import type { ProcessIndex } from '$lib/graph/derive';
 	import { choicesOf, factInfo, factOptions, todayIso } from './conditions';
-	import { loadCases, samplesFor } from './samples.svelte';
+	import { samplesFor } from './samples.svelte';
 	import SampleInput from './SampleInput.svelte';
 	import Trace from './Trace.svelte';
 
 	let {
 		ix,
 		expr,
-		outcome,
-		also = []
+		outcome
 	}: {
 		ix: ProcessIndex;
 		expr: string;
-		/** What each answer means for the step, such as "This step runs". */
+		/** What each answer means for the step, such as "this step runs". */
 		outcome: { true: string; false: string; unknown: string };
-		/** More facts to ask for, before the ones the condition reads. */
-		also?: string[];
 	} = $props();
 
-	const samples = $derived(samplesFor(ix.document.slug));
+	const samples = $derived(samplesFor(page.params.instance ?? '', ix.document.slug));
+	$effect(() => {
+		samples.load();
+	});
 	const options = $derived(new Map(factOptions(ix).map((f) => [f.id, f])));
 	const facts = $derived(
-		[...new Set([...also, ...guardReferences(expr).facts])].flatMap((id) => {
+		guardReferences(expr).facts.flatMap((id) => {
 			const f = options.get(id);
 			return f ? [f] : [];
 		})
@@ -47,31 +54,7 @@
 			throw error;
 		}
 	});
-	const info = $derived(factInfo(ix));
-
-	let cases = $state<{ id: string; title: string }[] | undefined>();
-	let loadError = $state<string | undefined>();
-	async function openCases() {
-		if (cases) return;
-		try {
-			cases = await loadCases(page.params.instance ?? '', ix.document.slug);
-		} catch (error) {
-			loadError = error instanceof Error ? error.message : String(error);
-		}
-	}
-	function fill(caseId: string) {
-		const c = samples.cases?.find((x) => x.id === caseId);
-		if (!c) return;
-		samples.values = { ...c.facts };
-		samples.from = c.title;
-	}
-	function setValue(fact: string, value: unknown) {
-		const next = { ...samples.values };
-		if (value === undefined) delete next[fact];
-		else next[fact] = value;
-		samples.values = next;
-		samples.from = undefined;
-	}
+	const info = $derived(factInfo(ix, samples.context?.people));
 	const missingNames = (missing: string[]) => missing.map((f) => info(f).name).join(', ');
 </script>
 
@@ -79,22 +62,19 @@
 	<div class="flex flex-wrap items-center gap-2">
 		<span class="text-[12px] font-medium">Try it with sample values</span>
 		<select
-			class="ml-auto h-7 max-w-48 cursor-pointer rounded-md border bg-background px-1.5 text-[12px] outline-none focus:ring-2 focus:ring-brand-ring"
+			class="ml-auto h-7 max-w-52 cursor-pointer rounded-md border bg-background px-1.5 text-[12px] outline-none focus:ring-2 focus:ring-brand-ring"
 			aria-label="Fill the values from a case"
-			onfocus={openCases}
-			onpointerdown={openCases}
 			value=""
 			onchange={(e) => {
-				fill(e.currentTarget.value);
+				samples.fill(e.currentTarget.value);
 				e.currentTarget.value = '';
 			}}
 		>
 			<option value="">{samples.from ? `From ${samples.from}` : 'Fill from a case…'}</option>
-			{#if cases}
-				{#each cases as c (c.id)}<option value={c.id}>{c.title}</option>{:else}<option disabled
-						>No cases run this process yet</option
-					>{/each}
-			{:else if loadError}<option disabled>{loadError}</option>
+			{#if samples.context}
+				{#each samples.context.cases as c (c.id)}<option value={c.id}>{c.title}</option
+					>{:else}<option disabled>No cases run this process yet</option>{/each}
+			{:else if samples.error}<option disabled>{samples.error}</option>
 			{:else}<option disabled>Loading cases…</option>{/if}
 		</select>
 	</div>
@@ -105,8 +85,9 @@
 				<SampleInput
 					{fact}
 					choices={choicesOf(ix, fact.id)}
+					people={samples.context?.people}
 					value={samples.values[fact.id]}
-					onchange={(v) => setValue(fact.id, v)}
+					onchange={(v) => samples.set(fact.id, v)}
 				/>
 			{/each}
 		</div>
@@ -137,13 +118,13 @@
 					'flex items-start gap-2 rounded-lg px-2.5 py-2 text-[13px]',
 					r === 'true' &&
 						'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200',
-					r === 'false' && 'bg-rose-50 text-rose-900 dark:bg-rose-950/40 dark:text-rose-200',
+					r === 'false' && 'bg-muted text-foreground',
 					r === 'unknown' && 'bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200',
 					r === 'error' && 'bg-destructive/10 text-destructive'
 				]}
 			>
 				{#if r === 'true'}<CircleCheck class="mt-0.5 size-4 shrink-0" />
-				{:else if r === 'false'}<CircleX class="mt-0.5 size-4 shrink-0" />
+				{:else if r === 'false'}<CircleMinus class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
 				{:else if r === 'unknown'}<CircleDashed class="mt-0.5 size-4 shrink-0" />
 				{:else}<TriangleAlert class="mt-0.5 size-4 shrink-0" />{/if}
 				<div class="min-w-0">
@@ -165,15 +146,19 @@
 										: 'people decide by hand'}</span
 						>
 					</div>
-					{#if r === 'unknown' && result.missing.length}
+					{#if r === 'unknown' && result.missing.length && !result.parts.length}
 						<div class="text-[12px] opacity-80">Waiting for {missingNames(result.missing)}.</div>
 					{:else if r === 'error'}
 						<div class="text-[12px] opacity-80">{result.error}</div>
 					{/if}
 				</div>
 			</div>
-			{#if result.parts.length}
-				<Trace parts={result.parts} {info} />
+			{#if result.parts.length || r !== 'unknown'}
+				<Trace
+					parts={result.parts.length ? result.parts : [result]}
+					{info}
+					values={samples.values}
+				/>
 			{/if}
 		{/if}
 	</div>

@@ -622,7 +622,7 @@
 			{#if inspectorOpen && active}
 				<aside
 					class={[
-						'flex shrink-0 flex-col border-l bg-background transition-[width] duration-200',
+						'flex shrink-0 flex-col border-l bg-background',
 						inspector.wide ? 'w-[min(560px,48vw)]' : 'w-[372px]'
 					]}
 					aria-label="Inspector"
@@ -672,6 +672,7 @@
 									item={selectedItem}
 									onselect={(id) => nav({ sel: id })}
 									edit={change}
+									publishes={loaded?.policy === 'living'}
 								/>
 							{/key}
 						{:else if selectedStage}

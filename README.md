@@ -118,7 +118,7 @@ On the board, everything is added and linked in place:
 - dragging a card onto another column moves it to that stage, and double-clicking a name renames it;
 - a step's **Records** and **Needs first** add, rename, re-kind and remove its facts in place.
 
-A step's or decision's **Rules** hold its conditions: "Only when" and, for a repeating step, "Repeats until" (ADR 0004).
+A step’s or decision’s **Rules** hold its conditions: "Only when" and, for a repeating step, "Stops repeating when" (ADR 0004).
 Each reads as one plain line, such as "Severity is SEV1 or SEV2".
 **Edit** builds it from rows of fact, operator and value, joined by all or any, with operators and values that fit the fact (a choice's options, dates before or after today, more than so many days ago).
 The **Code** tab is the same condition as an expression, with suggestions of facts, operators, choices and helpers as you type, and a live check that points at what is wrong.
