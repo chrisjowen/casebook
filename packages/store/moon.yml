@@ -16,7 +16,9 @@ tasks:
     command: 'tsc -p tsconfig.json'
     inputs:
       - 'src/**/*'
+      - 'test/**/*'
       - 'drizzle.config.ts'
+      - 'vitest.config.ts'
       - 'tsconfig.json'
       - '/tsconfig.base.json'
   lint:
@@ -25,6 +27,10 @@ tasks:
       - '**/*'
       - '/eslint.config.js'
   test:
-    command: 'vitest run --passWithNoTests'
+    command: 'vitest run'
     inputs:
       - 'src/**/*'
+      - 'test/**/*'
+      - 'drizzle/**/*'
+      - 'vitest.config.ts'
+      - '$DATABASE_URL'
