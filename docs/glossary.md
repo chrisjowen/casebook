@@ -21,4 +21,5 @@
 - **Account role**: a built-in role at account scope: account-owner, account-admin, developer or read-only.
 - **Namespace**: a hierarchical path (for example `acme/eng/sre`) in one account that owns definitions, cases and bindings.
 - **Namespace permission**: a built-in role at namespace scope, inherited by descendants: namespace-admin, write or read.
+- **Permission check**: the `can` question of whether a principal may perform an action on a resource, answered with a reason.
 - **Projection**: a view generated from the canonical definition, such as Markdown, BPMN or the graph.

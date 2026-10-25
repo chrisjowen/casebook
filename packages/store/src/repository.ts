@@ -1,8 +1,18 @@
 // The only write path for the store tables. The database keeps declarative constraints (keys,
 // foreign keys, NOT NULL, kind and status checks); every other rule is enforced here and
-// refused with a StoreRuleError.
+// refused with a StoreRuleError. A write given an `Authorization` also checks its actor with `can`
+// (ADR 0017) inside the same transaction, and refuses with an AccessDeniedError.
 import { and, desc, eq, inArray, isNull, max, sql } from 'drizzle-orm';
-import type { Db } from './client.js';
+import {
+	can,
+	isAccountRole,
+	isNamespacePermission,
+	namespacePathPrefixes,
+	type Action,
+	type Actor,
+	type Resource
+} from './authz.js';
+import type { Db, Queryable, Tx } from './client.js';
 import {
 	accounts,
 	cases,
@@ -16,6 +26,14 @@ import {
 	processDefinitions,
 	roleBindings
 } from './schema.js';
+
+export {
+	ACCOUNT_ROLES,
+	NAMESPACE_PERMISSIONS,
+	namespacePathPrefixes,
+	type AccountRole,
+	type NamespacePermission
+} from './authz.js';
 
 export type Account = typeof accounts.$inferSelect;
 export type Namespace = typeof namespaces.$inferSelect;
@@ -67,7 +85,9 @@ export type StoreRule =
 	| 'role-case-needs-namespace'
 	| 'delegation-case-needs-namespace'
 	| 'delegation-expiry-past'
-	| 'delegation-missing';
+	| 'delegation-missing'
+	| 'actor-mismatch'
+	| 'access-denied';
 
 /** A write the repository refused because it breaks a store rule. */
 export class StoreRuleError extends Error {
@@ -80,27 +100,70 @@ export class StoreRuleError extends Error {
 	}
 }
 
+type AccessRule = Extract<StoreRule, 'access-denied' | 'namespace-create-forbidden'>;
+
+/** A write refused because its actor lacks the permission; `reason` says which rule refused. */
+export class AccessDeniedError extends StoreRuleError {
+	constructor(
+		rule: AccessRule,
+		readonly action: Action,
+		readonly reason: string
+	) {
+		super(rule, reason);
+	}
+}
+
+/**
+ * Asks a write to check its actor's permission with `can` before writing. Writes that record who
+ * made them refuse an actor other than the one recorded.
+ */
+export interface Authorization {
+	actor: Actor;
+	/** The time delegation expiry is checked against; defaults to now. */
+	now?: Date;
+}
+
+/** Throws an AccessDeniedError unless `actor` may perform `action` on `resource`. */
+async function authorize(
+	db: Queryable,
+	auth: Authorization,
+	action: Action,
+	resource: Resource,
+	rule: AccessRule = 'access-denied'
+) {
+	const decision = await can(
+		db,
+		auth.actor,
+		action,
+		resource,
+		auth.now === undefined ? {} : { now: auth.now }
+	);
+	if (!decision.allowed) throw new AccessDeniedError(rule, action, decision.reason);
+}
+
+/** Refuses an authorization whose actor is not the principal the write records as acting. */
+function requireRecordedActor(
+	auth: Authorization,
+	recorded: {
+		id: string;
+		/** Null when the write records acting for nobody; omitted when it records no such field. */
+		onBehalfOfId?: string | null;
+		field: string;
+	}
+) {
+	const sameFor =
+		recorded.onBehalfOfId === undefined ||
+		(auth.actor.onBehalfOfId ?? null) === recorded.onBehalfOfId;
+	if (auth.actor.id !== recorded.id || !sameFor) {
+		throw new StoreRuleError(
+			'actor-mismatch',
+			`the authorized actor ${auth.actor.id} is not the ${recorded.field} the write records`
+		);
+	}
+}
+
 const SEGMENT = /^[^/\s]+$/;
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-
-/** Built-in account-level roles, bound at account scope (ADR 0015). */
-export const ACCOUNT_ROLES = ['account-owner', 'account-admin', 'developer', 'read-only'] as const;
-export type AccountRole = (typeof ACCOUNT_ROLES)[number];
-
-/** Built-in namespace-level permissions, bound at namespace scope and inherited by descendants. */
-export const NAMESPACE_PERMISSIONS = ['namespace-admin', 'write', 'read'] as const;
-export type NamespacePermission = (typeof NAMESPACE_PERMISSIONS)[number];
-
-/** Account roles that may create namespaces anywhere in the account. */
-const NAMESPACE_CREATOR_ROLES: readonly AccountRole[] = [
-	'account-owner',
-	'account-admin',
-	'developer'
-];
-
-const isAccountRole = (role: string) => (ACCOUNT_ROLES as readonly string[]).includes(role);
-const isNamespacePermission = (role: string) =>
-	(NAMESPACE_PERMISSIONS as readonly string[]).includes(role);
 
 function requireRole(role: string) {
 	if (role.trim() === '') throw new StoreRuleError('role-blank', 'role names cannot be blank');
@@ -143,12 +206,6 @@ export async function createAccount(db: Db, input: NewAccount): Promise<Account>
 
 // Namespaces
 
-/** Every prefix of a namespace path, nearest first: `a/b/c` gives `a/b/c`, `a/b`, `a`. */
-export function namespacePathPrefixes(path: string): string[] {
-	const segments = path.split('/');
-	return segments.map((_, i) => segments.slice(0, segments.length - i).join('/'));
-}
-
 export interface NewNamespace {
 	accountId: string;
 	path: string;
@@ -160,11 +217,19 @@ export interface NewNamespace {
  *
  * The parent is the path minus its last segment, in the same account, and must already exist.
  * The creator needs developer or above in the account, or namespace-admin on the parent or one
- * of its ancestors, held directly or through a group (ADR 0015). Namespaces are never moved or
- * renamed, since that would rewrite descendants.
+ * of its ancestors, held directly or through a group (ADR 0015). `can` decides, for `auth.actor`
+ * when given, which must be the creator, and otherwise for the creator. When the creator acts on
+ * behalf of another principal, as an agent does, the principal it represents is bound as
+ * namespace-admin.
+ * Namespaces are never moved or renamed, since that would rewrite descendants.
  */
-export async function createNamespace(db: Db, input: NewNamespace): Promise<Namespace> {
+export async function createNamespace(
+	db: Db,
+	input: NewNamespace,
+	auth?: Authorization
+): Promise<Namespace> {
 	const { accountId, path, createdById } = input;
+	if (auth) requireRecordedActor(auth, { id: createdById, field: 'creator' });
 	const segments = path.split('/');
 	if (!segments.every((s) => SEGMENT.test(s))) {
 		throw new StoreRuleError(
@@ -174,7 +239,6 @@ export async function createNamespace(db: Db, input: NewNamespace): Promise<Name
 	}
 	return db.transaction(async (tx) => {
 		let parentId: string | null = null;
-		let parentLineage: string[] = [];
 		if (segments.length > 1) {
 			const parentPath = segments.slice(0, -1).join('/');
 			// Lock the parent's lineage so it is still there when the child is inserted.
@@ -196,60 +260,30 @@ export async function createNamespace(db: Db, input: NewNamespace): Promise<Name
 				);
 			}
 			parentId = parent.id;
-			parentLineage = lineage.map((n) => n.id);
 		}
 
-		if (!(await mayCreateNamespace(tx, accountId, createdById, parentLineage))) {
-			throw new StoreRuleError(
-				'namespace-create-forbidden',
-				`principal ${createdById} needs developer or above in the account, or namespace-admin on an ancestor, to create "${path}"`
-			);
-		}
+		await authorize(
+			tx,
+			auth ?? { actor: { id: createdById } },
+			'namespace.create',
+			parentId === null
+				? { type: 'account', accountId }
+				: { type: 'namespace', namespaceId: parentId },
+			'namespace-create-forbidden'
+		);
 
 		const [row] = await tx
 			.insert(namespaces)
 			.values({ accountId, path, parentId, createdById })
 			.returning();
 		await tx.insert(roleBindings).values({
-			principalId: createdById,
+			principalId: auth?.actor.onBehalfOfId ?? createdById,
 			role: 'namespace-admin',
 			accountId,
 			namespaceId: row!.id
 		});
 		return row!;
 	});
-}
-
-/**
- * Whether a principal, directly or through the groups it belongs to, holds a namespace-creating
- * account role or namespace-admin on one of `ancestorIds`. This is only the check namespace
- * creation needs; general permission resolution is a later task.
- */
-async function mayCreateNamespace(
-	tx: Tx,
-	accountId: string,
-	principalId: string,
-	ancestorIds: string[]
-): Promise<boolean> {
-	const viaAncestor = ancestorIds.length
-		? sql`OR (rb.case_id IS NULL AND rb.role = 'namespace-admin' AND rb.namespace_id IN ${ancestorIds})`
-		: sql``;
-	const [row] = await tx.execute<{ allowed: boolean }>(sql`
-		WITH RECURSIVE subjects(id) AS (
-			SELECT ${principalId}::uuid
-			UNION
-			SELECT gm.group_id FROM ${groupMembers} gm JOIN subjects s ON gm.member_id = s.id
-		)
-		SELECT EXISTS (
-			SELECT 1 FROM ${roleBindings} rb
-			WHERE rb.principal_id IN (SELECT id FROM subjects)
-				AND rb.account_id = ${accountId}
-				AND (
-					(rb.namespace_id IS NULL AND rb.role IN ${NAMESPACE_CREATOR_ROLES})
-					${viaAncestor}
-				)
-		) AS allowed`);
-	return row?.allowed === true;
 }
 
 /**
@@ -322,8 +356,6 @@ export async function addGroupMember(
 	return row!;
 }
 
-type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
-
 async function principalKindOf(tx: Tx, id: string): Promise<PrincipalKind> {
 	const [row] = await tx
 		.select({ kind: principals.kind })
@@ -347,9 +379,11 @@ export interface NewProcessDefinition {
 	publishRequiresApproval?: boolean;
 }
 
+/** Creates a definition. With `auth`, its actor must be the creator and may create definitions. */
 export async function createProcessDefinition(
 	db: Db,
-	input: NewProcessDefinition
+	input: NewProcessDefinition,
+	auth?: Authorization
 ): Promise<ProcessDefinition> {
 	if (!SLUG.test(input.slug)) {
 		throw new StoreRuleError(
@@ -357,8 +391,17 @@ export async function createProcessDefinition(
 			`definition slug "${input.slug}" must be lowercase words joined by "-"`
 		);
 	}
-	const [row] = await db.insert(processDefinitions).values(input).returning();
-	return row!;
+	if (auth) requireRecordedActor(auth, { id: input.createdById, field: 'creator' });
+	return db.transaction(async (tx) => {
+		if (auth) {
+			await authorize(tx, auth, 'definition.create', {
+				type: 'namespace',
+				namespaceId: input.namespaceId
+			});
+		}
+		const [row] = await tx.insert(processDefinitions).values(input).returning();
+		return row!;
+	});
 }
 
 /**
@@ -406,8 +449,22 @@ export interface RecordedEdit {
  *
  * A user author edits for themselves. An agent or service author records the user, group or
  * service principal it acts for; a service may act for itself. Nobody acts for an agent.
+ *
+ * With `auth`, its actor must be the author acting for the recorded principal, and may edit the
+ * definition, and also publish it when the definition is living.
  */
-export async function appendDraftRevision(db: Db, input: NewDraftRevision): Promise<RecordedEdit> {
+export async function appendDraftRevision(
+	db: Db,
+	input: NewDraftRevision,
+	auth?: Authorization
+): Promise<RecordedEdit> {
+	if (auth) {
+		requireRecordedActor(auth, {
+			id: input.authorId,
+			onBehalfOfId: input.onBehalfOfId ?? null,
+			field: 'author'
+		});
+	}
 	return db.transaction(async (tx) => {
 		const authorKind = await principalKindOf(tx, input.authorId);
 		if (authorKind === 'group') {
@@ -445,6 +502,11 @@ export async function appendDraftRevision(db: Db, input: NewDraftRevision): Prom
 					? 'an edit to a living definition is published, so it needs schemaVersion and contentHash'
 					: 'an edit to a governed definition is a draft; publish it with publishVersion'
 			);
+		}
+		if (auth) {
+			const definition = { type: 'definition', definitionId: input.definitionId } as const;
+			await authorize(tx, auth, 'definition.edit', definition);
+			if (policy === 'living') await authorize(tx, auth, 'definition.publish', definition);
 		}
 		const [last] = await tx
 			.select({ revision: max(draftRevisions.revision) })
@@ -524,13 +586,24 @@ async function insertVersion(
  * a different explicit body is refused. Published from an explicit body alone, it records no
  * source. Versions are immutable once written: the repository offers no way to change or delete one
  * except `retireVersion`. Living definitions publish on every edit instead.
+ *
+ * With `auth`, its actor must be the publisher and may publish the definition. The approval a
+ * definition's policy may require is not enforced here yet.
  */
 export async function publishVersion(
 	db: Db,
-	input: NewDefinitionVersion
+	input: NewDefinitionVersion,
+	auth?: Authorization
 ): Promise<DefinitionVersion> {
+	if (auth) requireRecordedActor(auth, { id: input.publishedById, field: 'publisher' });
 	return db.transaction(async (tx) => {
 		const policy = await lockDefinition(tx, input.definitionId);
+		if (auth) {
+			await authorize(tx, auth, 'definition.publish', {
+				type: 'definition',
+				definitionId: input.definitionId
+			});
+		}
 		if (policy === 'living') {
 			throw new StoreRuleError(
 				'definition-living',
@@ -573,20 +646,40 @@ export async function publishVersion(
 	});
 }
 
-/** Retires a published version, the only change a version allows. It then takes no new cases. */
-export async function retireVersion(db: Db, versionId: string): Promise<DefinitionVersion> {
-	const [row] = await db
-		.update(definitionVersions)
-		.set({ status: 'retired' })
-		.where(and(eq(definitionVersions.id, versionId), eq(definitionVersions.status, 'published')))
-		.returning();
-	if (!row) {
-		throw new StoreRuleError(
-			'version-not-published',
-			`definition version ${versionId} is not a published version`
-		);
-	}
-	return row;
+/**
+ * Retires a published version, the only change a version allows. It then takes no new cases.
+ * With `auth`, its actor may retire versions of the definition.
+ */
+export async function retireVersion(
+	db: Db,
+	versionId: string,
+	auth?: Authorization
+): Promise<DefinitionVersion> {
+	return db.transaction(async (tx) => {
+		const notPublished = () =>
+			new StoreRuleError(
+				'version-not-published',
+				`definition version ${versionId} is not a published version`
+			);
+		if (auth) {
+			const [version] = await tx
+				.select({ definitionId: definitionVersions.definitionId })
+				.from(definitionVersions)
+				.where(eq(definitionVersions.id, versionId));
+			if (!version) throw notPublished();
+			await authorize(tx, auth, 'definition.retire', {
+				type: 'definition',
+				definitionId: version.definitionId
+			});
+		}
+		const [row] = await tx
+			.update(definitionVersions)
+			.set({ status: 'retired' })
+			.where(and(eq(definitionVersions.id, versionId), eq(definitionVersions.status, 'published')))
+			.returning();
+		if (!row) throw notPublished();
+		return row;
+	});
 }
 
 // Cases
@@ -690,8 +783,14 @@ export interface CaseVersionMove {
 /**
  * Moves a pinned case to a newer published version of its definition, and records who moved it,
  * when, and from and to which version (ADR 0016). Following cases move on their own.
+ * With `auth`, its actor must be the mover and may move the case's version.
  */
-export async function moveCaseVersion(db: Db, input: CaseVersionMove): Promise<Case> {
+export async function moveCaseVersion(
+	db: Db,
+	input: CaseVersionMove,
+	auth?: Authorization
+): Promise<Case> {
+	if (auth) requireRecordedActor(auth, { id: input.movedById, field: 'mover' });
 	return db.transaction(async (tx) => {
 		const [current] = await tx
 			.select({
@@ -706,6 +805,8 @@ export async function moveCaseVersion(db: Db, input: CaseVersionMove): Promise<C
 			.where(eq(cases.id, input.caseId))
 			.for('update', { of: cases });
 		if (!current) throw new StoreRuleError('case-missing', `case ${input.caseId} does not exist`);
+		if (auth)
+			await authorize(tx, auth, 'case.bind_version', { type: 'case', caseId: input.caseId });
 		if (current.binding !== 'pinned') {
 			throw new StoreRuleError(
 				'case-move-not-pinned',

@@ -20,3 +20,4 @@ Architecture decisions for casebook, one file per decision.
 | 0014 | [Synthetic sample data only](0014-synthetic-sample-data.md) | Accepted |
 | 0015 | [Accounts, account roles and namespace permissions](0015-accounts-and-access.md) | Accepted |
 | 0016 | [Governed and living definitions, pinned and following cases](0016-change-policies.md) | Accepted |
+| 0017 | [Permission resolution](0017-permission-resolution.md) | Accepted |
