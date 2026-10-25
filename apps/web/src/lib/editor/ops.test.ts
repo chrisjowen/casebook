@@ -484,3 +484,27 @@ describe('choices that allow several', () => {
 		).toEqual(['SEV1', 'SEV2', 'SEV3']);
 	});
 });
+
+describe('sharing lookups', () => {
+	it('points facts at a shared copy and drops the process’s own', () => {
+		const next = apply(doc, edits.shareLookup(ix, 'lookup.severity-levels', 'severity-levels'));
+		expect(node(next, 'lookup.severity-levels')).toBeUndefined();
+		expect((node(next, 'fact.severity') as FactNode).core.schema).toEqual({
+			type: 'string',
+			'x-lookup': { kind: 'dataset', dataset: 'severity-levels' }
+		});
+	});
+
+	it('copies a shared lookup into the process for one fact', () => {
+		const made = edits.copyIntoProcess(ix, 'fact.affected-services', {
+			title: 'Service catalog',
+			values: [{ value: 'api', label: 'Public API' }]
+		});
+		const next = apply(doc, made);
+		expect((node(next, 'fact.affected-services') as FactNode).core.schema['x-lookup']).toEqual({
+			kind: 'lookup',
+			lookup: 'lookup.service-catalog'
+		});
+		expect(made.select).toBe('lookup.service-catalog');
+	});
+});

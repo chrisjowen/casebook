@@ -135,8 +135,8 @@
 			<div class="px-4 pt-5 pb-3">
 				<h1 class="text-[17px] font-semibold tracking-tight">Lookups</h1>
 				<p class="mt-1 text-[12.5px] text-muted-foreground">
-					Lists of values that choices are made from, kept for a whole workspace and every process
-					in it, such as countries or insurers.
+					Lists of values that choices are made from, such as countries or insurers. A workspace’s
+					lookups serve every process in it; a process can also keep its own.
 				</p>
 			</div>
 			<nav class="flex flex-col gap-4 px-2 pb-6">

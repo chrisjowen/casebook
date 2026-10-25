@@ -183,7 +183,7 @@
 			{@const label = labelOfValue(v)}
 			<li
 				class={[
-					'group flex items-start gap-1 rounded-lg border bg-background py-0.5 pr-0.5 pl-0.5',
+					'group flex flex-wrap items-start gap-x-1 rounded-lg border bg-background py-0.5 pr-0.5 pl-0.5',
 					v.disabled && 'bg-muted/40',
 					dragging === v.value && 'opacity-50',
 					over === i && dragging !== undefined && 'border-t-2 border-t-brand'
@@ -236,20 +236,6 @@
 							onchange={(e) => relabel(v, e.currentTarget)}
 							onkeydown={enter}
 						/>
-						{#if !simple}
-							<input
-								class={[
-									cell,
-									'h-6 w-full text-[11.5px] text-muted-foreground',
-									!v.description && 'hidden group-focus-within:block'
-								]}
-								value={v.description ?? ''}
-								placeholder="What it means (optional)"
-								aria-label="What {label} means"
-								onchange={(e) => describe(v, e.currentTarget)}
-								onkeydown={enter}
-							/>
-						{/if}
 					{:else}
 						<span
 							class={[
@@ -257,9 +243,6 @@
 								v.disabled && 'text-muted-foreground'
 							]}>{label}</span
 						>
-						{#if v.description}<span class="block px-1.5 pb-1 text-[11.5px] text-muted-foreground"
-								>{v.description}</span
-							>{/if}
 					{/if}
 				</div>
 				{#if onchange && !simple}
@@ -309,6 +292,24 @@
 							? 'Take it out of the options'
 							: 'Take it out of the list. To keep it on cases that hold it, turn it off instead.'}
 						onclick={() => remove(v)}><X class="size-3.5" /></button
+					>
+				{/if}
+				{#if onchange && !simple}
+					<input
+						class={[
+							cell,
+							'mb-0.5 ml-8 h-6 w-[calc(100%-2.5rem)] text-[11.5px] text-muted-foreground',
+							!v.description && 'hidden group-focus-within:block'
+						]}
+						value={v.description ?? ''}
+						placeholder="What it means (optional)"
+						aria-label="What {label} means"
+						onchange={(e) => describe(v, e.currentTarget)}
+						onkeydown={enter}
+					/>
+				{:else if v.description}
+					<span class="mb-1 ml-8 w-[calc(100%-2.5rem)] text-[11.5px] text-muted-foreground"
+						>{v.description}</span
 					>
 				{/if}
 			</li>
