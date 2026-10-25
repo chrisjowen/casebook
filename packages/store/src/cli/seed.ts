@@ -2,6 +2,7 @@
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createDb } from '../client.js';
+import { filesDirectory, localFileStore } from '../files.js';
 import { runMigrations } from '../migrate.js';
 import { DEMO_ACCOUNT, seedDemo } from '../seed.js';
 
@@ -18,10 +19,12 @@ if (!url) {
 await runMigrations(url);
 const db = createDb(url);
 try {
-	const { seeded, users } = await seedDemo(db);
+	const files = filesDirectory();
+	const { seeded, users } = await seedDemo(db, { files: localFileStore(files) });
 	if (seeded) {
-		console.log(`Seeded account "${DEMO_ACCOUNT}" with ${users.length} demo users:`);
+		console.log(`Seeded the demo casebooks with ${users.length} demo users:`);
 		for (const u of users) console.log(`  ${u.displayName}`);
+		console.log(`Demo case files are in ${files}.`);
 		console.log('Run `pnpm dev` and sign in as one of them.');
 	} else {
 		console.log(

@@ -31,7 +31,10 @@ const url = inject('testDatabaseUrl');
 
 describe.skipIf(!url)('definition editing (Postgres)', () => {
 	let db: Db;
-	const users: Record<'olive' | 'devon' | 'wren' | 'rae', { id: string }> = {} as never;
+	const users: Record<
+		'olive' | 'devon' | 'wren' | 'rae' | 'alex' | 'sam' | 'dana' | 'insurer',
+		{ id: string }
+	> = {} as never;
 
 	beforeAll(async () => {
 		db = createDb(url!);
@@ -74,16 +77,45 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 	it('lists the demo users with their roles, for the dev sign-in', async () => {
 		expect(await listUsers(db, DEMO_ISSUER)).toEqual([
 			{
+				id: users.alex.id,
+				displayName: 'Alex Example',
+				roles: [
+					'account-owner of example-family',
+					'read-only of acme',
+					'role.communications-lead on acme/eng/sre'
+				]
+			},
+			{
+				id: users.dana.id,
+				displayName: 'Dana Cole',
+				roles: ['role.care-provider on case "Mira Example"']
+			},
+			{
 				id: users.devon.id,
 				displayName: 'Devon Developer',
-				roles: ['developer of acme', 'namespace-admin on acme/eng/platform']
+				roles: [
+					'developer of acme',
+					'namespace-admin on acme/eng/platform',
+					'role.on-call-engineer on acme/eng/sre',
+					'role.service-owner on acme/eng/sre'
+				]
 			},
-			{ id: users.olive.id, displayName: 'Olive Owner', roles: ['account-owner of acme'] },
+			{
+				id: users.insurer.id,
+				displayName: 'Example Health Insurance',
+				roles: ['role.insurer on personal/example-user/family']
+			},
+			{
+				id: users.olive.id,
+				displayName: 'Olive Owner',
+				roles: ['account-owner of acme', 'role.engineering-director on acme/eng/sre']
+			},
 			{ id: users.rae.id, displayName: 'Rae Reader', roles: ['read-only of acme'] },
+			{ id: users.sam.id, displayName: 'Sam Example', roles: ['developer of example-family'] },
 			{
 				id: users.wren.id,
 				displayName: 'Wren Writer',
-				roles: ['read-only of acme', 'write on acme/eng']
+				roles: ['read-only of acme', 'write on acme/eng', 'role.incident-commander on acme/eng/sre']
 			}
 		]);
 		expect(await findUser(db, DEMO_ISSUER, users.rae.id)).toMatchObject({
@@ -99,6 +131,12 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 			'acme',
 			'acme/eng',
 			'acme/eng/platform',
+			'acme/eng/sre'
+		]);
+		expect((await listDefinitions(db, users.alex)).map((w) => w.namespace.path)).toEqual([
+			'acme',
+			'acme/eng',
+			'acme/eng/platform',
 			'acme/eng/sre',
 			'personal',
 			'personal/example-user',
@@ -111,7 +149,7 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 		expect(incident.changes).toEqual([]);
 		expect(incident.check.ok).toBe(true);
 		expect(incident.can.edit.allowed).toBe(true);
-		const birth = await definition(users.olive, 'birth-registration-abroad');
+		const birth = await definition(users.alex, 'birth-registration-abroad');
 		expect(birth.changePolicy).toBe('living');
 		expect(birth.published?.version).toBe(1);
 	});
@@ -121,9 +159,11 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 		const sre = wren.find((w) => w.namespace.path === 'acme/eng/sre')!;
 		expect(sre.can.create.allowed).toBe(true);
 		expect(sre.definitions[0]!.can.edit.allowed).toBe(true);
-		const family = wren.find((w) => w.namespace.path === 'personal/example-user/family')!;
-		expect(family.can.create.allowed).toBe(false);
-		expect(family.definitions[0]!.can.edit.reason).toMatch(/Wren Writer.*cannot edit/);
+		expect(wren.some((w) => w.namespace.path.startsWith('personal'))).toBe(false);
+		const alex = await listDefinitions(db, users.alex);
+		const alexSre = alex.find((w) => w.namespace.path === 'acme/eng/sre')!;
+		expect(alexSre.can.create.allowed).toBe(false);
+		expect(alexSre.definitions[0]!.can.edit.reason).toMatch(/Alex Example.*cannot edit/);
 
 		const outsider = await createPrincipal(db, {
 			kind: 'user',
@@ -336,9 +376,9 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 	});
 
 	it('publishes every edit of a living definition, and refuses an explicit publish', async () => {
-		const birth = await definition(users.olive, 'birth-registration-abroad');
+		const birth = await definition(users.alex, 'birth-registration-abroad');
 		const step = birth.draft!.document.nodes.find((n) => n.core.kind === 'step')!;
-		const edited = await editDefinition(db, users.olive, {
+		const edited = await editDefinition(db, users.alex, {
 			definitionId: birth.id,
 			ops: [rename(step.core.id, 'Renamed live')],
 			baseRevision: birth.draft!.number
@@ -348,7 +388,7 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 		expect(after.published?.version).toBe(2);
 		expect(after.changes).toEqual([]);
 		expectRefusal(
-			await publishDefinition(db, users.olive, {
+			await publishDefinition(db, users.alex, {
 				definitionId: birth.id,
 				baseRevision: (edited as { revision: number }).revision
 			}),

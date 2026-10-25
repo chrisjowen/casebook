@@ -7,13 +7,16 @@ import {
 	appendDraftRevision,
 	bindRole,
 	createAccount,
+	attachProcess,
 	createCase,
 	createNamespace,
 	createPrincipal,
 	createProcessDefinition,
 	findNamespaceLineage,
 	grantDelegation,
-	moveCaseVersion,
+	insertAttachment,
+	insertCase,
+	moveAttachmentVersion,
 	namespacePathPrefixes,
 	publishVersion,
 	retireVersion,
@@ -24,7 +27,7 @@ import {
 	type StoreRule
 } from '../src/repository.js';
 import {
-	cases,
+	caseAttachments,
 	caseVersionMoves,
 	namespaces,
 	principals,
@@ -143,7 +146,9 @@ describe.skipIf(!url)('store repository (Postgres)', () => {
 		const owner = await principal('user');
 		const def = await definition(namespaceId, owner.id, `case-def-${randomUUID()}`);
 		const version = await publish(def.id, owner.id);
-		return createCase(db, { namespaceId, definitionVersionId: version.id, title: 'Baby Tan' });
+		const created = await createCase(db, { namespaceId, title: 'Baby Tan' });
+		await attachProcess(db, { caseId: created.id, definitionVersionId: version.id });
+		return created;
 	}
 
 	describe('namespaces', () => {
@@ -345,23 +350,23 @@ describe.skipIf(!url)('store repository (Postgres)', () => {
 			const retired = await publish(def.id, author.id);
 			await retireVersion(db, retired.id);
 
-			const pinned = await createCase(db, {
-				namespaceId: tree.id(),
-				definitionVersionId: published.id,
-				title: 'Baby Tan'
-			});
+			const subject = await createCase(db, { namespaceId: tree.id(), title: 'Baby Tan' });
+			const attach = (definitionVersionId: string) =>
+				attachProcess(db, { caseId: subject.id, definitionVersionId });
+			const pinned = await attach(published.id);
+			await expectRule(attach(retired.id), 'version-retired');
+			await expectRule(attach(randomUUID()), 'version-missing');
 			await expectRule(
-				createCase(db, { namespaceId: tree.id(), definitionVersionId: retired.id, title: 'Lim' }),
-				'version-retired'
-			);
-			await expectRule(
-				createCase(db, { namespaceId: tree.id(), definitionVersionId: randomUUID(), title: 'X' }),
-				'version-missing'
+				attachProcess(db, { caseId: randomUUID(), definitionVersionId: published.id }),
+				'case-missing'
 			);
 
 			// Retiring a version leaves the cases already pinned to it in place.
 			await retireVersion(db, published.id);
-			const [still] = await db.select().from(cases).where(eq(cases.id, pinned.id));
+			const [still] = await db
+				.select()
+				.from(caseAttachments)
+				.where(eq(caseAttachments.id, pinned.id));
 			expect(still!.definitionVersionId).toBe(published.id);
 		});
 
@@ -839,18 +844,20 @@ describe.skipIf(!url)('store repository (Postgres)', () => {
 					authorId: tree.owner.id,
 					...(publish ? { publish: fields() } : {})
 				});
-			const newCase = (definitionVersionId: string, binding?: 'pinned' | 'follow_latest') =>
-				createCase(db, {
-					namespaceId: tree.id(),
+			const newCase = async (definitionVersionId: string, binding?: 'pinned' | 'follow_latest') => {
+				const created = await createCase(db, { namespaceId: tree.id(), title: 'Patient' });
+				return attachProcess(db, {
+					caseId: created.id,
 					definitionVersionId,
-					title: 'Patient',
 					...(binding ? { binding } : {})
 				});
+			};
 			return { tree, def, edit, newCase };
 		}
 
-		const boundVersion = async (caseId: string) =>
-			(await db.select().from(cases).where(eq(cases.id, caseId)))[0]!.definitionVersionId;
+		const boundVersion = async (attachmentId: string) =>
+			(await db.select().from(caseAttachments).where(eq(caseAttachments.id, attachmentId)))[0]!
+				.definitionVersionId;
 
 		it('publishes every edit of a living definition and moves following cases along', async () => {
 			const { def, edit, newCase } = await setup('living');
@@ -972,13 +979,15 @@ describe.skipIf(!url)('store repository (Postgres)', () => {
 			const v1 = await publish(def.id, tree.owner.id);
 			const v2 = await publish(def.id, tree.owner.id);
 			const other = await namespaceTree();
-			const caseAt = (namespaceId: string) =>
-				createCase(db, { namespaceId, definitionVersionId: v1.id, title: 'Outage' });
+			const caseAt = async (namespaceId: string) => {
+				const created = await createCase(db, { namespaceId, title: 'Outage' });
+				return attachProcess(db, { caseId: created.id, definitionVersionId: v1.id });
+			};
 
 			await caseAt(tree.id('eng'));
 			const descendant = await caseAt(tree.id('eng/sre'));
-			const moved = await moveCaseVersion(db, {
-				caseId: descendant.id,
+			const moved = await moveAttachmentVersion(db, {
+				attachmentId: descendant.id,
 				toVersionId: v2.id,
 				movedById: tree.owner.id
 			});
@@ -994,10 +1003,10 @@ describe.skipIf(!url)('store repository (Postgres)', () => {
 			const v1 = await publish(def.id, tree.owner.id);
 			let publishing: Promise<{ id: string }> | undefined;
 			const following = await db.transaction(async (tx) => {
-				const created = await createCase(tx as unknown as Db, {
-					namespaceId: tree.id(),
+				const subject = await insertCase(tx, { namespaceId: tree.id(), title: 'Patient' });
+				const created = await insertAttachment(tx, {
+					caseId: subject.id,
 					definitionVersionId: v1.id,
-					title: 'Patient',
 					binding: 'follow_latest'
 				});
 				publishing = publish(def.id, tree.owner.id);
@@ -1025,17 +1034,17 @@ describe.skipIf(!url)('store repository (Postgres)', () => {
 			const v3 = await publish(def.id, tree.owner.id);
 			await retireVersion(db, v3.id);
 			const pinned = await newCase(v1.id);
-			const move = (caseId: string, toVersionId: string) =>
-				moveCaseVersion(db, { caseId, toVersionId, movedById: mover.id });
+			const move = (attachmentId: string, toVersionId: string) =>
+				moveAttachmentVersion(db, { attachmentId, toVersionId, movedById: mover.id });
 
 			const moved = await move(pinned.id, v2.id);
 			expect(moved.definitionVersionId).toBe(v2.id);
 			const audit = await db
 				.select()
 				.from(caseVersionMoves)
-				.where(eq(caseVersionMoves.caseId, pinned.id));
+				.where(eq(caseVersionMoves.attachmentId, pinned.id));
 			expect(audit).toMatchObject([
-				{ fromVersionId: v1.id, toVersionId: v2.id, movedById: mover.id }
+				{ caseId: pinned.caseId, fromVersionId: v1.id, toVersionId: v2.id, movedById: mover.id }
 			]);
 			expect(audit[0]!.movedAt).toBeInstanceOf(Date);
 
@@ -1046,7 +1055,7 @@ describe.skipIf(!url)('store repository (Postgres)', () => {
 				move(pinned.id, (await publish(other.id, tree.owner.id)).id),
 				'case-move-other-definition'
 			);
-			await expectRule(move(randomUUID(), v2.id), 'case-missing');
+			await expectRule(move(randomUUID(), v2.id), 'attachment-missing');
 
 			const following = await newCase(v2.id, 'follow_latest');
 			await expectRule(move(following.id, v2.id), 'case-move-not-pinned');

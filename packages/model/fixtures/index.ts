@@ -1,5 +1,7 @@
 export { birthRegistrationAbroad } from './birth-registration-abroad.js';
 export { incidentManagement } from './incident-management.js';
+export { medicalBillClaim } from './medical-bill-claim.js';
+export { spouseCitizenship } from './spouse-citizenship.js';
 export {
 	alternativeCollector,
 	dependencyCycle,

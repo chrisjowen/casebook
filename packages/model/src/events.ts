@@ -10,6 +10,8 @@ export const LIFECYCLE_EVENTS = [
 	'stage.entered',
 	'stage.completed',
 	'step.started',
+	'step.held',
+	'step.resumed',
 	'step.completed',
 	'step.skipped',
 	'fact.recorded',

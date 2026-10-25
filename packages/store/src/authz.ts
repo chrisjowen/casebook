@@ -6,7 +6,9 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Queryable } from './client.js';
 import {
 	accounts,
+	caseAttachments,
 	cases,
+	definitionVersions,
 	delegationGrants,
 	groupMembers,
 	namespaces,
@@ -48,6 +50,8 @@ export const ACTIONS = [
 	'definition.publish',
 	'definition.approve',
 	'definition.retire',
+	'case.start',
+	'case.read',
 	'case.bind_version',
 	'case.act_in_role'
 ] as const;
@@ -99,6 +103,9 @@ interface Target {
 	lineage: { id: string; path: string }[];
 	caseId?: string;
 	role?: string;
+	/** For a definition: the process roles its latest published version declares. */
+	roles?: string[];
+	definitionId?: string;
 }
 
 interface ActionRule {
@@ -111,8 +118,12 @@ interface ActionRule {
 	 * ancestor, or implied by an account role.
 	 */
 	permission?: NamespacePermission;
-	/** Allowed by holding the target's process role on the case, or as a standing role. */
-	processRole?: true;
+	/**
+	 * `true`: allowed by holding the target's process role on the case, or as a standing role.
+	 * `declared`: allowed by holding any role the definition declares, as a standing role or on a
+	 * case the definition is attached to.
+	 */
+	processRole?: true | 'declared';
 }
 
 const RULES: { readonly [A in Action]: ActionRule } = {
@@ -166,6 +177,17 @@ const RULES: { readonly [A in Action]: ActionRule } = {
 		resources: ['definition'],
 		verb: () => 'retire versions of',
 		permission: 'namespace-admin'
+	},
+	'case.start': {
+		resources: ['definition'],
+		verb: () => 'start a case of',
+		permission: 'write',
+		processRole: 'declared'
+	},
+	'case.read': {
+		resources: ['case'],
+		verb: () => 'open',
+		permission: 'read'
 	},
 	'case.bind_version': {
 		resources: ['case'],
@@ -233,6 +255,10 @@ export async function can(
 	}
 	const target = await resolveTarget(db, resource);
 	if (typeof target === 'string') return refuse(target);
+	if (rule.processRole === 'declared' && resource.type === 'definition') {
+		target.definitionId = resource.definitionId;
+		target.roles = await declaredRoles(db, resource.definitionId);
+	}
 
 	const who = await principalById(db, actor.id);
 	if (!who) return refuse(`principal ${actor.id} does not exist`);
@@ -512,7 +538,7 @@ function evaluate(
 		}
 	}
 
-	if (rule.processRole && target.caseId !== undefined && target.role !== undefined) {
+	if (rule.processRole === true && target.caseId !== undefined && target.role !== undefined) {
 		const onCase = held.find((h) => h.caseId === target.caseId && h.role === target.role);
 		if (onCase) return allow(`${subject} is bound as ${target.role} on this case${via(onCase)}`);
 		for (const ns of target.lineage) {
@@ -527,6 +553,22 @@ function evaluate(
 		}
 	}
 
+	if (rule.processRole === 'declared' && target.roles) {
+		const lineageIds = new Set(target.lineage.map((n) => n.id));
+		const b = held.find(
+			(h) =>
+				target.roles!.includes(h.role) &&
+				(h.caseId !== null || (h.namespaceId !== null && lineageIds.has(h.namespaceId)))
+		);
+		if (b) {
+			const where =
+				b.caseId !== null
+					? 'on a case it runs on'
+					: `on ${inherited(b.namespaceId!, target.lineage.find((n) => n.id === b.namespaceId)!.path)}`;
+			return allow(`${subject} holds ${b.role}, a role in this process, ${where}${via(b)}`);
+		}
+	}
+
 	const pathOf = (id: string | null) => target.lineage.find((n) => n.id === id)?.path;
 	const holding =
 		held.length === 0
@@ -534,7 +576,7 @@ function evaluate(
 			: `holds ${held
 					.map(
 						(h) =>
-							`${h.role} on ${h.caseId !== null ? 'this case' : h.namespaceId === null ? account : pathOf(h.namespaceId)}${via(h)}`
+							`${h.role} on ${h.caseId !== null ? (h.caseId === target.caseId ? 'this case' : 'another case') : h.namespaceId === null ? account : pathOf(h.namespaceId)}${via(h)}`
 					)
 					.join(', ')}`;
 	return refuse(
@@ -551,10 +593,13 @@ function needs(rule: ActionRule, target: Target): string {
 		).reverse();
 		options.push(`${orList(permissions)} on ${nearest.path} or an ancestor`);
 	}
-	if (rule.processRole && nearest) {
+	if (rule.processRole === true && nearest) {
 		options.push(
 			`the role ${target.role} on this case, or as a standing role on ${nearest.path} or an ancestor`
 		);
+	}
+	if (rule.processRole === 'declared' && target.roles?.length) {
+		options.push(`one of its roles (${target.roles.join(', ')})`);
 	}
 	const roles = ACCOUNT_ROLES.filter(
 		(r) =>
@@ -572,6 +617,13 @@ async function heldBindings(db: Queryable, principalId: string, target: Target):
 		? sql`OR (rb.case_id IS NULL AND rb.namespace_id IN ${lineageIds})`
 		: sql``;
 	const onCase = target.caseId === undefined ? sql`` : sql`OR rb.case_id = ${target.caseId}`;
+	const onDefinitionCases =
+		target.definitionId === undefined
+			? sql``
+			: sql`OR rb.case_id IN (
+				SELECT ca.case_id FROM ${caseAttachments} ca
+				JOIN ${definitionVersions} dv ON dv.id = ca.definition_version_id
+				WHERE dv.definition_id = ${target.definitionId})`;
 	const rows = await db.execute<{
 		role: string;
 		namespace_id: string | null;
@@ -585,7 +637,7 @@ async function heldBindings(db: Queryable, principalId: string, target: Target):
 		JOIN ${principals} p ON p.id = rb.principal_id
 		WHERE rb.principal_id IN (SELECT id FROM subjects)
 			AND rb.account_id = ${target.accountId}
-			AND (rb.namespace_id IS NULL ${onLineage} ${onCase})
+			AND (rb.namespace_id IS NULL ${onLineage} ${onCase} ${onDefinitionCases})
 		ORDER BY rb.role, via NULLS FIRST`);
 	return [...rows].map((r) => ({
 		role: r.role,
@@ -722,6 +774,25 @@ async function lineageOf(db: Queryable, accountId: string, path: string) {
 			)
 		)
 		.orderBy(desc(sql`length(${namespaces.path})`));
+}
+
+/** The process roles the latest published version of a definition declares. */
+async function declaredRoles(db: Queryable, definitionId: string): Promise<string[]> {
+	const [latest] = await db
+		.select({ body: definitionVersions.body })
+		.from(definitionVersions)
+		.where(
+			and(
+				eq(definitionVersions.definitionId, definitionId),
+				eq(definitionVersions.status, 'published')
+			)
+		)
+		.orderBy(desc(definitionVersions.version))
+		.limit(1);
+	const nodes = (latest?.body as { nodes?: { core?: { id?: unknown; kind?: unknown } }[] })?.nodes;
+	return (nodes ?? [])
+		.filter((n) => n.core?.kind === 'role' && typeof n.core.id === 'string')
+		.map((n) => n.core!.id as string);
 }
 
 const nameOf = (p: PrincipalRow) => `${p.kind} "${p.displayName}"`;

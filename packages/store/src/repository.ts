@@ -15,6 +15,7 @@ import {
 import type { Db, Queryable, Tx } from './client.js';
 import {
 	accounts,
+	caseAttachments,
 	cases,
 	caseVersionMoves,
 	definitionVersions,
@@ -44,7 +45,8 @@ export type ProcessDefinition = typeof processDefinitions.$inferSelect;
 export type DefinitionVersion = typeof definitionVersions.$inferSelect;
 export type DraftRevision = typeof draftRevisions.$inferSelect;
 export type Case = typeof cases.$inferSelect;
-export type CaseBinding = Case['binding'];
+export type CaseAttachment = typeof caseAttachments.$inferSelect;
+export type CaseBinding = CaseAttachment['binding'];
 export type ChangePolicy = ProcessDefinition['changePolicy'];
 export type CaseVersionMoveRecord = typeof caseVersionMoves.$inferSelect;
 export type RoleBinding = typeof roleBindings.$inferSelect;
@@ -79,6 +81,7 @@ export type StoreRule =
 	| 'case-missing'
 	| 'case-namespace-outside-definition'
 	| 'case-follow-needs-latest'
+	| 'attachment-missing'
 	| 'case-move-not-pinned'
 	| 'case-move-other-definition'
 	| 'case-move-not-newer'
@@ -569,7 +572,7 @@ export interface NewDefinitionVersion extends VersionFields {
 	sourceRevisionId?: string;
 }
 
-/** Assigns the next version number, inserts the version and moves following cases to it. */
+/** Assigns the next version number, inserts the version and moves following attachments to it. */
 async function insertVersion(
 	tx: Tx,
 	input: NewDefinitionVersion & { body: unknown }
@@ -583,13 +586,13 @@ async function insertVersion(
 		.values({ ...input, version: (last?.version ?? 0) + 1, status: 'published' })
 		.returning();
 	await tx
-		.update(cases)
+		.update(caseAttachments)
 		.set({ definitionVersionId: version!.id })
 		.where(
 			and(
-				eq(cases.binding, 'follow_latest'),
+				eq(caseAttachments.binding, 'follow_latest'),
 				inArray(
-					cases.definitionVersionId,
+					caseAttachments.definitionVersionId,
 					tx
 						.select({ id: definitionVersions.id })
 						.from(definitionVersions)
@@ -763,80 +766,134 @@ async function versionForBinding(tx: Tx, versionId: string, caseNamespaceId: str
 
 export interface NewCase {
 	namespaceId: string;
-	definitionVersionId: string;
 	title: string;
+	subject?: string;
+	openedById?: string;
+	/** When it was opened; defaults to now. */
+	at?: Date;
+}
+
+/** Creates a case, the shared subject processes attach to (ADR 0001). */
+export async function createCase(db: Db, input: NewCase): Promise<Case> {
+	return db.transaction((tx) => insertCase(tx, input));
+}
+
+/** Inserts a case inside a transaction the caller holds. */
+export async function insertCase(tx: Tx, input: NewCase): Promise<Case> {
+	const [row] = await tx
+		.insert(cases)
+		.values({
+			namespaceId: input.namespaceId,
+			title: input.title,
+			subject: input.subject ?? null,
+			openedById: input.openedById ?? null,
+			...(input.at ? { createdAt: input.at, updatedAt: input.at } : {})
+		})
+		.returning();
+	return row!;
+}
+
+export interface NewAttachment {
+	caseId: string;
+	definitionVersionId: string;
 	/** Defaults to pinned for a governed definition and follow_latest for a living one. */
 	binding?: CaseBinding;
+	label?: string;
+	startedById?: string;
+	/** When it was attached; defaults to now. */
+	at?: Date;
 }
 
 /**
- * Creates a case bound to a published definition version (ADR 0002, ADR 0016), in the
- * definition's namespace or one of its descendants. A following case must start on the
- * definition's latest published version.
+ * Attaches a process to a case, bound to a published definition version (ADR 0002, ADR 0016).
+ * The case must live in the definition's namespace or one of its descendants. A following
+ * attachment must start on the definition's latest published version.
  */
-export async function createCase(db: Db, input: NewCase): Promise<Case> {
-	return db.transaction(async (tx) => {
-		const version = await versionForBinding(tx, input.definitionVersionId, input.namespaceId);
-		const binding =
-			input.binding ?? (version.changePolicy === 'living' ? 'follow_latest' : 'pinned');
-		if (binding === 'follow_latest') {
-			const [latest] = await tx
-				.select({ version: max(definitionVersions.version) })
-				.from(definitionVersions)
-				.where(
-					and(
-						eq(definitionVersions.definitionId, version.definitionId),
-						eq(definitionVersions.status, 'published')
-					)
-				);
-			if (latest?.version !== version.version) {
-				throw new StoreRuleError(
-					'case-follow-needs-latest',
-					`a following case starts on the latest published version, not version ${version.version}`
-				);
-			}
-		}
-		const [row] = await tx
-			.insert(cases)
-			.values({ ...input, binding })
-			.returning();
-		return row!;
-	});
+export async function attachProcess(db: Db, input: NewAttachment): Promise<CaseAttachment> {
+	return db.transaction((tx) => insertAttachment(tx, input));
 }
 
-export interface CaseVersionMove {
-	caseId: string;
+/** Attaches a process inside a transaction the caller holds; see `attachProcess`. */
+export async function insertAttachment(tx: Tx, input: NewAttachment): Promise<CaseAttachment> {
+	const [target] = await tx
+		.select({ namespaceId: cases.namespaceId })
+		.from(cases)
+		.where(eq(cases.id, input.caseId));
+	if (!target) throw new StoreRuleError('case-missing', `case ${input.caseId} does not exist`);
+	const version = await versionForBinding(tx, input.definitionVersionId, target.namespaceId);
+	const binding = input.binding ?? (version.changePolicy === 'living' ? 'follow_latest' : 'pinned');
+	if (binding === 'follow_latest') {
+		const [latest] = await tx
+			.select({ version: max(definitionVersions.version) })
+			.from(definitionVersions)
+			.where(
+				and(
+					eq(definitionVersions.definitionId, version.definitionId),
+					eq(definitionVersions.status, 'published')
+				)
+			);
+		if (latest?.version !== version.version) {
+			throw new StoreRuleError(
+				'case-follow-needs-latest',
+				`a following case starts on the latest published version, not version ${version.version}`
+			);
+		}
+	}
+	const [row] = await tx
+		.insert(caseAttachments)
+		.values({
+			caseId: input.caseId,
+			definitionVersionId: input.definitionVersionId,
+			binding,
+			label: input.label ?? null,
+			startedById: input.startedById ?? null,
+			...(input.at ? { createdAt: input.at, updatedAt: input.at } : {})
+		})
+		.returning();
+	return row!;
+}
+
+export interface AttachmentVersionMove {
+	attachmentId: string;
 	toVersionId: string;
 	movedById: string;
 }
 
 /**
- * Moves a pinned case to a newer published version of its definition, and records who moved it,
- * when, and from and to which version (ADR 0016). Following cases move on their own.
- * With `auth`, its actor must be the mover and may move the case's version.
+ * Moves a pinned process on a case to a newer published version of its definition, and records
+ * who moved it, when, and from and to which version (ADR 0016). Following attachments move on
+ * their own. With `auth`, its actor must be the mover and may move the case's version.
  */
-export async function moveCaseVersion(
+export async function moveAttachmentVersion(
 	db: Db,
-	input: CaseVersionMove,
+	input: AttachmentVersionMove,
 	auth?: Authorization
-): Promise<Case> {
+): Promise<CaseAttachment> {
 	if (auth) requireRecordedActor(auth, { id: input.movedById, field: 'mover' });
 	return db.transaction(async (tx) => {
 		const [current] = await tx
 			.select({
-				binding: cases.binding,
+				caseId: caseAttachments.caseId,
+				binding: caseAttachments.binding,
 				namespaceId: cases.namespaceId,
-				versionId: cases.definitionVersionId,
+				versionId: caseAttachments.definitionVersionId,
 				definitionId: definitionVersions.definitionId,
 				version: definitionVersions.version
 			})
-			.from(cases)
-			.innerJoin(definitionVersions, eq(definitionVersions.id, cases.definitionVersionId))
-			.where(eq(cases.id, input.caseId))
-			.for('update', { of: cases });
-		if (!current) throw new StoreRuleError('case-missing', `case ${input.caseId} does not exist`);
-		if (auth)
-			await authorize(tx, auth, 'case.bind_version', { type: 'case', caseId: input.caseId });
+			.from(caseAttachments)
+			.innerJoin(cases, eq(cases.id, caseAttachments.caseId))
+			.innerJoin(definitionVersions, eq(definitionVersions.id, caseAttachments.definitionVersionId))
+			.where(eq(caseAttachments.id, input.attachmentId))
+			.for('update', { of: caseAttachments });
+		if (!current) {
+			throw new StoreRuleError(
+				'attachment-missing',
+				`case attachment ${input.attachmentId} does not exist`
+			);
+		}
+		if (auth) {
+			await authorize(tx, auth, 'case.bind_version', { type: 'case', caseId: current.caseId });
+		}
 		if (current.binding !== 'pinned') {
 			throw new StoreRuleError(
 				'case-move-not-pinned',
@@ -857,12 +914,13 @@ export async function moveCaseVersion(
 			);
 		}
 		const [moved] = await tx
-			.update(cases)
+			.update(caseAttachments)
 			.set({ definitionVersionId: input.toVersionId })
-			.where(eq(cases.id, input.caseId))
+			.where(eq(caseAttachments.id, input.attachmentId))
 			.returning();
 		await tx.insert(caseVersionMoves).values({
-			caseId: input.caseId,
+			caseId: current.caseId,
+			attachmentId: input.attachmentId,
 			fromVersionId: current.versionId,
 			toVersionId: input.toVersionId,
 			movedById: input.movedById

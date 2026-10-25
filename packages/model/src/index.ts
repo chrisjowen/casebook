@@ -4,4 +4,5 @@ export * from './invariants.js';
 export * from './node.js';
 export * from './ops/index.js';
 export * from './references.js';
+export * from './runtime/index.js';
 export * from './validate.js';
