@@ -1,8 +1,14 @@
 /**
- * Placeholder node model types (ADR 0003). Every element of a definition is a node with a
- * typed `core`, Markdown `content` and a namespaced `data` map. These shapes are a starting
- * point and will be tightened alongside the process-definition JSON Schema.
+ * Process-definition types (ADRs 0002 to 0006). These mirror
+ * `schema/process-definition.schema.json`, which is what `validate` enforces; the tests check that
+ * both accept the same fixtures and declare the same fields.
+ *
+ * Every element of a definition is a node with a typed `core`, Markdown `content` and a
+ * namespaced `data` map. Edges live in each node's core; the graph is derived.
  */
+
+/** Version of the process-definition schema these types describe. */
+export const SCHEMA_VERSION = 1;
 
 export const NODE_KINDS = [
 	'process',
@@ -17,9 +23,17 @@ export const NODE_KINDS = [
 export type NodeKind = (typeof NODE_KINDS)[number];
 
 /** Node identifiers are prefixed with their kind, for example `step.form-working-group`. */
-export type NodeId = string;
+export type NodeId<K extends NodeKind = NodeKind> = `${K}.${string}`;
 
-/** Who may perform a step. */
+export type ProcessId = NodeId<'process'>;
+export type StageId = NodeId<'stage'>;
+export type StepId = NodeId<'step'>;
+export type FactId = NodeId<'fact'>;
+export type RoleId = NodeId<'role'>;
+export type DecisionId = NodeId<'decision'>;
+export type ApprovalId = NodeId<'approval'>;
+
+/** Who may perform the work. Agents cannot complete `human` work (ADR 0009). */
 export const ACTOR_POLICIES = ['human', 'agent', 'either'] as const;
 
 export type ActorPolicy = (typeof ACTOR_POLICIES)[number];
@@ -32,7 +46,10 @@ export interface Guard {
 
 /** Where a node came from in its source material, and whether it was inferred rather than stated. */
 export interface SourceRef {
-	ref: string;
+	/** The source document, such as a runbook or spreadsheet file name. */
+	doc: string;
+	/** A location inside the document, such as a heading anchor or a cell reference. */
+	ref?: string;
 	inferred: boolean;
 }
 
@@ -41,26 +58,154 @@ export interface Invariant {
 	text: string;
 }
 
-/** The typed, schema-validated layer of a node. Edges live here; the graph is derived. */
-export interface NodeCore {
-	id: NodeId;
-	kind: NodeKind;
-	stage?: NodeId;
-	role?: NodeId;
-	actor?: ActorPolicy;
-	requires?: NodeId[];
-	collects?: NodeId[];
-	guards?: Guard[];
+/** Proof required to back a fact or complete a step. */
+export interface EvidenceRequirement {
+	description: string;
+	/** Acceptable forms, such as `pdf`, `scan` or `certified-copy`. */
+	formats?: string[];
+	copies?: number;
+}
+
+export const LOOKUP_KINDS = ['dataset', 'principal', 'fact', 'case'] as const;
+
+export type LookupKind = (typeof LOOKUP_KINDS)[number];
+
+/** Where a fact's value is chosen from (ADR 0006). */
+export type Lookup =
+	| { kind: 'dataset'; dataset: string; version?: string }
+	| { kind: 'principal'; role?: RoleId }
+	| { kind: 'fact'; fact: FactId }
+	| { kind: 'case'; process?: string };
+
+export const SENSITIVITY_LEVELS = ['none', 'personal', 'sensitive'] as const;
+
+/** Personal-data level of a fact's value. */
+export type Sensitivity = (typeof SENSITIVITY_LEVELS)[number];
+
+/** A JSON Schema 2020-12 for a fact's value, plus casebook extensions (ADR 0006). */
+export interface FactSchema {
+	[keyword: string]: unknown;
+	'x-lookup'?: Lookup;
+	'x-evidence'?: EvidenceRequirement;
+	'x-sensitivity'?: Sensitivity;
+}
+
+interface CoreBase<K extends NodeKind> {
+	id: NodeId<K>;
+	kind: K;
+	title?: string;
 	source?: SourceRef;
 	invariants?: Invariant[];
 }
 
+export type ProcessCore = CoreBase<'process'>;
+
+export type StageCore = CoreBase<'stage'>;
+
+/** A fact a step records, and the role that records it when not the step's own role. */
+export interface Collect {
+	fact: FactId;
+	by?: RoleId;
+}
+
+/** Evidence a step must attach, optionally tied to the fact it backs. */
+export interface StepEvidence extends EvidenceRequirement {
+	fact?: FactId;
+}
+
+/** Binds the principals recorded in `fact` to `role` on the case (ADR 0008). */
+export interface RoleAssignment {
+	role: RoleId;
+	fact: FactId;
+}
+
+export interface Repeat {
+	until: Guard;
+	/** Suggested interval between repetitions, as an ISO 8601 duration such as `PT30M`. */
+	every?: string;
+}
+
+export interface StepCore extends CoreBase<'step'> {
+	stage: StageId;
+	role: RoleId;
+	actor: ActorPolicy;
+	requires?: FactId[];
+	collects?: Collect[];
+	evidence?: StepEvidence[];
+	assigns?: RoleAssignment[];
+	when?: Guard;
+	repeat?: Repeat;
+	approval?: ApprovalId;
+}
+
+export interface FactCore extends CoreBase<'fact'> {
+	schema: FactSchema;
+}
+
+export const ROLE_SCOPES = ['namespace', 'case'] as const;
+
+export type RoleScope = (typeof ROLE_SCOPES)[number];
+
+export interface RoleCore extends CoreBase<'role'> {
+	scope?: RoleScope;
+}
+
+export interface DecisionCore extends CoreBase<'decision'> {
+	stage: StageId;
+	role: RoleId;
+	actor: ActorPolicy;
+	requires?: FactId[];
+	/** The fact the decision records; its schema lists the possible outcomes. */
+	outcome: FactId;
+	when?: Guard;
+}
+
+export interface ApprovalCore extends CoreBase<'approval'> {
+	role: RoleId;
+	actor: ActorPolicy;
+	requires?: FactId[];
+	when?: Guard;
+}
+
+export interface CoreByKind {
+	process: ProcessCore;
+	stage: StageCore;
+	step: StepCore;
+	fact: FactCore;
+	role: RoleCore;
+	decision: DecisionCore;
+	approval: ApprovalCore;
+}
+
+export type NodeCore = CoreByKind[NodeKind];
+
 /** Open extension map keyed by namespace, such as `bpmn.*`, `excel.*`, `ui.*` or `hooks.*`. */
 export type NodeData = Record<string, unknown>;
 
-export interface Node {
-	core: NodeCore;
+export interface NodeOf<K extends NodeKind> {
+	core: CoreByKind[K];
 	/** Markdown prose guidance for people. */
 	content?: string;
 	data?: NodeData;
+}
+
+export type ProcessNode = NodeOf<'process'>;
+export type StageNode = NodeOf<'stage'>;
+export type StepNode = NodeOf<'step'>;
+export type FactNode = NodeOf<'fact'>;
+export type RoleNode = NodeOf<'role'>;
+export type DecisionNode = NodeOf<'decision'>;
+export type ApprovalNode = NodeOf<'approval'>;
+
+export type Node = { [K in NodeKind]: NodeOf<K> }[NodeKind];
+
+/** One version of a process definition: metadata plus its nodes (ADR 0002). */
+export interface DefinitionDocument {
+	$schema?: string;
+	schemaVersion: typeof SCHEMA_VERSION;
+	/** Hierarchical owning namespace, such as `acme/eng/sre` (ADR 0007). */
+	namespace: string;
+	slug: string;
+	version: number;
+	nodes: Node[];
 }

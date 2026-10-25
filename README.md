@@ -18,12 +18,12 @@ v1 focuses on defining processes, viewing them as a graph, and an agent-assisted
 
 A [moon](https://moonrepo.dev) workspace with pnpm workspaces underneath, all TypeScript.
 
-| Path                    | What it is                                                                |
-| ----------------------- | ------------------------------------------------------------------------- |
-| `apps/web`              | SvelteKit 2 app (Svelte 5, Tailwind 4, shadcn-svelte).                    |
-| `packages/model`        | Node model types and the process-definition JSON Schema. Pure TypeScript. |
-| `packages/store`        | Postgres persistence with Drizzle ORM; migrations via drizzle-kit.        |
-| `packages/wizard-agent` | Placeholder for the deepagents-based authoring agent.                     |
+| Path                    | What it is                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| `apps/web`              | SvelteKit 2 app (Svelte 5, Tailwind 4, shadcn-svelte).                                 |
+| `packages/model`        | Process-definition types, JSON Schema, validation and publish checks. Pure TypeScript. |
+| `packages/store`        | Postgres persistence with Drizzle ORM; migrations via drizzle-kit.                     |
+| `packages/wizard-agent` | Placeholder for the deepagents-based authoring agent.                                  |
 
 ## Prerequisites
 

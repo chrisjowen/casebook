@@ -2,12 +2,12 @@
 	"name": "@casebook/model",
 	"version": "0.0.0",
 	"private": true,
-	"description": "Process definition model: node types and the process-definition JSON Schema. Pure TypeScript, no I/O.",
+	"description": "Process definition model: node types, the process-definition JSON Schema, validation and publish checks. Pure TypeScript, no I/O.",
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"default": "./dist/index.js"
+			"types": "./dist/src/index.d.ts",
+			"default": "./dist/src/index.js"
 		},
 		"./schema/process-definition.schema.json": "./schema/process-definition.schema.json"
 	},
@@ -19,5 +19,8 @@
 		"@types/node": "22.20.5",
 		"typescript": "6.0.3",
 		"vitest": "5.0.5"
+	},
+	"dependencies": {
+		"ajv": "8.20.0"
 	}
 }
