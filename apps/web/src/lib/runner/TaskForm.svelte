@@ -97,6 +97,7 @@
 	// or a visit elsewhere; files wait for completion.
 	let formEl = $state<HTMLFormElement>();
 	let dirty = false;
+	let finishing = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let saving: Promise<void> = Promise.resolve();
 	let savedAt = $state<string>();
@@ -114,7 +115,7 @@
 		return saving;
 	}
 	async function sendDraft() {
-		if (!dirty || !formEl || !canSave) return;
+		if (finishing || !dirty || !formEl || !canSave) return;
 		dirty = false;
 		let reason = 'Something went wrong.';
 		try {
@@ -138,6 +139,7 @@
 		saveFailed = reason;
 	}
 	function touched() {
+		if (finishing) return;
 		started();
 		if (!canSave) return;
 		dirty = true;
@@ -147,7 +149,7 @@
 	beforeNavigate(() => void saveNow());
 	$effect(() => {
 		const flush = () => {
-			if (dirty && formEl && canSave) navigator.sendBeacon('?/save', draftBody());
+			if (!finishing && dirty && formEl && canSave) navigator.sendBeacon('?/save', draftBody());
 		};
 		window.addEventListener('pagehide', flush);
 		return () => window.removeEventListener('pagehide', flush);
@@ -471,6 +473,7 @@
 			bind:this={formEl}
 			use:enhance={async ({ action }) => {
 				if (!action.search.includes('save')) {
+					finishing = true;
 					clearTimeout(timer);
 					await saving;
 					dirty = false;
@@ -480,7 +483,10 @@
 						savedAt = new Date().toISOString();
 						saveFailed = undefined;
 					}
+					const failed = finishing && result.type !== 'redirect' && result.type !== 'success';
 					await update({ reset: false });
+					finishing = false;
+					if (failed) dirty = canSave;
 				};
 			}}
 			class="mt-8"
