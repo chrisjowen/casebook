@@ -7,7 +7,7 @@ Some processes are fixed and versioned, such as incident management. Others are 
 
 ## Decision
 A process definition has a change policy, `governed` by default:
-- **Governed**: edits go to draft revisions, and an explicit publish creates a new immutable version. Publishing may require an approval; for now only that policy flag is recorded.
+- **Governed**: edits go to draft revisions, and an explicit publish creates a new immutable version. Publishing may require an approval; who may approve is decided in 0018.
 - **Living**: every accepted edit is published as a new immutable version. Checks are warnings, not blockers.
 
 Storage is the same for both: immutable versions and the full revision history, with each version recording the revision it was published from. A version published from a revision takes that revision's body.
@@ -25,4 +25,4 @@ Future only: ad-hoc steps on a single case, and saving a living process as a gov
 ## Consequences
 - One storage model serves both kinds of process; only the publish trigger differs.
 - A pinned case never changes underneath its participants; a following case always reads its definition's latest version.
-- The approval flow for governed publishes is still to be designed.
+- 0018 amends this decision with the approval, publish attribution and living-version rules.

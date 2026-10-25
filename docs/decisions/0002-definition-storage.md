@@ -9,7 +9,7 @@ Definitions must be versioned, validated, and rendered in several forms (Markdow
 Postgres is canonical.
 A published definition version is an immutable JSONB document validated against a versioned process-definition JSON Schema.
 Drafts are revisions of the same shape.
-Cases pin to a definition version.
+Cases pin to a definition version, or follow the latest under a living change policy (0016).
 Markdown (front matter plus body), BPMN and the graph are projections generated from the document.
 Git sync is an optional later integration.
 
