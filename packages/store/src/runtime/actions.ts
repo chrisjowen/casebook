@@ -11,6 +11,7 @@ import {
 	isFileFact,
 	readFactInput,
 	workApprovalProblem,
+	type ConversationEventType,
 	type FactNode,
 	type ItemState,
 	type LifecycleEvent
@@ -130,11 +131,15 @@ interface NewEvent {
 	caseId: string;
 	attachmentId?: string;
 	item?: string;
-	type: LifecycleEvent;
+	type: LifecycleEvent | ConversationEventType;
 	data?: Record<string, unknown>;
 }
 
 async function record(tx: Tx, who: Acting, event: NewEvent): Promise<string> {
+	return (await recordEvent(tx, who, event)).id;
+}
+
+async function recordEvent(tx: Tx, who: Acting, event: NewEvent) {
 	const [row] = await tx
 		.insert(caseEvents)
 		.values({
@@ -149,8 +154,8 @@ async function record(tx: Tx, who: Acting, event: NewEvent): Promise<string> {
 			data: event.data ?? {},
 			at: who.at
 		})
-		.returning({ id: caseEvents.id });
-	return row!.id;
+		.returning({ id: caseEvents.id, seq: caseEvents.seq });
+	return row!;
 }
 
 /**
@@ -888,6 +893,225 @@ export function decideApproval(
 			data: note ? { note } : {}
 		});
 		await recordProgress(tx, who, c);
+		return done;
+	});
+}
+
+// Drafts and questions (ADR 0025): they never change an item's status.
+
+/** Notes that the actor has started on an item, once, unless they already have. */
+async function markStarted(
+	tx: Tx,
+	who: Acting,
+	c: LoadedCase,
+	a: LoadedAttachment,
+	state: ItemState
+) {
+	if (state.status !== 'ready' && state.status !== 'held') return;
+	const by = who.actor.onBehalfOfId ?? who.actor.id;
+	if (state.progress.started.some((s) => s.by === who.actor.id || s.by === by)) return;
+	await record(tx, who, {
+		caseId: c.id,
+		attachmentId: a.id,
+		item: state.item.id,
+		type: 'step.started'
+	});
+}
+
+export interface DraftInput extends ItemRef {
+	/** What the form holds for each fact, by fact id, as text. Files wait for completion. */
+	values: Record<string, string[]>;
+}
+
+/**
+ * Saves what has been typed into an item's form without completing it. Anyone who can do the
+ * item sees the draft and carries on from it; completing the item clears it. Nothing is recorded
+ * on the case until then, so other processes never see a draft.
+ */
+export function saveDraft(db: Db, actor: Actor, input: DraftInput, options: RuntimeOptions = {}) {
+	return onItem(db, actor, input, options, async ({ tx, who, c, a, state }) => {
+		await requireOpen(tx, state);
+		const facts = new Set<string>(collectedBy(state.item));
+		const values = Object.fromEntries(
+			Object.entries(input.values)
+				.filter(([fact]) => facts.has(fact))
+				.map(([fact, list]) => [fact, list.map((v) => v.slice(0, 10_000)).slice(0, 200)])
+		);
+		await markStarted(tx, who, c, a, state);
+		await record(tx, who, {
+			caseId: c.id,
+			attachmentId: a.id,
+			item: state.item.id,
+			type: 'step.saved',
+			data: { values }
+		});
+		return done;
+	});
+}
+
+export interface QuestionInput extends ItemRef {
+	/** Who is asked: someone who can open the case. */
+	to: string;
+	text: string;
+	/** Also pause the item until the answer comes, when it is ready. */
+	pause?: boolean;
+}
+
+/**
+ * Asks someone who can open the case for information an item needs, as a thread on the item.
+ * Asking can also pause the item, with the question as the pause's note, so whoever waits on it
+ * sees why.
+ */
+export function askQuestion(
+	db: Db,
+	actor: Actor,
+	input: QuestionInput,
+	options: RuntimeOptions = {}
+): Promise<{ ok: true; question: number } | RuntimeRefusal> {
+	return onItem(db, actor, input, options, async ({ tx, who, c, a, state }) => {
+		await requireOpen(tx, state);
+		const text = input.text.trim();
+		const problems: FieldProblem[] = [];
+		if (!text) problems.push({ field: 'text', message: 'Say what you need to know' });
+		const me = who.actor.onBehalfOfId ?? who.actor.id;
+		if (!input.to) problems.push({ field: 'to', message: 'Choose who to ask' });
+		else if (input.to === me || input.to === who.actor.id)
+			problems.push({ field: 'to', message: 'Ask someone other than yourself' });
+		else if (
+			!(await knownInAccount(tx, c.accountId, input.to)) ||
+			!(
+				await can(
+					tx,
+					{ id: input.to },
+					'case.read',
+					{ type: 'case', caseId: c.id },
+					{ now: who.at }
+				)
+			).allowed
+		)
+			problems.push({ field: 'to', message: 'Choose someone who can open this case' });
+		if (problems.length) {
+			throw new Refused(
+				refuse('invalid-input', problems.map((p) => p.message).join('; '), problems)
+			);
+		}
+		await markStarted(tx, who, c, a, state);
+		const asked = await recordEvent(tx, who, {
+			caseId: c.id,
+			attachmentId: a.id,
+			item: state.item.id,
+			type: 'question.asked',
+			data: { to: input.to, text: text.slice(0, 5000) }
+		});
+		if (input.pause && state.status === 'ready') {
+			await record(tx, who, {
+				caseId: c.id,
+				attachmentId: a.id,
+				item: state.item.id,
+				type: 'step.held',
+				data: { note: `Asked ${await nameOf(tx, input.to)}: ${text.slice(0, 500)}` }
+			});
+		}
+		return { ok: true as const, question: asked.seq };
+	});
+}
+
+export interface QuestionRef extends ItemRef {
+	question: number;
+}
+
+/**
+ * Locks the case a question belongs to and checks the actor is in its thread: the person asked,
+ * the asker, or someone who can do the item.
+ */
+function onQuestion<T>(
+	db: Db,
+	actor: Actor,
+	ref: QuestionRef,
+	options: RuntimeOptions,
+	work: (ctx: ItemContext & { question: { id: number; by: string; to: string } }) => Promise<T>
+): Promise<T | RuntimeRefusal> {
+	const now = options.now ?? new Date();
+	return attempt(() =>
+		db.transaction(async (tx) => {
+			const notFound = () => new Refused(refuse('not-found', 'That question does not exist.'));
+			if (!/^[0-9a-f-]{36}$/i.test(ref.attachmentId)) throw notFound();
+			const [row] = await tx
+				.select({ caseId: caseAttachments.caseId })
+				.from(caseAttachments)
+				.where(eq(caseAttachments.id, ref.attachmentId));
+			if (!row) throw notFound();
+			await tx.select({ id: cases.id }).from(cases).where(eq(cases.id, row.caseId)).for('update');
+			const {
+				cases: [c]
+			} = await loadCases(tx, [row.caseId], now);
+			const a = c?.attachments.find((x) => x.id === ref.attachmentId);
+			const state = a?.state.items.find((i) => i.item.id === ref.item);
+			const question = a?.conversation.questions.find(
+				(q) => q.id === ref.question && q.item === ref.item
+			);
+			if (!c || !a || !state || !question) throw notFound();
+			await check(tx, actor, 'case.read', { type: 'case', caseId: c.id }, now);
+			const inThread = [actor.id, actor.onBehalfOfId].some(
+				(id) => id === question.by || id === question.to
+			);
+			if (!inThread) {
+				await check(
+					tx,
+					actor,
+					'case.act_in_role',
+					{ type: 'case-role', caseId: c.id, role: state.item.role },
+					now
+				);
+			}
+			const who = await acting(tx, actor, now);
+			return work({ tx, who, c, a, state, question });
+		})
+	);
+}
+
+/** Replies in a question's thread: the answer, or a follow-up. */
+export function replyToQuestion(
+	db: Db,
+	actor: Actor,
+	input: QuestionRef & { text: string },
+	options: RuntimeOptions = {}
+) {
+	return onQuestion(db, actor, input, options, async ({ tx, who, c, a, state, question }) => {
+		const text = input.text.trim();
+		if (!text) {
+			throw new Refused(
+				refuse('invalid-input', 'Write a reply first.', [
+					{ field: 'reply', message: 'Write a reply' }
+				])
+			);
+		}
+		await record(tx, who, {
+			caseId: c.id,
+			attachmentId: a.id,
+			item: state.item.id,
+			type: 'question.replied',
+			data: { question: question.id, text: text.slice(0, 5000) }
+		});
+		return done;
+	});
+}
+
+/** Closes a question's thread: the information is in, or it is no longer needed. */
+export function resolveQuestion(
+	db: Db,
+	actor: Actor,
+	input: QuestionRef,
+	options: RuntimeOptions = {}
+) {
+	return onQuestion(db, actor, input, options, async ({ tx, who, c, a, state, question }) => {
+		await record(tx, who, {
+			caseId: c.id,
+			attachmentId: a.id,
+			item: state.item.id,
+			type: 'question.resolved',
+			data: { question: question.id }
+		});
 		return done;
 	});
 }

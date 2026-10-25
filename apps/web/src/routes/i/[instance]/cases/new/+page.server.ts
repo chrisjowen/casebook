@@ -1,5 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { casebookPeople, listProcesses, loadWork, startCase } from '@casebook/store';
+import { casebookPeople, listProcesses, loadCase, loadWork, startCase } from '@casebook/store';
 import { getDb } from '$lib/server/db';
 import { actorOf, orError, refused } from '$lib/server/runner';
 import { links } from '$lib/runner/links';
@@ -7,7 +7,8 @@ import type { Actions, PageServerLoad } from './$types';
 
 /**
  * Start a case: pick a published process the user may start (write access, or a role in it),
- * then a new case or an existing one, which shares that case's record (ADR 0001).
+ * then a new case or an existing one, which shares that case's record (ADR 0001). Starting it
+ * goes straight to its first task when that is the user's and ready, or else to the case.
  */
 export const load: PageServerLoad = async ({ params, locals, url }) => {
 	const actor = actorOf(locals);
@@ -60,9 +61,17 @@ export const actions: Actions = {
 			roles
 		});
 		if (!result.ok) return refused(result);
+		const started = `?started=${encodeURIComponent(String(form.get('processTitle') ?? 'the process'))}`;
+		const opened = await loadCase(getDb(), actorOf(locals), params.instance, result.caseId);
+		const first =
+			'ok' in opened
+				? undefined
+				: opened.mine.find((t) => t.attachmentId === result.attachmentId && t.status === 'ready');
 		redirect(
 			303,
-			`${links.case(params.instance, result.caseId)}?started=${encodeURIComponent(String(form.get('processTitle') ?? 'the process'))}`
+			first
+				? `${links.task(params.instance, result.caseId, first.attachmentId, first.item)}${started}`
+				: `${links.case(params.instance, result.caseId)}${started}`
 		);
 	}
 };

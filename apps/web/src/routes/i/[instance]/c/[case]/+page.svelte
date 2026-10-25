@@ -1,8 +1,9 @@
 <script lang="ts">
-	// A case's own workspace: the user's tasks on it, one stage strip per attached process with a
-	// plain line about what others are doing, and the latest from the case record.
+	// A case's own workspace: what to do next on it (the user's first ready task, up front), the
+	// rest of their tasks, one stage strip per attached process with a plain line about what
+	// others are doing, and the latest from the case record.
 	import { page } from '$app/state';
-	import { FileText, Plus, Workflow } from '@lucide/svelte';
+	import { ArrowRight, FileText, Plus, Workflow } from '@lucide/svelte';
 	import Frame from '$lib/runner/Frame.svelte';
 	import FilterChips from '$lib/runner/FilterChips.svelte';
 	import Notice from '$lib/runner/Notice.svelte';
@@ -22,7 +23,13 @@
 	const filter = $derived(page.url.searchParams.get('process') ?? '');
 	const started = $derived(page.url.searchParams.get('started'));
 	const keep = (definitionSlug: string) => !filter || definitionSlug === filter;
-	const mine = $derived(c.mine.filter((t) => keep(t.definitionSlug)));
+	const all = $derived(c.mine.filter((t) => keep(t.definitionSlug)));
+	// The one to do now: sent back first, then the earliest ready one; repeating work stays quiet.
+	const upNext = $derived(
+		all.find((t) => t.status === 'ready' && t.sentBack && !t.repeating) ??
+			all.find((t) => t.status === 'ready' && !t.repeating)
+	);
+	const mine = $derived(all.filter((t) => t !== upNext));
 	const open = $derived(c.mine.filter((t) => t.status === 'ready' || t.status === 'held').length);
 	const recent = $derived(c.record.filter((r) => !r.evidence).slice(0, 4));
 	const options = $derived([
@@ -71,8 +78,44 @@
 
 		<div class="mb-6 px-1"><FilterChips {options} /></div>
 
+		{#if upNext}
+			<section class="mb-8 rounded-xl border bg-card px-5 py-5" aria-labelledby="up-next">
+				<p id="up-next" class="text-[12px] font-semibold tracking-wide text-brand uppercase">
+					Up next for you
+				</p>
+				<div class="mt-1.5 flex flex-wrap items-end gap-x-6 gap-y-3">
+					<div class="min-w-0 flex-1">
+						<h2 class="text-[17px] font-semibold">{upNext.title}</h2>
+						<p class="mt-0.5 text-[13px] text-muted-foreground">
+							{upNext.process} · Stage {upNext.stage.number} of {upNext.stage.count} · {upNext.stage
+								.title}{upNext.started.some((s) => s.by.id !== data.user.id)
+								? ` · ${upNext.started
+										.filter((s) => s.by.id !== data.user.id)
+										.map((s) => s.by.name)
+										.join(' and ')} started this`
+								: ''}
+						</p>
+						{#if upNext.sentBack}
+							<p class="mt-1.5 text-[13px] text-amber-800">
+								Sent back by {upNext.sentBack.by.name}: “{upNext.sentBack.note}”
+							</p>
+						{/if}
+					</div>
+					<a
+						href={links.task(slug, c.id, upNext.attachmentId, upNext.item)}
+						class="flex h-10 items-center gap-2 rounded-lg bg-foreground px-4 text-[14px] font-medium text-background hover:bg-foreground/90"
+						>{upNext.started.some((s) => s.by.id === data.user.id) ? 'Carry on' : 'Start'}
+						<ArrowRight class="size-4" /></a
+					>
+				</div>
+			</section>
+		{/if}
+
 		{#if mine.length}
-			<Section title="Your tasks in this case" count={mine.length}>
+			<Section
+				title={upNext ? 'Your other tasks in this case' : 'Your tasks in this case'}
+				count={mine.length}
+			>
 				{#each mine as task (task.attachmentId + task.item)}
 					<TaskRow
 						{task}
@@ -83,7 +126,7 @@
 					/>
 				{/each}
 			</Section>
-		{:else}
+		{:else if !upNext}
 			<p
 				class="rounded-xl border border-dashed bg-card px-5 py-4 text-[13px] text-muted-foreground"
 			>

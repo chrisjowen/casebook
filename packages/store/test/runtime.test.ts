@@ -27,8 +27,12 @@ import {
 	loadRequests,
 	loadTask,
 	loadWork,
+	askQuestion,
 	moveToLatest,
+	replyToQuestion,
+	resolveQuestion,
 	resumeItem,
+	saveDraft,
 	skipItem,
 	startCase,
 	startItem,
@@ -449,6 +453,95 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 			await resumeItem(db, users.devon, item);
 			const resumed = await loadTask(db, users.devon, 'acme', item);
 			expect(resumed).toMatchObject({ task: { status: 'ready' } });
+		});
+
+		it('keeps a saved draft of a form for anyone who can do it, until it is completed', async () => {
+			const { attachmentId } = await newIncident('INC-3031 Draft');
+			const item = ref(attachmentId, 'step.report-incident');
+			const task = await loadTask(db, users.devon, 'acme', item);
+			if ('ok' in task) throw new Error(task.reason);
+			const fact = task.fields[0]!.fact;
+			expect(
+				(
+					await saveDraft(db, users.devon, {
+						...item,
+						values: { [fact]: ['Half done'], other: ['x'] }
+					})
+				).ok
+			).toBe(true);
+			const saved = await loadTask(db, users.devon, 'acme', item);
+			if ('ok' in saved) throw new Error(saved.reason);
+			expect(saved.draft).toMatchObject({
+				values: { [fact]: ['Half done'] },
+				by: { name: 'Devon Developer' }
+			});
+			expect(saved.task.status).toBe('ready');
+			expect(saved.task.started).toHaveLength(1);
+			expectRefused(await saveDraft(db, users.rae, { ...item, values: {} }), 'access-denied');
+		});
+
+		it('asks someone for information as a thread on the task, which they answer from My work', async () => {
+			const { attachmentId } = await newIncident('INC-3032 Question');
+			const item = ref(attachmentId, 'step.report-incident');
+			expectRefused(
+				await askQuestion(db, users.devon, { ...item, to: users.devon.id, text: 'Me?' }),
+				'invalid-input',
+				/other than yourself/
+			);
+			expectRefused(
+				await askQuestion(db, users.devon, { ...item, to: users.dana.id, text: 'Hello?' }),
+				'invalid-input',
+				/can open this case/
+			);
+			expectRefused(
+				await askQuestion(db, users.devon, { ...item, to: users.rae.id, text: ' ' }),
+				'invalid-input'
+			);
+			const asked = await askQuestion(db, users.devon, {
+				...item,
+				to: users.rae.id,
+				text: 'Which region is affected?',
+				pause: true
+			});
+			if (!asked.ok) throw new Error(asked.reason);
+
+			const held = await loadTask(db, users.devon, 'acme', item);
+			if ('ok' in held) throw new Error(held.reason);
+			expect(held.task).toMatchObject({
+				status: 'held',
+				held: { note: 'Asked Rae Reader: Which region is affected?' },
+				questions: { waiting: 1, answered: 0 }
+			});
+			expect(held.questions).toMatchObject([
+				{ text: 'Which region is affected?', to: { name: 'Rae Reader' }, waiting: true }
+			]);
+
+			const raeWork = await work('rae', 'acme');
+			expect(raeWork.asked).toMatchObject([
+				{ title: held.task.title, question: { text: 'Which region is affected?' } }
+			]);
+			const question = { ...item, question: asked.question };
+			expect((await replyToQuestion(db, users.rae, { ...question, text: 'eu-west-1' })).ok).toBe(
+				true
+			);
+			expect((await work('rae', 'acme')).asked).toEqual([]);
+			const answered = await loadTask(db, users.devon, 'acme', item);
+			if ('ok' in answered) throw new Error(answered.reason);
+			expect(answered.task.questions).toEqual({ waiting: 0, answered: 1 });
+			expect(answered.questions[0]).toMatchObject({
+				waiting: false,
+				replies: [{ by: { name: 'Rae Reader' }, text: 'eu-west-1' }]
+			});
+
+			expectRefused(
+				await replyToQuestion(db, users.wren, { ...question, text: 'Not mine' }),
+				'access-denied'
+			);
+			expect((await resolveQuestion(db, users.devon, question)).ok).toBe(true);
+			const resolved = await loadTask(db, users.devon, 'acme', item);
+			if ('ok' in resolved) throw new Error(resolved.reason);
+			expect(resolved.questions[0]!.resolved).toMatchObject({ by: { name: 'Devon Developer' } });
+			expect(resolved.task.questions).toBeUndefined();
 		});
 
 		it('refuses work to people without the role, and human-only work to agents', async () => {

@@ -3,6 +3,8 @@
 - **Case**: the shared subject of work (a baby, an incident, a new hire). Process instances attach to it and share its facts.
 - **Attached process**: one run of a definition on a case, bound to a published version; a label tells two runs of the same definition apart.
 - **Work item**: a step, decision or approval as it stands on a case: done, skipped, ready, held, waiting, blocked or upcoming.
+- **Task draft**: what someone typed into a task's form and saved for later; it records nothing on the case until the task is completed (0025).
+- **Question**: a thread on a work item asking a named person for information it needs, answered by them on the task and listed on their My work (0025).
 - **Case record**: every value and file recorded on a case, each with who recorded it, when, and the work item it came from.
 - **Instance**: an account seen from the runner; the instance switcher moves between the accounts a user belongs to.
 - **Guest**: someone who holds a role in an account without belonging to it, and sees only the forms addressed to them.

@@ -16,11 +16,15 @@ These screenshots come from `pnpm db:seed`: the synthetic sample processes and t
 
 ![My work, listing a ready task, a paused task and two waiting on someone else](docs/screenshots/my-work.webp)
 
-**A case workspace**: your tasks, then one stage strip per process attached to the case.
+**Starting a case**: three short steps, ending with a check of what happens next.
+
+![Start a case on its last step, Check and start, for a medical bill claim](docs/screenshots/start.webp)
+
+**A case workspace**: what is up next for you, then one stage strip per process attached to the case.
 
 ![The Mira Example case with Register a birth abroad and Claim a medical bill attached](docs/screenshots/case.webp)
 
-**A task form**: what the task uses from the case, with where each value came from, and what to record.
+**A task**: one focused page with the stages, what the task uses from the case, what to record, one action bar, its questions, and the process's other tasks alongside.
 
 ![The Complete the application form task in Register a birth abroad](docs/screenshots/task.webp)
 
@@ -90,14 +94,16 @@ Files attached to cases are stored on local disk in `CASEBOOK_FILES_DIR`, or `.c
 Every page shares one sidebar: the instance switcher at the top left moves between the accounts you belong to; **New** makes a case, a process or a spreadsheet import; **My work**, **Cases** and **Processes** are the sections, with every process listed under them; and ⌘K (Ctrl-K) searches processes, cases and tasks and runs their actions.
 Breadcrumbs start at the section, and each process, case and task has the same "…" actions menu wherever it appears.
 
-- **My work** lists what waits on you in that instance, in a fixed order: Ready for you, Needs information (paused, with the reason), Waiting on someone else (who, and any pause note), and a quiet Recurring group for repeating steps.
-- **Cases** are workspaces: your tasks on the case, one stage strip per attached process with a line about what others are doing, and **View whole process**, a read-only list of every stage and step.
+- **My work** lists what waits on you in that instance, in a fixed order: Questions for you (others asking you for information on their tasks), Ready for you, Needs information (paused, with the reason), Waiting on someone else (who, and any pause note), and a quiet Recurring group for repeating steps.
+- **Cases** are workspaces: what is up next for you on the case, your other tasks, one stage strip per attached process with a line about what others are doing, and **View whole process**, a read-only list of every stage and step.
   The **Case record** lists every value and file on the case, once, with who recorded it, when and the task it came from.
-- A **task** is one focused form: who it is for, what it uses (values already on the case, with where they came from) and what to record, typed from each fact's schema.
+- A **task** is one focused page (ADR 0025): its stage strip and status, then its form: who it is for, what it uses (values already on the case, with where they came from) and what to record, typed from each fact's schema. A rail lists the process's other tasks by stage.
+  What you type is saved as you go, without recording it on the case, for whoever picks the task up. One action bar holds **Complete**, **Save for later** and "I can’t finish this yet", which says what is missing and can ask a named person for it, pausing the task until they answer.
+  **Questions** on a task are threads: anyone who can open the case can be asked, they answer from My work, and the answer shows on the paused task. After completing a task, the page hands you on to your next ready tasks.
   There is no claim button: the first to finish completes it, and others see who has started.
-  "I can’t finish this yet" pauses it with a note that whoever is waiting sees; a step whose condition is only prose can be marked as not applying.
+  A step whose condition is only prose can be marked as not applying.
 - **Processes** lists the instance's definitions with status, version, change policy and live cases. A process opens on its own home with three tabs: **Overview** (its stages and steps, live cases and a "Draft changes pending" note), **Edit** (the board editor, in place) and **Cases** (the cases running it), with **Start a case** at the top.
-  A case is started by anyone with write access or a role in the process; **New case** and **Add a process** on a case use the same form.
+  A case is started by anyone with write access or a role in the process, in three short steps: what to run, which case it is for and who's who, then a check of what happens next; it opens on your first task when that is yours. **New case** and **Add a process** on a case use the same flow.
 - A **guest** holds a role in an account without belonging to it, such as a hospital's billing contact on one case. Guests see only **Requests for you**, and each form shows only the values it needs, one line of context and who asked.
 
 The seed lays out a handful of cases in different stages, so each demo user's work differs.

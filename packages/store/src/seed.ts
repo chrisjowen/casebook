@@ -29,6 +29,7 @@ import {
 } from './repository.js';
 import {
 	completeItem,
+	askQuestion,
 	holdItem,
 	startCase,
 	startItem,
@@ -438,6 +439,19 @@ async function seedCases(db: Db, seed: CaseSeed) {
 				note: 'The apostille hasn’t come back from the registry in Lisbon yet. They said 2–3 weeks.'
 			},
 			{ now: ago(11) }
+		)
+	);
+	await must(
+		askQuestion(
+			db,
+			as(alex),
+			{
+				attachmentId: citizenship.attachmentId,
+				item: 'step.provide-marriage-certificate',
+				to: sam.id,
+				text: 'Did the registry give you a reference number when you sent the certificate off? I can chase them with it.'
+			},
+			{ now: ago(10) }
 		)
 	);
 
