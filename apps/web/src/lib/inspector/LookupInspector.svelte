@@ -53,7 +53,7 @@
 					}))}
 		/>
 	</div>
-	<Group title="Values" count={lookup.core.values.length}>
+	<Group title="Values">
 		<LookupValues
 			values={lookup.core.values}
 			onchange={edit && ((next) => edit(changeValues(ix, id, next)))}

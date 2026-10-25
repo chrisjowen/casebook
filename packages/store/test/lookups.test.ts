@@ -313,7 +313,8 @@ describe.skipIf(!url)('choices on case forms (Postgres)', () => {
 		expect(await report(['api', 'mainframe'])).toMatchObject({
 			ok: false,
 			code: 'invalid-input',
-			reason: 'Affected services: "mainframe" is not one of the choices'
+			reason:
+				'Affected services: must be one of Public API, Sign-in proxy, Checkout API, Payments gateway, Search indexer, Status page'
 		});
 		expect(await report(['api', 'checkout-api'])).toMatchObject({ ok: true });
 

@@ -12,11 +12,12 @@
 - **Draft revision**: one numbered state of a definition's draft, recording the operations that made it, its author and who the author acted for; the only place drafts live.
 - **Case binding**: how a process attached to a case follows its definition. A pinned one stays on its version until explicitly moved; a following one moves to each new version.
 - **Node operation**: a typed, checked edit to a draft, such as `add_node` or `link`; the one way the editor and the wizard change a definition.
-- **Node**: any element of a definition (process, stage, step, fact, role, decision, approval).
+- **Node**: any element of a definition (process, stage, step, fact, role, decision, approval, lookup).
 - **Core**: the typed, schema-validated layer of a node: identity, kind, edges, role, actor policy, guards, source, invariants.
 - **Content**: the Markdown prose guidance layer of a node.
 - **Data**: the open, namespaced extension layer of a node (`bpmn.*`, `excel.*`, `ui.*`, `hooks.*`).
 - **Fact**: a typed value recorded once on a case, with who recorded it, when, and its evidence.
+- **Lookup**: a named list of values a choice fact is chosen from, each with a stored value, an optional label and code, and whether it is turned off (0025). A process lookup is a node of one definition; a shared lookup belongs to a namespace and is seen by the processes in it and below it.
 - **Evidence**: proof backing a fact, such as a document or scan, with format and copy requirements.
 - **Guard**: a condition on a step or edge: prose, plus an optional safe expression over facts and roles.
 - **Role**: an abstract slot in a definition (for example incident commander), filled by principals at runtime.

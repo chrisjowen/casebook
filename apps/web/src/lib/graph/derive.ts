@@ -466,7 +466,8 @@ export function evidenceFor(
 	return node?.core.schema['x-evidence'];
 }
 
-const NODE_ID = /\b(?:process|stage|step|fact|role|decision|approval)\.[a-z0-9]+(?:-[a-z0-9]+)*/g;
+const NODE_ID =
+	/\b(?:process|stage|step|fact|role|decision|approval|lookup)\.[a-z0-9]+(?:-[a-z0-9]+)*/g;
 
 /** Replaces node ids in a model message with the nodes' plain names. */
 export function plainText(ix: ProcessIndex, message: string): string {

@@ -236,14 +236,16 @@
 					{#if values}
 						{@const on = values.core.values.filter((v) => !v.disabled).length}
 						<button
-							class="mb-0.5 inline-flex cursor-pointer items-center gap-1 rounded px-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+							class="mb-0.5 flex max-w-full cursor-pointer items-center gap-1 rounded px-1 text-left text-[11px] whitespace-nowrap text-muted-foreground hover:bg-muted hover:text-foreground"
 							aria-expanded={open === fact}
 							onclick={() => (open = open === fact ? undefined : fact)}
 							>{#if open === fact}<ChevronDown class="size-3" />{:else}<ChevronRight
 									class="size-3"
-								/>{/if}{on
-								? `${on} ${on === 1 ? 'value' : 'values'} from ${labelOf(ix, values.core.id)}`
-								: `No values yet in ${labelOf(ix, values.core.id)}`}</button
+								/>{/if}<span class="truncate"
+								>{on
+									? `${on} ${on === 1 ? 'value' : 'values'} from ${labelOf(ix, values.core.id)}`
+									: `No values yet in ${labelOf(ix, values.core.id)}`}</span
+							></button
 						>
 					{:else if lookup?.kind === 'dataset'}
 						<div class="truncate px-1 pb-0.5 text-[11px] text-muted-foreground">
