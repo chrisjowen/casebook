@@ -1,4 +1,4 @@
-# 0018. Node operations: checks, history and undo
+# 0019. Node operations: checks, history and undo
 
 Status: Accepted
 

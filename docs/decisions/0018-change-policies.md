@@ -1,4 +1,4 @@
-# 0017. Publishing under change policies: approval, attribution and living versions
+# 0018. Publishing under change policies: approval, attribution and living versions
 
 Status: Accepted. Amends 0016.
 
