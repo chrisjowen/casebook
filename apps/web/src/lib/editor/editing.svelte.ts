@@ -163,7 +163,9 @@ export class Editor {
 			const result = deserialize(await response.text());
 			if (result.type === 'success') {
 				this.notice = undefined;
+				const before = sidebarEntry(this.current());
 				await invalidate('casebook:board');
+				if (sidebarEntry(this.current()) !== before) await invalidate('casebook:shell');
 				return result.data ?? {};
 			}
 			if (result.type === 'failure') {
@@ -191,6 +193,14 @@ export class Editor {
 			this.#timer = setTimeout(() => (this.notice = undefined), undo ? 6000 : 3500);
 	}
 }
+
+/** What the app shell shows of a definition: its title, published version and pending changes. */
+const sidebarEntry = (d: LoadedDefinition | undefined) =>
+	JSON.stringify([
+		d?.document.nodes.find((x) => x.core.kind === 'process')?.core.title,
+		d?.published?.version,
+		(d?.changes.length ?? 0) > 0
+	]);
 
 const KEY = Symbol('casebook-editor');
 
