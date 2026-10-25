@@ -46,6 +46,8 @@ export type StoreRule =
 	| 'definition-living'
 	| 'edit-publish-fields'
 	| 'revision-other-definition'
+	| 'publish-body-missing'
+	| 'publish-body-mismatch'
 	| 'draft-author-kind'
 	| 'draft-on-behalf-of-required'
 	| 'draft-on-behalf-of-forbidden'
@@ -55,6 +57,7 @@ export type StoreRule =
 	| 'version-not-published'
 	| 'version-retired'
 	| 'case-missing'
+	| 'case-namespace-outside-definition'
 	| 'case-follow-needs-latest'
 	| 'case-move-not-pinned'
 	| 'case-move-other-definition'
@@ -476,7 +479,8 @@ export async function appendDraftRevision(db: Db, input: NewDraftRevision): Prom
 
 export interface NewDefinitionVersion extends VersionFields {
 	definitionId: string;
-	body: unknown;
+	/** Needed without a source revision; with one, the body is the revision's and may be omitted. */
+	body?: unknown;
 	authorId: string;
 	publishedById: string;
 	/** The draft revision being published, which must belong to the definition. */
@@ -484,7 +488,10 @@ export interface NewDefinitionVersion extends VersionFields {
 }
 
 /** Assigns the next version number, inserts the version and moves following cases to it. */
-async function insertVersion(tx: Tx, input: NewDefinitionVersion): Promise<DefinitionVersion> {
+async function insertVersion(
+	tx: Tx,
+	input: NewDefinitionVersion & { body: unknown }
+): Promise<DefinitionVersion> {
 	const [last] = await tx
 		.select({ version: max(definitionVersions.version) })
 		.from(definitionVersions)
@@ -513,7 +520,9 @@ async function insertVersion(tx: Tx, input: NewDefinitionVersion): Promise<Defin
 
 /**
  * Publishes the next numbered version of a governed definition, typically from a draft revision.
- * Versions are immutable once written: the repository offers no way to change or delete one
+ * Published from a revision, the version takes that revision's body and records it as its source;
+ * a different explicit body is refused. Published from an explicit body alone, it records no
+ * source. Versions are immutable once written: the repository offers no way to change or delete one
  * except `retireVersion`. Living definitions publish on every edit instead.
  */
 export async function publishVersion(
@@ -528,19 +537,39 @@ export async function publishVersion(
 				'a living definition publishes each edit; record an edit with appendDraftRevision'
 			);
 		}
-		if (input.sourceRevisionId !== undefined) {
-			const [source] = await tx
-				.select({ definitionId: draftRevisions.definitionId })
-				.from(draftRevisions)
-				.where(eq(draftRevisions.id, input.sourceRevisionId));
-			if (source?.definitionId !== input.definitionId) {
+		if (input.sourceRevisionId === undefined) {
+			if (input.body === undefined) {
 				throw new StoreRuleError(
-					'revision-other-definition',
-					`draft revision ${input.sourceRevisionId} is not a revision of definition ${input.definitionId}`
+					'publish-body-missing',
+					'a version is published from a source revision or an explicit body'
 				);
 			}
+			return insertVersion(tx, { ...input, body: input.body });
 		}
-		return insertVersion(tx, input);
+		const [source] = await tx
+			.select({
+				definitionId: draftRevisions.definitionId,
+				body: draftRevisions.body,
+				sameBody:
+					input.body === undefined
+						? sql<boolean>`true`
+						: sql<boolean>`${draftRevisions.body} = ${JSON.stringify(input.body)}::jsonb`
+			})
+			.from(draftRevisions)
+			.where(eq(draftRevisions.id, input.sourceRevisionId));
+		if (source?.definitionId !== input.definitionId) {
+			throw new StoreRuleError(
+				'revision-other-definition',
+				`draft revision ${input.sourceRevisionId} is not a revision of definition ${input.definitionId}`
+			);
+		}
+		if (!source.sameBody) {
+			throw new StoreRuleError(
+				'publish-body-mismatch',
+				`the body differs from draft revision ${input.sourceRevisionId}; publish the revision's body or omit it`
+			);
+		}
+		return insertVersion(tx, { ...input, body: source.body });
 	});
 }
 
@@ -562,20 +591,27 @@ export async function retireVersion(db: Db, versionId: string): Promise<Definiti
 
 // Cases
 
-/** Locks a version against retiring and returns what binding a case to it needs. */
-async function versionForBinding(tx: Tx, versionId: string) {
+/**
+ * Locks a version against retiring, and its definition against publishing, and returns what
+ * binding a case in `caseNamespaceId` to it needs. The case namespace must be the definition's
+ * namespace or one of its descendants, in the same account (ADR 0007, ADR 0015).
+ */
+async function versionForBinding(tx: Tx, versionId: string, caseNamespaceId: string) {
 	const [version] = await tx
 		.select({
 			definitionId: definitionVersions.definitionId,
 			version: definitionVersions.version,
 			status: definitionVersions.status,
-			changePolicy: processDefinitions.changePolicy
+			changePolicy: processDefinitions.changePolicy,
+			accountId: namespaces.accountId,
+			namespacePath: namespaces.path
 		})
 		.from(definitionVersions)
 		.innerJoin(processDefinitions, eq(processDefinitions.id, definitionVersions.definitionId))
+		.innerJoin(namespaces, eq(namespaces.id, processDefinitions.namespaceId))
 		.where(eq(definitionVersions.id, versionId))
-		// FOR SHARE makes a concurrent retire wait until the binding is written.
-		.for('share', { of: definitionVersions });
+		// FOR SHARE makes a concurrent retire or publish wait until the binding is written.
+		.for('share', { of: [definitionVersions, processDefinitions] });
 	if (!version) {
 		throw new StoreRuleError('version-missing', `definition version ${versionId} does not exist`);
 	}
@@ -583,6 +619,20 @@ async function versionForBinding(tx: Tx, versionId: string) {
 		throw new StoreRuleError(
 			'version-retired',
 			`definition version ${versionId} is retired and takes no new cases`
+		);
+	}
+	const [caseNamespace] = await tx
+		.select({ accountId: namespaces.accountId, path: namespaces.path })
+		.from(namespaces)
+		.where(eq(namespaces.id, caseNamespaceId));
+	const inside =
+		caseNamespace?.accountId === version.accountId &&
+		(caseNamespace.path === version.namespacePath ||
+			caseNamespace.path.startsWith(`${version.namespacePath}/`));
+	if (!inside) {
+		throw new StoreRuleError(
+			'case-namespace-outside-definition',
+			`namespace ${caseNamespaceId} is not "${version.namespacePath}" or one of its descendants in the definition's account`
 		);
 	}
 	return version;
@@ -597,12 +647,13 @@ export interface NewCase {
 }
 
 /**
- * Creates a case bound to a published definition version (ADR 0002, ADR 0016). A following case
- * must start on the definition's latest published version.
+ * Creates a case bound to a published definition version (ADR 0002, ADR 0016), in the
+ * definition's namespace or one of its descendants. A following case must start on the
+ * definition's latest published version.
  */
 export async function createCase(db: Db, input: NewCase): Promise<Case> {
 	return db.transaction(async (tx) => {
-		const version = await versionForBinding(tx, input.definitionVersionId);
+		const version = await versionForBinding(tx, input.definitionVersionId, input.namespaceId);
 		const binding =
 			input.binding ?? (version.changePolicy === 'living' ? 'follow_latest' : 'pinned');
 		if (binding === 'follow_latest') {
@@ -645,6 +696,7 @@ export async function moveCaseVersion(db: Db, input: CaseVersionMove): Promise<C
 		const [current] = await tx
 			.select({
 				binding: cases.binding,
+				namespaceId: cases.namespaceId,
 				versionId: cases.definitionVersionId,
 				definitionId: definitionVersions.definitionId,
 				version: definitionVersions.version
@@ -660,7 +712,7 @@ export async function moveCaseVersion(db: Db, input: CaseVersionMove): Promise<C
 				'a following case tracks the latest version and is not moved by hand'
 			);
 		}
-		const target = await versionForBinding(tx, input.toVersionId);
+		const target = await versionForBinding(tx, input.toVersionId, current.namespaceId);
 		if (target.definitionId !== current.definitionId) {
 			throw new StoreRuleError(
 				'case-move-other-definition',

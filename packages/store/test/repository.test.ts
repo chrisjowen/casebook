@@ -925,6 +925,82 @@ describe.skipIf(!url)('store repository (Postgres)', () => {
 			);
 		});
 
+		it('publishes a draft revision with its own body, or an explicit body without provenance', async () => {
+			const { tree, def, edit } = await setup('governed');
+			const draft = await edit('draft');
+			const base = {
+				definitionId: def.id,
+				authorId: tree.owner.id,
+				publishedById: tree.owner.id
+			};
+
+			const fromRevision = await publishVersion(db, {
+				...base,
+				...fields(),
+				sourceRevisionId: draft.revision.id
+			});
+			expect(fromRevision).toMatchObject({
+				body: { title: 'draft' },
+				sourceRevisionId: draft.revision.id
+			});
+			await expectRule(
+				publishVersion(db, {
+					...base,
+					...fields(),
+					body: { title: 'something else' },
+					sourceRevisionId: draft.revision.id
+				}),
+				'publish-body-mismatch'
+			);
+
+			const explicit = await publishVersion(db, { ...base, ...fields(), body: { title: 'direct' } });
+			expect(explicit).toMatchObject({ body: { title: 'direct' }, sourceRevisionId: null });
+			await expectRule(publishVersion(db, { ...base, ...fields() }), 'publish-body-missing');
+		});
+
+		it('binds a case only in the definition namespace or its descendants, within the account', async () => {
+			const tree = await namespaceTree('eng', 'eng/sre', 'ops');
+			const def = await definition(tree.id('eng'), tree.owner.id);
+			const v1 = await publish(def.id, tree.owner.id);
+			const v2 = await publish(def.id, tree.owner.id);
+			const other = await namespaceTree();
+			const caseAt = (namespaceId: string) =>
+				createCase(db, { namespaceId, definitionVersionId: v1.id, title: 'Outage' });
+
+			await caseAt(tree.id('eng'));
+			const descendant = await caseAt(tree.id('eng/sre'));
+			const moved = await moveCaseVersion(db, {
+				caseId: descendant.id,
+				toVersionId: v2.id,
+				movedById: tree.owner.id
+			});
+			expect(moved.definitionVersionId).toBe(v2.id);
+
+			await expectRule(caseAt(tree.id('ops')), 'case-namespace-outside-definition');
+			await expectRule(caseAt(tree.id()), 'case-namespace-outside-definition');
+			await expectRule(caseAt(other.id()), 'case-namespace-outside-definition');
+		});
+
+		it('moves a following case created during a concurrent publish', async () => {
+			const { tree, def, newCase } = await setup('governed');
+			const v1 = await publish(def.id, tree.owner.id);
+			let publishing: Promise<{ id: string }> | undefined;
+			const following = await db.transaction(async (tx) => {
+				const created = await createCase(tx as unknown as Db, {
+					namespaceId: tree.id(),
+					definitionVersionId: v1.id,
+					title: 'Patient',
+					binding: 'follow_latest'
+				});
+				publishing = publish(def.id, tree.owner.id);
+				await new Promise((resolve) => setTimeout(resolve, 200));
+				return created;
+			});
+			const v2 = await publishing!;
+			expect(await boundVersion(following.id)).toBe(v2.id);
+			await expectRule(newCase(v1.id, 'follow_latest'), 'case-follow-needs-latest');
+		});
+
 		it('starts a following case on the latest version only', async () => {
 			const { tree, def, newCase } = await setup('governed');
 			const v1 = await publish(def.id, tree.owner.id);
