@@ -105,6 +105,45 @@ describe('publish', () => {
 		});
 	});
 
+	it('living: gives a newer revision its own version even when its content matches the latest', () => {
+		const first = publish({
+			policy: { mode: 'living' },
+			document: incidentManagement,
+			revision: 1,
+			publishedBy: alice.author
+		});
+		const latest = (first.allowed && first.version) as PublishedVersion;
+		expect(
+			publish({
+				policy: { mode: 'living' },
+				document: incidentManagement,
+				revision: 3,
+				latest,
+				publishedBy: alice.author
+			})
+		).toMatchObject({ allowed: true, version: { version: 2, revision: 3 } });
+		for (const revision of [1, undefined]) {
+			expect(
+				publish({
+					policy: { mode: 'living' },
+					document: incidentManagement,
+					...(revision === undefined ? {} : { revision }),
+					latest,
+					publishedBy: alice.author
+				})
+			).toMatchObject({ allowed: false, code: 'no-change' });
+		}
+		expect(
+			publish({
+				policy: { mode: 'governed' },
+				document: incidentManagement,
+				revision: 3,
+				latest,
+				publishedBy: alice.author
+			})
+		).toMatchObject({ allowed: false, code: 'no-change' });
+	});
+
 	it('refuses a governed publish while a check fails', () => {
 		expect(
 			publish({
@@ -430,6 +469,30 @@ describe('stored drafts', () => {
 				[3, 3]
 			]);
 			expect(versions[2]?.document.nodes).toEqual(versions[0]?.document.nodes);
+		});
+
+		it('an undo publishing before the edit it undoes stays live, and the edit is superseded', async () => {
+			const { store, alices, bobs } = await race((draft) => undoDraft(draft, bob, at));
+			store.release(1);
+			expect(await bobs).toMatchObject({
+				ok: true,
+				revision: { number: 3, revertedTo: 1 },
+				published: { version: 2, revision: 3, publishedBy: bob.author }
+			});
+			store.release(0);
+			const alicesResult = await alices;
+			expect(alicesResult).toMatchObject({
+				ok: true,
+				revision: { number: 2 },
+				supersededBy: { version: 2, revision: 3 }
+			});
+			expect(alicesResult).not.toHaveProperty('published');
+			const versions = await store.versions('def-incident');
+			expect(versions.map((v) => [v.version, v.revision])).toEqual([
+				[1, 1],
+				[2, 3]
+			]);
+			expect(versions[1]?.document.nodes).toEqual(versions[0]?.document.nodes);
 		});
 
 		it('the newer revision publishing first supersedes the older one, which is not an error', async () => {

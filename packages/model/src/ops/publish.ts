@@ -121,6 +121,8 @@ export function approvalProblem({
  * Decides whether `document` can be published under `policy` and, if so, builds the version to
  * record. A schema-invalid document is never published, under either policy; documents edited
  * through operations are always schema-valid, so a living definition can always publish them.
+ * A version that changes nothing is refused, except under `living` for a revision newer than the
+ * latest version's: every accepted living edit, undo and revert included, gets its own version.
  */
 export function publish(request: PublishRequest): PublishDecision {
 	const { policy, document, latest } = request;
@@ -174,7 +176,16 @@ export function publish(request: PublishRequest): PublishDecision {
 	}
 	const version = (latest?.version ?? 0) + 1;
 	const body = { ...document, version };
-	if (latest !== undefined && diff({ ...latest.document, version }, body).length === 0) {
+	const newerLivingRevision =
+		policy.mode === 'living' &&
+		request.revision !== undefined &&
+		latest?.revision !== undefined &&
+		request.revision > latest.revision;
+	if (
+		latest !== undefined &&
+		!newerLivingRevision &&
+		diff({ ...latest.document, version }, body).length === 0
+	) {
 		return refuse('no-change', `Nothing has changed since version ${latest.version}`);
 	}
 	return {

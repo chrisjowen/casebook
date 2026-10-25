@@ -13,7 +13,7 @@ Each definition has a change policy, `governed` or `living`.
 - **Governed**: edits build up in the draft; an explicit publish makes the next numbered version, optionally only after an approval.
   Publish refuses while any publish check (0005) fails.
   An approval must come from a user (0009) who is neither the publisher nor the principal they act for; who is entitled to approve is left to the permissions layer.
-- **Living**: every accepted edit publishes a new version straight away.
+- **Living**: every accepted edit, undo and revert included, publishes a new version straight away, even when its content matches an earlier version.
   Publish-check failures are recorded on the version as warnings instead of refusing it.
   Each version is made from the exact revision its edit committed.
   When two edits race to publish, the loser retries a bounded number of times: an older revision overtaken by a newer one reports that it is already superseded, which is not an error, and a newer revision publishes after the older one, so the newest accepted edit goes live.

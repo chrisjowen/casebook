@@ -155,11 +155,7 @@ async function save(
 		if (decision.code === 'superseded' && latest !== undefined) {
 			return { ...result, supersededBy: latest };
 		}
-		const stale =
-			decision.code === 'version-conflict' ||
-			(decision.code === 'no-change' &&
-				(await context.store.latestVersion(context.definitionId))?.version !== latest?.version);
-		if (!stale || attempt === LIVING_PUBLISH_ATTEMPTS) {
+		if (decision.code !== 'version-conflict' || attempt === LIVING_PUBLISH_ATTEMPTS) {
 			return { ...result, publishRefused: decision };
 		}
 	}
