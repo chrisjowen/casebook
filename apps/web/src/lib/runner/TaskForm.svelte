@@ -111,21 +111,26 @@
 		clearTimeout(timer);
 		if (!dirty || !formEl || !canSave) return;
 		dirty = false;
-		const response = await fetch('?/save', {
-			method: 'POST',
-			body: draftBody(),
-			headers: { 'x-sveltekit-action': 'true' }
-		});
-		const result = deserialize(await response.text());
-		if (result.type === 'success') {
-			savedAt = new Date().toISOString();
-			saveFailed = undefined;
-		} else {
-			dirty = true;
-			saveFailed =
-				(result.type === 'failure' && (result.data as Failure | undefined)?.reason) ||
-				'Something went wrong.';
+		let reason = 'Something went wrong.';
+		try {
+			const response = await fetch('?/save', {
+				method: 'POST',
+				body: draftBody(),
+				headers: { 'x-sveltekit-action': 'true' }
+			});
+			const result = deserialize(await response.text());
+			if (result.type === 'success') {
+				savedAt = new Date().toISOString();
+				saveFailed = undefined;
+				return;
+			}
+			if (result.type === 'failure')
+				reason = (result.data as Failure | undefined)?.reason || reason;
+		} catch {
+			reason = 'The server could not be reached, or you were signed out.';
 		}
+		dirty = true;
+		saveFailed = reason;
 	}
 	function touched() {
 		started();
