@@ -17,7 +17,8 @@ import {
 	type Attribution,
 	type DraftContext,
 	type PrincipalRef,
-	type PublishedVersion
+	type PublishedVersion,
+	type PublishRequest
 } from '../../src/index.js';
 
 const alice: Attribution = { author: { id: 'u-alice', kind: 'user' } };
@@ -137,6 +138,105 @@ describe('publish', () => {
 		).toMatchObject({ allowed: true, version: { approvedBy: director } });
 	});
 
+	it('refuses a publish whose attribution breaks the rules for edits', () => {
+		const cases: [Pick<PublishRequest, 'publishedBy' | 'onBehalfOf'>, string][] = [
+			[{ publishedBy: wizard.author }, 'an agent must record who it acts on behalf of'],
+			[
+				{ publishedBy: { id: 's-sync', kind: 'service' } },
+				'an service must record who it acts on behalf of'
+			],
+			[
+				{ publishedBy: wizard.author, onBehalfOf: { id: 'a-other', kind: 'agent' } },
+				'an agent cannot act on behalf of another agent'
+			],
+			[
+				{ publishedBy: { id: 'g-ops', kind: 'group' } },
+				'a group cannot author an edit; record the user or agent who made it'
+			],
+			[
+				{ publishedBy: alice.author, onBehalfOf: director },
+				'a user edits on their own behalf, so onBehalfOf must not be set'
+			]
+		];
+		for (const [who, problem] of cases) {
+			for (const mode of ['governed', 'living'] as const) {
+				expect(publish({ policy: { mode }, document: incidentManagement, ...who })).toEqual({
+					allowed: false,
+					code: 'invalid-attribution',
+					reason: `Cannot record this publish: ${problem}`,
+					errors: [],
+					issues: []
+				});
+			}
+		}
+	});
+
+	it('accepts an approval only from a user other than the publisher and whoever they act for', () => {
+		const policy = { mode: 'governed', requiresApproval: true } as const;
+		const cases: [Omit<PublishRequest, 'policy' | 'document'>, string][] = [
+			[
+				{ publishedBy: alice.author, approvedBy: { id: 'a-reviewer', kind: 'agent' } },
+				'an approval must come from a user, not a agent'
+			],
+			[
+				{ publishedBy: alice.author, approvedBy: { id: 'g-ops', kind: 'group' } },
+				'an approval must come from a user, not a group'
+			],
+			[
+				{ publishedBy: alice.author, approvedBy: { id: 's-sync', kind: 'service' } },
+				'an approval must come from a user, not a service'
+			],
+			[
+				{ publishedBy: alice.author, approvedBy: alice.author },
+				'the publisher cannot approve their own publish'
+			],
+			[
+				{ ...{ publishedBy: wizard.author, onBehalfOf: alice.author }, approvedBy: alice.author },
+				'u-alice cannot approve a publish made on their own behalf'
+			]
+		];
+		for (const [who, problem] of cases) {
+			expect(publish({ policy, document: incidentManagement, ...who })).toMatchObject({
+				allowed: false,
+				code: 'invalid-approval',
+				reason: `Cannot accept this approval: ${problem}`
+			});
+		}
+		expect(
+			publish({
+				policy,
+				document: incidentManagement,
+				publishedBy: wizard.author,
+				onBehalfOf: alice.author,
+				approvedBy: director
+			})
+		).toMatchObject({ allowed: true, version: { approvedBy: director } });
+	});
+
+	it('refuses to publish a revision older than the one the latest version holds', () => {
+		const first = publish({
+			policy: { mode: 'living' },
+			document: incidentManagement,
+			revision: 3,
+			publishedBy: alice.author
+		});
+		const latest = (first.allowed && first.version) as PublishedVersion;
+		expect(
+			publish({
+				policy: { mode: 'living' },
+				document: { ...incidentManagement, slug: 'incident-response' },
+				revision: 2,
+				latest,
+				publishedBy: alice.author
+			})
+		).toMatchObject({
+			allowed: false,
+			code: 'version-conflict',
+			reason:
+				'Version 1 already holds the newer revision 3, so revision 2 cannot be published after it'
+		});
+	});
+
 	it('publishes a living definition despite failing checks, recording them', () => {
 		const decision = publish({
 			policy: { mode: 'living' },
@@ -233,6 +333,69 @@ describe('stored drafts', () => {
 		});
 		expect((await draft.store.versions('def-incident')).map((v) => v.version)).toEqual([1, 2, 3]);
 		expect(await draft.store.revisions('def-incident')).toHaveLength(3);
+	});
+
+	it('refuses a stored publish by an agent acting for nobody, storing nothing', async () => {
+		const draft = context({ mode: 'governed' });
+		await createDraft(draft, incidentManagement, alice, at);
+		expect(await publishDraft(draft, { publishedBy: wizard.author, at })).toMatchObject({
+			allowed: false,
+			code: 'invalid-attribution'
+		});
+		expect(await draft.store.versions('def-incident')).toEqual([]);
+	});
+
+	it('living: publishes the revision each edit committed, and reports a lost race instead of throwing', async () => {
+		let interleave: (() => Promise<unknown>) | undefined;
+		class InterleavingStore extends InMemoryRevisionStore {
+			override async latestVersion(definitionId: string) {
+				const latest = await super.latestVersion(definitionId);
+				const other = interleave;
+				interleave = undefined;
+				await other?.();
+				return latest;
+			}
+		}
+		const draft: DraftContext = {
+			store: new InterleavingStore(),
+			definitionId: 'def-incident',
+			policy: { mode: 'living' }
+		};
+		await createDraft(draft, incidentManagement, alice, at);
+		const bob: Attribution = { author: { id: 'u-bob', kind: 'user' } };
+		let bobs: Awaited<ReturnType<typeof editDraft>> | undefined;
+		interleave = async () => {
+			bobs = await editDraft(draft, [{ op: 'remove_node', id: 'step.notify-downstream' }], bob, at);
+		};
+
+		const alices = await editDraft(draft, [uncollect], alice, at);
+
+		const revisions = await draft.store.revisions('def-incident');
+		expect(revisions.map((r) => r.author.id)).toEqual(['u-alice', 'u-alice', 'u-bob']);
+		expect(bobs).toMatchObject({
+			ok: true,
+			revision: { number: 3 },
+			published: { version: 2, revision: 3, publishedBy: bob.author }
+		});
+		const versions = await draft.store.versions('def-incident');
+		expect(versions.map((v) => [v.version, v.revision, v.publishedBy.id])).toEqual([
+			[1, 1, 'u-alice'],
+			[2, 3, 'u-bob']
+		]);
+		expect(versions[1]?.document.nodes).toEqual(
+			revisions[2]?.document.nodes.map((n) => expect.objectContaining({ core: n.core }))
+		);
+		expect(alices).toMatchObject({
+			ok: true,
+			revision: { number: 2 },
+			publishRefused: {
+				allowed: false,
+				code: 'version-conflict',
+				reason:
+					'Version 2 was published by someone else at the same time; publish again to make the next one'
+			}
+		});
+		expect(alices).not.toHaveProperty('published');
 	});
 
 	it('rejects editing a draft that does not exist', async () => {

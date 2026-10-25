@@ -6,7 +6,8 @@ import {
 	publishesOnEdit,
 	type ChangePolicy,
 	type PublishDecision,
-	type PublishedVersion
+	type PublishedVersion,
+	type PublishRefusal
 } from './publish.js';
 import {
 	commit,
@@ -16,9 +17,10 @@ import {
 	type Attribution,
 	type CommitResult,
 	type Committed,
-	type PrincipalRef
+	type PrincipalRef,
+	type Revision
 } from './revisions.js';
-import type { RevisionStore } from './store.js';
+import { NumberingConflictError, type RevisionStore } from './store.js';
 
 /**
  * Editing a stored draft: load the head revision, apply the edit, store the new revision and,
@@ -31,8 +33,12 @@ export interface DraftContext {
 	policy: ChangePolicy;
 }
 
-/** A stored revision, plus the version it published under a living policy. */
-export type DraftResult = (Committed & { published?: PublishedVersion }) | Rejection;
+/**
+ * A stored revision. Under a living policy it also carries either the version it published or,
+ * when publishing was refused after the revision was stored, why.
+ */
+export type DraftResult =
+	(Committed & { published?: PublishedVersion; publishRefused?: PublishRefusal }) | Rejection;
 
 /** Stores `document` as revision 1 of a new draft. */
 export function createDraft(
@@ -89,18 +95,37 @@ export async function publishDraft(
 	context: DraftContext,
 	options: PublishDraftOptions
 ): Promise<PublishDecision | Rejection> {
-	const { store, definitionId, policy } = context;
-	const head = await store.head(definitionId);
+	const head = await context.store.head(context.definitionId);
 	if (head === undefined) return noDraft(context);
+	return publishRevision(context, head, options);
+}
+
+async function publishRevision(
+	{ store, definitionId, policy }: DraftContext,
+	revision: Revision,
+	options: PublishDraftOptions
+): Promise<PublishDecision> {
 	const latest = await store.latestVersion(definitionId);
 	const decision = publish({
 		...options,
 		policy,
-		document: head.document,
-		revision: head.number,
+		document: revision.document,
+		revision: revision.number,
 		...(latest === undefined ? {} : { latest })
 	});
-	if (decision.allowed) await store.appendVersion(definitionId, decision.version);
+	if (!decision.allowed) return decision;
+	try {
+		await store.appendVersion(definitionId, decision.version);
+	} catch (error) {
+		if (!(error instanceof NumberingConflictError)) throw error;
+		return {
+			allowed: false,
+			code: 'version-conflict',
+			reason: `Version ${decision.version.version} was published by someone else at the same time; publish again to make the next one`,
+			errors: [],
+			issues: []
+		};
+	}
 	return decision;
 }
 
@@ -113,14 +138,14 @@ async function save(
 	if (!result.ok) return result;
 	await context.store.appendRevision(context.definitionId, result.revision);
 	if (!publishesOnEdit(context.policy)) return result;
-	const decision = await publishDraft(context, {
+	const decision = await publishRevision(context, result.revision, {
 		publishedBy: author,
 		...(onBehalfOf === undefined ? {} : { onBehalfOf }),
 		at
 	});
-	return 'allowed' in decision && decision.allowed
+	return decision.allowed
 		? { ...result, published: decision.version }
-		: result;
+		: { ...result, publishRefused: decision };
 }
 
 function noDraft({ definitionId }: DraftContext): Rejection {

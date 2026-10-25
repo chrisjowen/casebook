@@ -3,7 +3,7 @@ import type { DefinitionDocument } from '../node.js';
 import type { ValidationError } from '../validate.js';
 import { diff } from './diff.js';
 import { clone, deepFreeze } from './json.js';
-import type { PrincipalRef } from './revisions.js';
+import { attributionProblem, type PrincipalRef } from './revisions.js';
 
 /**
  * How a definition changes over time, and so how publishing works.
@@ -72,23 +72,49 @@ export interface PublishRequest {
 }
 
 export const PUBLISH_REFUSAL_CODES = [
+	'invalid-attribution',
+	'invalid-approval',
 	'schema-violation',
 	'checks-failed',
 	'approval-required',
-	'no-change'
+	'no-change',
+	'version-conflict'
 ] as const;
 
 export type PublishRefusalCode = (typeof PUBLISH_REFUSAL_CODES)[number];
 
-export type PublishDecision =
-	| { allowed: true; version: PublishedVersion }
-	| {
-			allowed: false;
-			code: PublishRefusalCode;
-			reason: string;
-			errors: ValidationError[];
-			issues: InvariantIssue[];
-	  };
+export interface PublishRefusal {
+	allowed: false;
+	code: PublishRefusalCode;
+	reason: string;
+	errors: ValidationError[];
+	issues: InvariantIssue[];
+}
+
+export type PublishDecision = { allowed: true; version: PublishedVersion } | PublishRefusal;
+
+/**
+ * Explains why `approvedBy` cannot approve this publish, or returns undefined when they can.
+ * Approvals are human-only (ADR 0009) and nobody approves their own publish. Whether the approver
+ * is entitled to approve in the definition's namespace is for the permissions layer to add here.
+ */
+export function approvalProblem({
+	publishedBy,
+	onBehalfOf,
+	approvedBy
+}: Pick<PublishRequest, 'publishedBy' | 'onBehalfOf' | 'approvedBy'>): string | undefined {
+	if (approvedBy === undefined) return undefined;
+	if (approvedBy.kind !== 'user') {
+		return `an approval must come from a user, not a ${approvedBy.kind}`;
+	}
+	if (samePrincipal(approvedBy, publishedBy)) {
+		return 'the publisher cannot approve their own publish';
+	}
+	if (onBehalfOf !== undefined && samePrincipal(approvedBy, onBehalfOf)) {
+		return `${approvedBy.id} cannot approve a publish made on their own behalf`;
+	}
+	return undefined;
+}
 
 /**
  * Decides whether `document` can be published under `policy` and, if so, builds the version to
@@ -97,6 +123,27 @@ export type PublishDecision =
  */
 export function publish(request: PublishRequest): PublishDecision {
 	const { policy, document, latest } = request;
+	const attribution = attributionProblem({
+		author: request.publishedBy,
+		...(request.onBehalfOf === undefined ? {} : { onBehalfOf: request.onBehalfOf })
+	});
+	if (attribution !== undefined) {
+		return refuse('invalid-attribution', `Cannot record this publish: ${attribution}`);
+	}
+	const approval = approvalProblem(request);
+	if (approval !== undefined) {
+		return refuse('invalid-approval', `Cannot accept this approval: ${approval}`);
+	}
+	if (
+		request.revision !== undefined &&
+		latest?.revision !== undefined &&
+		request.revision < latest.revision
+	) {
+		return refuse(
+			'version-conflict',
+			`Version ${latest.version} already holds the newer revision ${latest.revision}, so revision ${request.revision} cannot be published after it`
+		);
+	}
 	const check = checkPublish(document);
 	if (check.errors.length > 0) {
 		return refuse(
@@ -152,6 +199,10 @@ function refuse(
 	reason: string,
 	errors: ValidationError[] = [],
 	issues: InvariantIssue[] = []
-): PublishDecision {
+): PublishRefusal {
 	return { allowed: false, code, reason, errors, issues };
+}
+
+function samePrincipal(a: PrincipalRef, b: PrincipalRef): boolean {
+	return a.kind === b.kind && a.id === b.id;
 }
