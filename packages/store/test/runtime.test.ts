@@ -211,6 +211,12 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 			]);
 			expect(task.requester?.name).toBe('Alex Example');
 			expect(task.uses.map((u) => u.recorded?.by)).toEqual([undefined, undefined]);
+			expect(task.you).toEqual({
+				canAct: true,
+				reason: 'This form was sent to you.',
+				role: 'Care provider',
+				others: []
+			});
 			const payload = JSON.stringify(task);
 			expect(payload.split('Alex Example')).toHaveLength(2);
 			expect(payload).not.toContain('BC-2026-004417');

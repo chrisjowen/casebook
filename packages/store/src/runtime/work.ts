@@ -1140,7 +1140,12 @@ export async function loadGuestTask(
 			...(t.overdue !== undefined ? { overdue: t.overdue } : {}),
 			...(t.lastDone?.by.id === me ? { lastDone: t.lastDone } : {})
 		},
-		you: { ...view.you, others: [] },
+		you: {
+			canAct: view.you.canAct,
+			reason: view.you.canAct ? 'This form was sent to you.' : '',
+			role: view.you.role,
+			others: []
+		},
 		uses: view.uses
 			.filter((u) => keep.has(u.fact))
 			.map((u) => ({
