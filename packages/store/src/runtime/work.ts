@@ -24,6 +24,7 @@ import { listDefinitions } from '../definitions.js';
 import {
 	accounts,
 	caseAttachments,
+	cases,
 	definitionVersions,
 	namespaces,
 	principals,
@@ -224,12 +225,30 @@ async function instanceFor(
 /** The cases in an account the actor may open. */
 async function readableCases(db: Db, actor: Actor, accountId: string, now: Date): Promise<Loaded> {
 	const ids = await caseIdsInAccount(db, accountId);
+	return loadCases(db, await readableOf(db, actor, ids), now);
+}
+
+/** The cases among these the actor may open, in order. `case.read` turns on the case's namespace alone. */
+async function readableOf(db: Db, actor: Actor, ids: string[]): Promise<string[]> {
+	if (ids.length === 0) return [];
+	const rows = await db
+		.select({ id: cases.id, namespaceId: cases.namespaceId })
+		.from(cases)
+		.where(inArray(cases.id, ids));
+	const namespaceOf = new Map(rows.map((r) => [r.id, r.namespaceId]));
+	const byNamespace = new Map<string, boolean>();
 	const readable: string[] = [];
 	for (const id of ids) {
-		if ((await can(db, actor, 'case.read', { type: 'case', caseId: id })).allowed)
-			readable.push(id);
+		const ns = namespaceOf.get(id);
+		if (ns === undefined) continue;
+		let allowed = byNamespace.get(ns);
+		if (allowed === undefined) {
+			allowed = (await can(db, actor, 'case.read', { type: 'case', caseId: id })).allowed;
+			byNamespace.set(ns, allowed);
+		}
+		if (allowed) readable.push(id);
 	}
-	return loadCases(db, readable, now);
+	return readable;
 }
 
 // Shaping
@@ -1074,12 +1093,14 @@ export async function loadGuestTask(
 	const view = await taskView(db, actor, located, people);
 	const keep = new Set<string>([...state.item.requires, ...state.item.collects.map((x) => x.fact)]);
 	const requester = a.startedBy ?? c.openedBy;
+	const me = subjectOf(actor);
+	const t = view.task;
 	const scrub = (r?: RecordEntry): RecordEntry | undefined =>
 		r && {
 			title: r.title,
 			display: r.display,
 			at: r.at,
-			by: r.by,
+			by: r.by.id === me ? r.by : { id: '', name: c.accountName },
 			sharedBy: [],
 			...(r.fact ? { fact: r.fact } : {}),
 			...(r.file ? { file: r.file } : {})
@@ -1087,13 +1108,25 @@ export async function loadGuestTask(
 	return {
 		case: { id: '', title: c.title },
 		task: {
-			...view.task,
 			caseId: '',
+			caseTitle: c.title,
+			attachmentId: t.attachmentId,
 			process: '',
 			definitionSlug: '',
-			holders: view.task.holders.filter((h) => h.id === subjectOf(actor)),
+			item: t.item,
+			kind: t.kind,
+			title: t.title,
+			status: t.status,
+			stage: { index: 0, number: 0, count: 0, title: '' },
+			role: t.role,
+			holders: t.holders.filter((h) => h.id === me),
+			...(t.held?.by.id === me ? { held: t.held } : {}),
+			...(t.sentBack?.by.id === me ? { sentBack: t.sentBack } : {}),
 			started: [],
-			stage: { index: 0, number: 0, count: 0, title: '' }
+			repeating: t.repeating,
+			...(t.due ? { due: t.due } : {}),
+			...(t.overdue !== undefined ? { overdue: t.overdue } : {}),
+			...(t.lastDone?.by.id === me ? { lastDone: t.lastDone } : {})
 		},
 		you: { ...view.you, others: [] },
 		uses: view.uses
@@ -1105,7 +1138,7 @@ export async function loadGuestTask(
 			})),
 		fields: view.fields.map(({ people: list, ...f }) => ({
 			...f,
-			...(list ? { people: list.filter((x) => x.id === subjectOf(actor)) } : {})
+			...(list ? { people: list.filter((x) => x.id === me) } : {})
 		})),
 		evidence: view.evidence,
 		canSkip: false,
@@ -1301,11 +1334,7 @@ export async function loadProcess(
 		.innerJoin(definitionVersions, eq(definitionVersions.id, caseAttachments.definitionVersionId))
 		.where(eq(definitionVersions.definitionId, process.id));
 	const caseIds = [...new Set(attachmentRows.map((r) => r.caseId))];
-	const readable: string[] = [];
-	for (const id of caseIds) {
-		if ((await can(db, actor, 'case.read', { type: 'case', caseId: id })).allowed)
-			readable.push(id);
-	}
+	const readable = await readableOf(db, actor, caseIds);
 	const { cases: loaded } = await loadCases(db, readable, now);
 	return {
 		instance: list.instance,

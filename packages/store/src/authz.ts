@@ -6,7 +6,6 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Queryable } from './client.js';
 import {
 	accounts,
-	caseAttachments,
 	cases,
 	definitionVersions,
 	delegationGrants,
@@ -105,7 +104,6 @@ interface Target {
 	role?: string;
 	/** For a definition: the process roles its latest published version declares. */
 	roles?: string[];
-	definitionId?: string;
 }
 
 interface ActionRule {
@@ -120,8 +118,8 @@ interface ActionRule {
 	permission?: NamespacePermission;
 	/**
 	 * `true`: allowed by holding the target's process role on the case, or as a standing role.
-	 * `declared`: allowed by holding any role the definition declares, as a standing role or on a
-	 * case the definition is attached to.
+	 * `declared`: allowed by holding any role the definition declares as a standing role on its
+	 * namespace or an ancestor; a role held only on a case never counts.
 	 */
 	processRole?: true | 'declared';
 }
@@ -256,7 +254,6 @@ export async function can(
 	const target = await resolveTarget(db, resource);
 	if (typeof target === 'string') return refuse(target);
 	if (rule.processRole === 'declared' && resource.type === 'definition') {
-		target.definitionId = resource.definitionId;
 		target.roles = await declaredRoles(db, resource.definitionId);
 	}
 
@@ -558,14 +555,16 @@ function evaluate(
 		const b = held.find(
 			(h) =>
 				target.roles!.includes(h.role) &&
-				(h.caseId !== null || (h.namespaceId !== null && lineageIds.has(h.namespaceId)))
+				h.caseId === null &&
+				h.namespaceId !== null &&
+				lineageIds.has(h.namespaceId)
 		);
 		if (b) {
-			const where =
-				b.caseId !== null
-					? 'on a case it runs on'
-					: `on ${inherited(b.namespaceId!, target.lineage.find((n) => n.id === b.namespaceId)!.path)}`;
-			return allow(`${subject} holds ${b.role}, a role in this process, ${where}${via(b)}`);
+			const where = inherited(
+				b.namespaceId!,
+				target.lineage.find((n) => n.id === b.namespaceId)!.path
+			);
+			return allow(`${subject} holds ${b.role}, a role in this process, on ${where}${via(b)}`);
 		}
 	}
 
@@ -599,7 +598,9 @@ function needs(rule: ActionRule, target: Target): string {
 		);
 	}
 	if (rule.processRole === 'declared' && target.roles?.length) {
-		options.push(`one of its roles (${target.roles.join(', ')})`);
+		options.push(
+			`one of its roles (${target.roles.join(', ')}) as a standing role on ${nearest?.path ?? 'its namespace'} or an ancestor`
+		);
 	}
 	const roles = ACCOUNT_ROLES.filter(
 		(r) =>
@@ -617,13 +618,6 @@ async function heldBindings(db: Queryable, principalId: string, target: Target):
 		? sql`OR (rb.case_id IS NULL AND rb.namespace_id IN ${lineageIds})`
 		: sql``;
 	const onCase = target.caseId === undefined ? sql`` : sql`OR rb.case_id = ${target.caseId}`;
-	const onDefinitionCases =
-		target.definitionId === undefined
-			? sql``
-			: sql`OR rb.case_id IN (
-				SELECT ca.case_id FROM ${caseAttachments} ca
-				JOIN ${definitionVersions} dv ON dv.id = ca.definition_version_id
-				WHERE dv.definition_id = ${target.definitionId})`;
 	const rows = await db.execute<{
 		role: string;
 		namespace_id: string | null;
@@ -637,7 +631,7 @@ async function heldBindings(db: Queryable, principalId: string, target: Target):
 		JOIN ${principals} p ON p.id = rb.principal_id
 		WHERE rb.principal_id IN (SELECT id FROM subjects)
 			AND rb.account_id = ${target.accountId}
-			AND (rb.namespace_id IS NULL ${onLineage} ${onCase} ${onDefinitionCases})
+			AND (rb.namespace_id IS NULL ${onLineage} ${onCase})
 		ORDER BY rb.role, via NULLS FIRST`);
 	return [...rows].map((r) => ({
 		role: r.role,

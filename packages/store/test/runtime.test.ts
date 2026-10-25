@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { createDb, type Db } from '../src/client.js';
 import { runMigrations } from '../src/migrate.js';
 import { memoryFileStore } from '../src/files.js';
-import { bindRole } from '../src/repository.js';
+import { bindRole, createAccount, createCase, createNamespace } from '../src/repository.js';
 import { publishDefinition } from '../src/definitions.js';
 import {
 	casebookPeople,
@@ -284,6 +284,30 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 				/cannot start a case of definition "incident-management".*one of its roles/
 			);
 			expectRefused(await startCase(db, users.devon, { definitionId }), 'invalid-input', /name/);
+		});
+
+		it('never lets a role held only on a case, a guest’s included, start a case', async () => {
+			const processes = await listProcesses(db, users.alex, 'example-family');
+			if ('ok' in processes) throw new Error(processes.reason);
+			const id = (slug: string) =>
+				processes.groups.flatMap((g) => g.definitions).find((d) => d.slug === slug)!.id;
+			expectRefused(
+				await startCase(db, users.sam, {
+					definitionId: id('birth-registration-abroad'),
+					title: 'Another birth'
+				}),
+				'access-denied',
+				/cannot start a case of/
+			);
+			expectRefused(
+				await startCase(db, users.dana, {
+					definitionId: id('medical-bill-claim'),
+					title: 'A bill of my own',
+					roles: { 'role.claimant': [users.alex.id] }
+				}),
+				'access-denied',
+				/cannot start a case of/
+			);
 		});
 
 		it('moves through stages, skips by guard, and waits on whoever records what is missing', async () => {
@@ -678,6 +702,64 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 				reason: expect.stringMatching(/communications-lead, a role in this process/)
 			});
 			expect(await listProcesses(db, users.dana, 'example-family')).toMatchObject({ ok: false });
+		});
+	});
+
+	describe('guests, on other cases', () => {
+		it('see nothing of who else works the case while their form waits', async () => {
+			const processes = await listProcesses(db, users.alex, 'example-family');
+			if ('ok' in processes) throw new Error(processes.reason);
+			const claim = processes.groups
+				.flatMap((g) => g.definitions)
+				.find((d) => d.slug === 'medical-bill-claim')!;
+			const started = await startCase(db, users.alex, {
+				definitionId: claim.id,
+				title: 'Follow-up visit',
+				roles: { 'role.claimant': [users.sam.id], 'role.care-provider': [users.dana.id] }
+			});
+			if (!started.ok) throw new Error(started.reason);
+			const held = await holdItem(db, users.sam, {
+				attachmentId: started.attachmentId,
+				item: 'step.request-invoice',
+				note: 'Checking the visit date with the clinic'
+			});
+			expect(held).toMatchObject({ ok: true });
+			const request = (await loadRequests(db, users.dana)).find(
+				(r) => r.attachmentId === started.attachmentId
+			)!;
+			expect(request.status).toBe('waiting');
+			const task = await loadGuestTask(db, users.dana, request);
+			if ('ok' in task) throw new Error(task.reason);
+			expect(task.task.status).toBe('waiting');
+			expect(task.requester?.name).toBe('Alex Example');
+			const payload = JSON.stringify(task);
+			expect(payload).not.toContain('Sam Example');
+			expect(payload).not.toContain(users.sam.id);
+			expect(payload).not.toContain('Checking the visit date');
+			expect(payload).not.toContain('Ask the provider for an itemised bill');
+		});
+
+		it('are not counted as holders by a role they hold in another account', async () => {
+			const before = (await loadRequests(db, users.dana)).map((r) => r.forWhom).sort();
+			expect(before).not.toContain('Sam Example');
+			const other = await createAccount(db, {
+				slug: 'riverside',
+				displayName: 'Riverside',
+				createdById: users.olive.id
+			});
+			const personal = await createNamespace(db, {
+				accountId: other.id,
+				path: 'personal',
+				createdById: users.olive.id
+			});
+			await bindRole(db, {
+				principalId: users.dana.id,
+				role: 'role.care-provider',
+				accountId: other.id,
+				namespaceId: personal.id
+			});
+			await createCase(db, { namespaceId: personal.id, title: 'Riverside intake' });
+			expect((await loadRequests(db, users.dana)).map((r) => r.forWhom).sort()).toEqual(before);
 		});
 	});
 });

@@ -296,7 +296,7 @@ export async function loadCases(db: Queryable, caseIds: string[], now: Date): Pr
 				const state = evaluateProcess(process, values, foldProgress(process, itemEvents), now);
 				const roles = new Map<string, string[]>();
 				for (const role of process.roles.keys()) {
-					roles.set(role, holders.of(c.id, c.namespace, role));
+					roles.set(role, holders.of(c, role));
 				}
 				return {
 					id: a.id,
@@ -425,18 +425,16 @@ async function roleHolders(
 	const groups = [...new Set(bindings.filter((b) => b.kind === 'group').map((b) => b.principalId))];
 	const members = await groupMembersOf(db, groups);
 	const expand = (id: string, kind: PrincipalKind) => (kind === 'group' ? members(id) : [id]);
-	const nsPath = new Map(lineage.map((n) => [n.id, n.path]));
-
 	return {
-		of(caseId: string, namespace: string, role: string): string[] {
-			const prefixes = new Set(namespacePathPrefixes(namespace));
-			const onCase = bindings.filter((b) => b.caseId === caseId && b.role === role);
+		of(c: { id: string; namespace: string; accountId: string }, role: string): string[] {
+			const prefixes = new Set(namespacePathPrefixes(c.namespace));
+			const along = new Set(
+				lineage.filter((n) => n.accountId === c.accountId && prefixes.has(n.path)).map((n) => n.id)
+			);
+			const onCase = bindings.filter((b) => b.caseId === c.id && b.role === role);
 			const standing = bindings.filter(
 				(b) =>
-					b.caseId === null &&
-					b.role === role &&
-					b.namespaceId !== null &&
-					prefixes.has(nsPath.get(b.namespaceId) ?? '')
+					b.caseId === null && b.role === role && b.namespaceId !== null && along.has(b.namespaceId)
 			);
 			return [...new Set([...onCase, ...standing].flatMap((b) => expand(b.principalId, b.kind)))];
 		}

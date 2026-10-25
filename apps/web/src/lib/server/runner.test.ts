@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isHttpError, isRedirect } from '@sveltejs/kit';
-import { findCaseFile, listDefinitions, listInstances } from '@casebook/store';
+import { findCaseFile, listDefinitions, listInstances, startCase } from '@casebook/store';
 import { readForm } from './task-actions';
 import { load as instanceLayout } from '../../routes/i/[instance]/+layout.server';
 import { GET as home } from '../../routes/+server';
 import { GET as file } from '../../routes/files/[id]/+server';
+import { actions as newCase } from '../../routes/i/[instance]/cases/new/+page.server';
 import { acme, family, user } from '$lib/runner/test-data';
 
 vi.mock('$lib/server/db', () => ({ getDb: () => ({}) }));
@@ -17,7 +18,8 @@ vi.mock('@casebook/store', async (importOriginal) => ({
 	...(await importOriginal<typeof import('@casebook/store')>()),
 	listInstances: vi.fn(),
 	listDefinitions: vi.fn(),
-	findCaseFile: vi.fn()
+	findCaseFile: vi.fn(),
+	startCase: vi.fn()
 }));
 
 const locals = { user };
@@ -99,6 +101,36 @@ describe('instances', () => {
 		expect(isRedirect(error) && error.location).toBe(
 			'/i/acme/processes/edit?ws=acme%2Feng%2Fsre&p=incident-management'
 		);
+	});
+});
+
+describe('starting a case', () => {
+	it('refuses a guest who posts the form, and starts nothing', async () => {
+		vi.mocked(startCase).mockResolvedValue({
+			ok: false,
+			code: 'access-denied',
+			reason: 'Dana Cole cannot start a case of definition "medical-bill-claim"',
+			problems: []
+		});
+		const guest = { user: { id: 'dana', displayName: 'Dana Cole', roles: [] } };
+		const form = new FormData();
+		form.append('process', 'def-claim');
+		form.append('title', 'A bill of my own');
+		form.append('role:role.claimant', 'alex');
+		const result = await newCase.default!({
+			request: new Request('http://localhost/i/example-family/cases/new', {
+				method: 'POST',
+				body: form
+			}),
+			locals: guest,
+			params: { instance: 'example-family' }
+		} as never);
+		expect(startCase).toHaveBeenCalledWith(
+			expect.anything(),
+			{ id: 'dana' },
+			expect.objectContaining({ definitionId: 'def-claim', roles: { 'role.claimant': ['alex'] } })
+		);
+		expect(result).toMatchObject({ status: 403, data: { code: 'access-denied' } });
 	});
 });
 
