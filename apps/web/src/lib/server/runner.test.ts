@@ -150,7 +150,10 @@ describe('a guest', () => {
 		user: {
 			id: 'insurer',
 			displayName: 'Example Health Insurance',
-			roles: ['role.insurer on personal/example-user/family', 'role.claimant on case "Mira Example"']
+			roles: [
+				'role.insurer on personal/example-user/family',
+				'role.claimant on case "Mira Example"'
+			]
 		}
 	};
 
