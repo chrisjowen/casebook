@@ -16,7 +16,7 @@ Architecture decisions for casebook, one file per decision.
 | 0010 | [Lifecycle event names reserved for hooks](0010-reserved-lifecycle-events.md) | Accepted |
 | 0011 | [v1 authoring wizard](0011-v1-wizard.md) | Accepted |
 | 0012 | [Technology stack](0012-stack.md) | Accepted |
-| 0013 | [Graph default view and wizard layout](0013-graph-view-and-wizard-layout.md) | Open (pending prototype) |
+| 0013 | [Graph default view and wizard layout](0013-graph-view-and-wizard-layout.md) | Accepted |
 | 0014 | [Synthetic sample data only](0014-synthetic-sample-data.md) | Accepted |
 | 0015 | [Accounts, account roles and namespace permissions](0015-accounts-and-access.md) | Accepted |
 | 0016 | [Governed and living definitions, pinned and following cases](0016-change-policies.md) | Accepted |
