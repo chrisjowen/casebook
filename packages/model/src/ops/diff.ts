@@ -1,4 +1,14 @@
-import type { ActorPolicy, Collect, DefinitionDocument, Guard, Node, NodeKind } from '../node.js';
+import { describeValueChanges } from '../lookups.js';
+import type {
+	ActorPolicy,
+	Collect,
+	DefinitionDocument,
+	FactSchema,
+	Guard,
+	LookupValue,
+	Node,
+	NodeKind
+} from '../node.js';
 import { formatField } from '../pointer.js';
 import { isEqual, isRecord } from './json.js';
 
@@ -210,7 +220,21 @@ function describeNodeChange(
 			return `Changed how ${node} repeats: until ${until}`;
 		}
 		case 'schema':
-			return `Changed the value type of ${node}`;
+			return describeSchemaChange(
+				label,
+				node,
+				a as FactSchema | undefined,
+				b as FactSchema | undefined
+			);
+		case 'values': {
+			const parts = describeValueChanges(
+				(a as LookupValue[] | undefined) ?? [],
+				(b as LookupValue[] | undefined) ?? []
+			);
+			return parts.length === 0
+				? `Changed the values of ${node}`
+				: `Changed the values of ${node}: ${parts.join('; ')}`;
+		}
 		case 'scope':
 			return `Changed the scope of ${node} from ${String(a ?? 'unset')} to ${String(b ?? 'unset')}`;
 		case 'evidence':
@@ -226,6 +250,37 @@ function describeNodeChange(
 			if (b === undefined) return `Removed ${String(key)} from ${node}`;
 			return `Changed ${String(key)} on ${node}`;
 	}
+}
+
+/** A change of where a fact's choices come from reads as that; any other as a type change. */
+function describeSchemaChange(
+	label: Label,
+	node: string,
+	a: FactSchema | undefined,
+	b: FactSchema | undefined
+): string {
+	const source = (s: FactSchema | undefined) => {
+		const lookup = s?.['x-lookup'];
+		if (lookup?.kind === 'lookup') return label(lookup.lookup);
+		if (lookup?.kind === 'dataset') return `shared lookup ${lookup.dataset}`;
+		return undefined;
+	};
+	const [was, now] = [source(a), source(b)];
+	if (was !== now) {
+		if (now !== undefined) return `${node} is now chosen from ${now}`;
+		if (was !== undefined) return `${node} is no longer chosen from ${was}`;
+	}
+	const options = (s: FactSchema | undefined) =>
+		Array.isArray(s?.enum) ? (s.enum as unknown[]).map(String) : undefined;
+	const [before, after] = [options(a), options(b)];
+	if (before && after && isEqual(a?.type, b?.type)) {
+		const parts = describeValueChanges(
+			before.map((value) => ({ value })),
+			after.map((value) => ({ value }))
+		);
+		if (parts.length > 0) return `Changed the choices of ${node}: ${parts.join('; ')}`;
+	}
+	return `Changed the value type of ${node}`;
 }
 
 function describeCollects(label: Label, node: string, a: Collect[], b: Collect[]): string {

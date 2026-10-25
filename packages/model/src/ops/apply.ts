@@ -25,7 +25,8 @@ export const REJECTING_ISSUE_CODES = [
 	'multiple-processes',
 	'unknown-stage',
 	'unknown-fact',
-	'unknown-approval'
+	'unknown-approval',
+	'unknown-lookup'
 ] as const satisfies readonly InvariantCode[];
 
 const rejecting: ReadonlySet<InvariantCode> = new Set(REJECTING_ISSUE_CODES);

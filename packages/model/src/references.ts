@@ -2,7 +2,7 @@ import { guardReferences } from './guard.js';
 import type { FactId, Guard, Node, NodeKind } from './node.js';
 import type { Segments } from './pointer.js';
 
-export type ReferenceKind = Extract<NodeKind, 'stage' | 'fact' | 'role' | 'approval'>;
+export type ReferenceKind = Extract<NodeKind, 'stage' | 'fact' | 'role' | 'approval' | 'lookup'>;
 
 /** A reference from a node's core to another node: one edge of the derived graph. */
 export interface NodeReference {
@@ -75,6 +75,9 @@ export function nodeReferences(node: Node): NodeReference[] {
 			}
 			if (lookup?.kind === 'fact') {
 				add(['schema', 'x-lookup', 'fact'], lookup.fact, 'fact');
+			}
+			if (lookup?.kind === 'lookup') {
+				add(['schema', 'x-lookup', 'lookup'], lookup.lookup, 'lookup');
 			}
 			break;
 		}

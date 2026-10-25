@@ -17,7 +17,8 @@ export const NODE_KINDS = [
 	'fact',
 	'role',
 	'decision',
-	'approval'
+	'approval',
+	'lookup'
 ] as const;
 
 export type NodeKind = (typeof NODE_KINDS)[number];
@@ -32,6 +33,7 @@ export type FactId = NodeId<'fact'>;
 export type RoleId = NodeId<'role'>;
 export type DecisionId = NodeId<'decision'>;
 export type ApprovalId = NodeId<'approval'>;
+export type LookupId = NodeId<'lookup'>;
 
 /** Who may perform the work. Agents cannot complete `human` work (ADR 0009). */
 export const ACTOR_POLICIES = ['human', 'agent', 'either'] as const;
@@ -66,7 +68,7 @@ export interface EvidenceRequirement {
 	copies?: number;
 }
 
-export const LOOKUP_KINDS = ['dataset', 'principal', 'fact', 'case'] as const;
+export const LOOKUP_KINDS = ['dataset', 'principal', 'fact', 'case', 'lookup'] as const;
 
 export type LookupKind = (typeof LOOKUP_KINDS)[number];
 
@@ -75,7 +77,8 @@ export type Lookup =
 	| { kind: 'dataset'; dataset: string; version?: string }
 	| { kind: 'principal'; role?: RoleId }
 	| { kind: 'fact'; fact: FactId }
-	| { kind: 'case'; process?: string };
+	| { kind: 'case'; process?: string }
+	| { kind: 'lookup'; lookup: LookupId };
 
 export const SENSITIVITY_LEVELS = ['none', 'personal', 'sensitive'] as const;
 
@@ -167,6 +170,24 @@ export interface ApprovalCore extends CoreBase<'approval'> {
 	when?: Guard;
 }
 
+/**
+ * One value of a lookup. `value` is what a case stores and a condition compares, and never changes
+ * once cases may hold it; `label` is how people read it, when it differs. A turned-off value is no
+ * longer offered, but cases that hold it still read correctly.
+ */
+export interface LookupValue {
+	value: string;
+	label?: string;
+	/** A short code for the value, such as an ISO country code or an insurer's number. */
+	code?: string;
+	disabled?: boolean;
+}
+
+/** A named list of values a choice fact is chosen from, such as severities or document types. */
+export interface LookupCore extends CoreBase<'lookup'> {
+	values: LookupValue[];
+}
+
 export interface CoreByKind {
 	process: ProcessCore;
 	stage: StageCore;
@@ -175,6 +196,7 @@ export interface CoreByKind {
 	role: RoleCore;
 	decision: DecisionCore;
 	approval: ApprovalCore;
+	lookup: LookupCore;
 }
 
 export type NodeCore = CoreByKind[NodeKind];
@@ -196,6 +218,7 @@ export type FactNode = NodeOf<'fact'>;
 export type RoleNode = NodeOf<'role'>;
 export type DecisionNode = NodeOf<'decision'>;
 export type ApprovalNode = NodeOf<'approval'>;
+export type LookupNode = NodeOf<'lookup'>;
 
 export type Node = { [K in NodeKind]: NodeOf<K> }[NodeKind];
 

@@ -19,6 +19,8 @@ import {
 	type FactSchema,
 	type Guard,
 	type Lookup,
+	type LookupCore,
+	type LookupValue,
 	type Node,
 	type NodeKind,
 	type ProcessCore,
@@ -156,6 +158,26 @@ const shapes: [name: string, schemaFields: object, typeFields: object][] = [
 			invariants: true
 		} satisfies Record<keyof ApprovalCore, true>
 	],
+	[
+		'LookupCore',
+		$defs.lookupCore.properties,
+		{
+			id: true,
+			kind: true,
+			title: true,
+			values: true,
+			source: true,
+			invariants: true
+		} satisfies Record<keyof LookupCore, true>
+	],
+	[
+		'LookupValue',
+		$defs.lookupValue.properties,
+		{ value: true, label: true, code: true, disabled: true } satisfies Record<
+			keyof LookupValue,
+			true
+		>
+	],
 	['Guard', $defs.guard.properties, { text: true, expr: true } satisfies Record<keyof Guard, true>],
 	[
 		'SourceRef',
@@ -220,6 +242,11 @@ const shapes: [name: string, schemaFields: object, typeFields: object][] = [
 		'case lookup',
 		$defs.lookup.allOf[3]?.then.properties ?? {},
 		{ kind: true, process: true } satisfies Record<keyof LookupOf<'case'>, true>
+	],
+	[
+		'lookup lookup',
+		$defs.lookup.allOf[4]?.then.properties ?? {},
+		{ kind: true, lookup: true } satisfies Record<keyof LookupOf<'lookup'>, true>
 	]
 ];
 
@@ -241,7 +268,8 @@ describe('schema and types agree', () => {
 			fact: { id: true, kind: true, schema: true },
 			role: { id: true, kind: true },
 			decision: { id: true, kind: true, stage: true, role: true, actor: true, outcome: true },
-			approval: { id: true, kind: true, role: true, actor: true }
+			approval: { id: true, kind: true, role: true, actor: true },
+			lookup: { id: true, kind: true, values: true }
 		};
 		for (const kind of NODE_KINDS) {
 			expect([...$defs[`${kind}Core`].required].sort()).toEqual(Object.keys(required[kind]).sort());

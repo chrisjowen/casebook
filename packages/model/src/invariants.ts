@@ -16,6 +16,7 @@ export const INVARIANT_CODES = [
 	'unknown-stage',
 	'unknown-fact',
 	'unknown-approval',
+	'unknown-lookup',
 	'undeclared-role',
 	'unknown-guard-fact',
 	'unparsed-guard',
@@ -23,7 +24,10 @@ export const INVARIANT_CODES = [
 	'dependency-cycle',
 	'uncollected-read-fact',
 	'unused-fact',
-	'empty-stage'
+	'empty-stage',
+	'duplicate-lookup-value',
+	'empty-lookup',
+	'unused-lookup'
 ] as const;
 
 export type InvariantCode = (typeof INVARIANT_CODES)[number];
@@ -178,6 +182,44 @@ export function checkInvariants(document: DefinitionDocument): InvariantIssue[] 
 		}
 	}
 
+	const usedLookups = new Set(references.filter((r) => r.kind === 'lookup').map((r) => r.target));
+	nodes.forEach((node, i) => {
+		if (node.core.kind !== 'lookup' || declared.get(node.core.id) !== i) return;
+		const { id, values } = node.core;
+		const seen = new Map<string, number>();
+		values.forEach((v, j) => {
+			const first = seen.get(v.value);
+			if (first === undefined) {
+				seen.set(v.value, j);
+				return;
+			}
+			issues.push({
+				code: 'duplicate-lookup-value',
+				severity: 'error',
+				path: at(i, ['core', 'values', j, 'value']),
+				nodeId: id,
+				message: `${id} lists the value "${v.value}" twice (values ${first} and ${j}); each value must be different`
+			});
+		});
+		if (!usedLookups.has(id)) {
+			issues.push({
+				code: 'unused-lookup',
+				severity: 'warning',
+				path: at(i, []),
+				nodeId: id,
+				message: `${id} is declared but no fact is chosen from it`
+			});
+		} else if (!values.some((v) => !v.disabled)) {
+			issues.push({
+				code: 'empty-lookup',
+				severity: 'error',
+				path: at(i, ['core', 'values']),
+				nodeId: id,
+				message: `${id} has no values that can be chosen; add one or turn one back on`
+			});
+		}
+	});
+
 	const usedFacts = new Set(factRefs.map((r) => r.target));
 	const usedStages = new Set(references.filter((r) => r.kind === 'stage').map((r) => r.target));
 	nodes.forEach((node, i) => {
@@ -293,6 +335,8 @@ function unresolvedCode(ref: Reference): InvariantCode {
 			return 'undeclared-role';
 		case 'approval':
 			return 'unknown-approval';
+		case 'lookup':
+			return 'unknown-lookup';
 		case 'fact':
 			return ref.inGuard ? 'unknown-guard-fact' : 'unknown-fact';
 	}
