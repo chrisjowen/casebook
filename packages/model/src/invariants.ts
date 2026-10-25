@@ -198,7 +198,7 @@ export function checkInvariants(document: DefinitionDocument): InvariantIssue[] 
 				severity: 'error',
 				path: at(i, ['core', 'values', j, 'value']),
 				nodeId: id,
-				message: `${id} lists the value "${v.value}" twice (values ${first} and ${j}); each value must be different`
+				message: `the lookup ${id} lists "${v.value}" twice; each value must be different`
 			});
 		});
 		if (!usedLookups.has(id)) {
@@ -207,7 +207,7 @@ export function checkInvariants(document: DefinitionDocument): InvariantIssue[] 
 				severity: 'warning',
 				path: at(i, []),
 				nodeId: id,
-				message: `${id} is declared but no fact is chosen from it`
+				message: `the lookup ${id} is not used: no fact is chosen from it`
 			});
 		} else if (!values.some((v) => !v.disabled)) {
 			issues.push({
@@ -215,7 +215,7 @@ export function checkInvariants(document: DefinitionDocument): InvariantIssue[] 
 				severity: 'error',
 				path: at(i, ['core', 'values']),
 				nodeId: id,
-				message: `${id} has no values that can be chosen; add one or turn one back on`
+				message: `the lookup ${id} has no values that can be chosen; add one or turn one back on`
 			});
 		}
 	});

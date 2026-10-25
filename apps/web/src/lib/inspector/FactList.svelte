@@ -167,9 +167,10 @@
 	{#each FACT_KINDS as k, i (k.label)}<option value="k:{i}">{k.label}</option>{/each}
 	<optgroup label="Choose from a lookup">
 		{#each ix.lookups as l (l.core.id)}<option value="l:{l.core.id}"
-				>{labelOf(ix, l.core.id)}</option
+				>Choice · {labelOf(ix, l.core.id)}</option
 			>{/each}
-		{#each shared as l (l.name)}<option value="s:{l.name}">{l.title} (shared)</option>{/each}
+		{#each shared as l (l.name)}<option value="s:{l.name}">Choice · {l.title} (shared)</option
+			>{/each}
 		{#if current && current.startsWith('s:') && !ix.shared.has(current.slice(2))}<option
 				value={current}>{current.slice(2)} (shared)</option
 			>{/if}

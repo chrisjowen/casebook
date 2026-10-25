@@ -16,6 +16,7 @@
 		Plus,
 		Trash2,
 		Undo2,
+		Workflow,
 		X
 	} from '@lucide/svelte';
 	import Frame from '$lib/runner/Frame.svelte';
@@ -87,7 +88,12 @@
 			say('error', next);
 			return false;
 		}
-		return save({ values: next }, 'Saved. Every process using it now offers these values.');
+		return save(
+			{ values: next },
+			open?.uses.length
+				? `Saved. ${open.uses.length === 1 ? 'Its process now offers' : `All ${open.uses.length} processes using it now offer`} these values.`
+				: 'Saved.'
+		);
 	};
 
 	async function undo() {
@@ -207,6 +213,36 @@
 						</section>
 					{/if}
 				{/each}
+				{#if data.inProcesses.length}
+					<section>
+						<h2
+							class="flex items-center gap-1.5 px-2 pb-1 text-[11.5px] font-semibold text-muted-foreground"
+						>
+							<Workflow class="size-3.5" />Kept in a process
+						</h2>
+						<ul class="flex flex-col">
+							{#each data.inProcesses as l (`${l.slug}:${l.id}`)}
+								<li>
+									<a
+										href={links.editor(slug, l.namespace, l.slug, l.id)}
+										class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-foreground/85 hover:bg-muted"
+										title="Opens in the editor of {l.process}"
+									>
+										<ListChecks class="size-3.5 shrink-0 text-muted-foreground" />
+										<span class="min-w-0 flex-1 truncate"
+											>{l.title}<span class="ml-1.5 text-[11.5px] text-muted-foreground"
+												>{l.process}</span
+											></span
+										>
+										<span class="shrink-0 text-[11px] text-muted-foreground tabular-nums"
+											>{l.count}</span
+										>
+									</a>
+								</li>
+							{/each}
+						</ul>
+					</section>
+				{/if}
 				{#if total === 0 && writable.length === 0}
 					<p class="px-2 text-[12.5px] text-muted-foreground">
 						No shared lookups yet, and you cannot make them here. Ask someone with write access to a
@@ -221,7 +257,7 @@
 				<div
 					role={notice.tone === 'error' ? 'alert' : 'status'}
 					class={[
-						'mb-4 flex max-w-3xl items-start gap-2 rounded-xl border bg-background px-3.5 py-2.5 text-[12.5px] shadow-sm',
+						'fixed top-16 left-1/2 z-50 flex w-[min(560px,calc(100%-32px))] -translate-x-1/2 items-start gap-2 rounded-xl border bg-background px-3.5 py-2.5 text-[12.5px] shadow-md',
 						notice.tone === 'error' && 'border-destructive/40'
 					]}
 				>
@@ -259,10 +295,9 @@
 								<h2 class="text-[22px] font-semibold tracking-tight">{open.title}</h2>
 							{/if}
 							<p class="mt-1 text-[12.5px] text-muted-foreground">
-								Kept in {open.namespaceLabel}
-								<span class="font-mono text-[11px]">({open.namespace})</span> for every process
-								there and below · facts name it
-								<span class="font-mono text-[11px]">{open.name}</span>
+								Shared by every process in {open.namespaceLabel}
+								<span class="font-mono text-[11px]">({open.namespace})</span> and below.
+								{#if canEdit}Changes go live for them as soon as you make them.{/if}
 							</p>
 						</div>
 						<div class="flex shrink-0 items-center gap-2 pt-1 text-[12px] text-muted-foreground">
@@ -276,7 +311,7 @@
 						<p
 							class="mt-3 max-w-3xl rounded-lg bg-muted/60 px-3 py-2 text-[12px] text-muted-foreground"
 						>
-							Read only: {open.canEdit.reason}.
+							You can view this list. To change it, ask someone who can edit processes in {open.namespaceLabel}.
 						</p>
 					{/if}
 
@@ -288,7 +323,14 @@
 							>
 								Values
 							</h3>
-							<LookupValues values={open.values} onchange={canEdit ? saveValues : undefined} />
+							<LookupValues
+								values={open.values}
+								onchange={canEdit ? saveValues : undefined}
+								confirmRemove={(v) =>
+									confirm(
+										`Take “${v.label ?? v.value}” out of ${open.title}? Cases that already hold it keep it, but no process offers it any more. To stop offering it but keep it listed, turn it off instead.`
+									)}
+							/>
 							<p class="mt-2 text-[11.5px] text-muted-foreground">
 								Renaming a value keeps what cases already hold. Turn a value off to stop offering it
 								without changing cases that have it.
@@ -297,12 +339,16 @@
 								<span class="text-[11px] font-semibold tracking-wide text-foreground/70 uppercase"
 									>Guidance</span
 								>
-								<textarea
-									class="min-h-[72px] w-full resize-y rounded-lg bg-muted/70 px-3 py-2 text-[13px] outline-none placeholder:text-muted-foreground focus:bg-background focus:ring-2 focus:ring-brand-ring disabled:opacity-70"
-									placeholder={canEdit ? 'What these values mean, for whoever chooses one' : ''}
-									disabled={!canEdit}
-									value={open.content ?? ''}
-									onchange={(e) => guide(e.currentTarget)}></textarea>
+								{#if canEdit}
+									<textarea
+										class="min-h-[72px] w-full resize-y rounded-lg bg-muted/70 px-3 py-2 text-[13px] outline-none placeholder:text-muted-foreground focus:bg-background focus:ring-2 focus:ring-brand-ring disabled:opacity-70"
+										placeholder={canEdit ? 'What these values mean, for whoever chooses one' : ''}
+										disabled={!canEdit}
+										value={open.content ?? ''}
+										onchange={(e) => guide(e.currentTarget)}></textarea>
+								{:else}
+									<p class="text-[13px] text-foreground/85">{open.content || 'No guidance yet.'}</p>
+								{/if}
 							</label>
 						</section>
 

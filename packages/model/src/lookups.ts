@@ -400,10 +400,7 @@ export function lookupListProblem(list: unknown): string | undefined {
 	for (const v of values as unknown[]) {
 		if (typeof v !== 'object' || v === null || Array.isArray(v))
 			return 'Each value must be an object';
-		const { value, label, code, description, disabled, ...extra } = v as Record<
-			string,
-			unknown
-		>;
+		const { value, label, code, description, disabled, ...extra } = v as Record<string, unknown>;
 		if (Object.keys(extra).length) return `A value has no field "${Object.keys(extra)[0]}"`;
 		if (!isText(value)) return 'Every value needs a name';
 		if (label !== undefined && !isText(label))

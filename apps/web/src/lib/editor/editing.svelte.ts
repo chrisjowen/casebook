@@ -85,7 +85,10 @@ export class Editor {
 		);
 		const published =
 			result.version !== undefined ? ` Published as version ${result.version}.` : '';
-		if (added) {
+		if (added?.code === 'empty-lookup') {
+			// a lookup just made, or emptied, is the next thing to fill in rather than a fault
+			this.#say('info', `${label ?? 'Saved'}. Add its values next.`, undefined, true);
+		} else if (added) {
 			this.#say(
 				'warn',
 				`${label ?? 'Saved'}, but publishing is now blocked`,

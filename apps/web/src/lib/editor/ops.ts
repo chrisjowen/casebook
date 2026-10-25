@@ -445,6 +445,36 @@ export function lookupFromFact(
 	};
 }
 
+/**
+ * Points every fact chosen from a process lookup at the shared lookup `name` made from it, and
+ * deletes the process's own copy, as one edit.
+ */
+export function shareLookup(ix: ProcessIndex, id: string, name: string): Edit {
+	const ops: Operation[] = factsUsingLookup(ix.document, id).flatMap(
+		(fact) => chooseFrom(ix, fact, { kind: 'shared', name }).ops
+	);
+	ops.push({ op: 'remove_node', id: id as NodeId });
+	return { ops, label: `${labelOf(ix, id)} is now shared with the whole workspace` };
+}
+
+/**
+ * Copies a shared lookup's values into a new lookup of this process, which the fact is then
+ * chosen from, so it can be changed here without changing it for everyone.
+ */
+export function copyIntoProcess(
+	ix: ProcessIndex,
+	fact: FactId,
+	shared: { title: string; values: LookupValue[] }
+): Edit & { id: LookupId } {
+	const made = newLookup(ix, shared.title, shared.values);
+	return {
+		id: made.id,
+		ops: [...made.ops, ...chooseFrom(ix, fact, { kind: 'lookup', lookup: made.id }).ops],
+		label: `Copied ${shared.title} into this process; ${labelOf(ix, fact)} is chosen from the copy`,
+		select: made.id
+	};
+}
+
 /** Deletes a lookup, or says which facts are still chosen from it. */
 export function removeLookup(ix: ProcessIndex, id: string): Edit | string {
 	const users = factsUsingLookup(ix.document, id);

@@ -7,9 +7,16 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
-	import type { FactNode, LookupNode, Operation, StageId } from '@casebook/model';
+	import {
+		factsUsingShared,
+		type FactNode,
+		type LookupNode,
+		type Operation,
+		type StageId
+	} from '@casebook/model';
 	import { Editor, setEditor } from '$lib/editor/editing.svelte';
-	import type { Edit } from '$lib/editor/ops';
+	import { shareLookup, type Edit } from '$lib/editor/ops';
+	import { deserialize } from '$app/forms';
 	import { draftStatus, publishBlocked } from '$lib/editor/status';
 	import Frame, { type Crumb } from '$lib/runner/Frame.svelte';
 	import { links } from '$lib/runner/links';
@@ -76,6 +83,14 @@
 	const shared = $derived(sharedFactTypes(indexes.map((ix) => ix.document)));
 	const isMap = $derived(!data.slug);
 	const active = $derived(indexes.find((ix) => ix.document.slug === data.slug) ?? indexes[0]);
+	// The process's own lookups and the shared ones its facts choose from.
+	const lookupsInUse = $derived(
+		active
+			? active.lookups.length +
+					(workspace?.lookups.filter((l) => factsUsingShared(active.document, l.name).length)
+						.length ?? 0)
+			: 0
+	);
 	const loaded = $derived(
 		workspace?.definitions.find((d) => d.document.slug === active?.document.slug)
 	);
@@ -127,6 +142,34 @@
 			: undefined
 	);
 	const publishProblem = $derived(loaded && publishBlocked(loaded));
+
+	/**
+	 * Moves a process lookup to the workspace's shared lookups: makes the shared one, then points
+	 * the facts at it and drops the process's copy in one edit of the draft.
+	 */
+	async function share(lookup: LookupNode) {
+		if (!workspace || !active || !change) return;
+		const body = new FormData();
+		body.set('namespaceId', workspace.id);
+		body.set('title', labelOf(active, lookup.core.id));
+		body.set('values', JSON.stringify(lookup.core.values));
+		const response = await fetch(`${manageLookups()}?/share`, {
+			method: 'POST',
+			body,
+			headers: { 'x-sveltekit-action': 'true' }
+		});
+		const result = deserialize(await response.text());
+		if (result.type !== 'success') {
+			editor.refuse(
+				result.type === 'failure'
+					? String((result.data as { reason?: string } | undefined)?.reason ?? 'It was not shared')
+					: 'It was not shared'
+			);
+			return;
+		}
+		const name = String((result.data as { name?: string } | undefined)?.name);
+		if (await change(shareLookup(active, lookup.core.id, name))) nav({ sel: 'lookups' });
+	}
 
 	let query = $state('');
 	let details = $state(false);
@@ -485,8 +528,8 @@
 							class="cursor-pointer hover:text-foreground"
 							title="Lists of values that choices are made from"
 							onclick={() => nav({ sel: 'lookups' })}
-							>{active.lookups.length}
-							{active.lookups.length === 1 ? 'lookup' : 'lookups'}</button
+							>{lookupsInUse}
+							{lookupsInUse === 1 ? 'lookup' : 'lookups'}</button
 						>
 						{#if failing}<button
 								class="inline-flex cursor-pointer items-center gap-1 text-destructive"
@@ -595,6 +638,9 @@
 									edit={change}
 									onselect={(id) => nav({ sel: id })}
 									onremoved={() => nav({ sel: 'lookups' })}
+									share={change && workspace.can.create.allowed
+										? () => share(selectedLookup)
+										: undefined}
 								/>
 							{/key}
 						{:else if selected === 'lookups'}

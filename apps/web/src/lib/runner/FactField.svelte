@@ -35,7 +35,7 @@
 				]
 			: (field.options ?? [])
 	);
-	// A long list, such as countries, is a menu or a list to filter rather than a row of chips.
+	// A long list, such as countries, is a list to find in, by name or code, not a row of chips.
 	const long = $derived(choices.length > 8);
 	let filter = $state('');
 	const shownChoices = $derived(
@@ -111,14 +111,6 @@
 			<input type="hidden" name="demo:fact:{field.fact}" value="yes" />
 			<input type="hidden" name="demo-name:fact:{field.fact}" value={field.title} />
 		{/if}
-	{:else if long && !field.multiple}
-		<label for={id} class="text-[13px] font-medium">{field.title}</label>
-		{#if field.hint}<span class="text-[12px] text-muted-foreground">{field.hint}</span>{/if}
-		<select {id} {name} class={[input, 'cursor-pointer']} value={current[0] ?? ''}>
-			<option value="" disabled>Choose one of {choices.length}</option>
-			{#each choices as option (option.value)}<option value={option.value}>{option.label}</option
-				>{/each}
-		</select>
 	{:else if field.kind === 'choice' || field.kind === 'yesno'}
 		<fieldset class="grid gap-1.5">
 			<legend class="mb-1.5 text-[13px] font-medium">{field.title}</legend>
@@ -130,6 +122,7 @@
 					placeholder="Find one of {choices.length}"
 					aria-label="Find a choice for {field.title}"
 					bind:value={filter}
+					onkeydown={(e) => e.key === 'Enter' && e.preventDefault()}
 				/>
 			{/if}
 			<div
@@ -152,7 +145,12 @@
 							checked={current.includes(option.value)}
 							class="accent-brand"
 						/>
-						{option.label}
+						<span class="flex flex-col">
+							<span>{option.label}</span>
+							{#if 'description' in option && option.description}<span
+									class="text-[11.5px] text-muted-foreground">{option.description}</span
+								>{/if}
+						</span>
 					</label>
 				{/each}
 			</div>

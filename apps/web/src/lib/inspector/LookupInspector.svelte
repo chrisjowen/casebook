@@ -3,7 +3,7 @@
 	// chosen from it with the steps that record them, and deleting it once nothing uses it. Every
 	// change is an edit of the draft, so it shows in the changes, publishes and undoes like any other.
 	import { factsUsingLookup, type LookupNode } from '@casebook/model';
-	import { ChevronRight, Trash2 } from '@lucide/svelte';
+	import { ChevronRight, Share2, Trash2 } from '@lucide/svelte';
 	import { changeValues, removeLookup, renameNode, type Edit } from '$lib/editor/ops';
 	import { collectorsByFact, labelOf, requiresOf, type ProcessIndex } from '$lib/graph/derive';
 	import LookupValues from '$lib/lookups/LookupValues.svelte';
@@ -15,7 +15,8 @@
 		lookup,
 		edit,
 		onselect,
-		onremoved
+		onremoved,
+		share
 	}: {
 		ix: ProcessIndex;
 		lookup: LookupNode;
@@ -23,6 +24,8 @@
 		edit?: (e: Edit | string) => Promise<boolean>;
 		onselect: (id: string) => void;
 		onremoved?: () => void;
+		/** Moves it to the workspace's shared lookups; absent when that cannot be done. */
+		share?: () => Promise<unknown>;
 	} = $props();
 
 	const id = $derived(lookup.core.id);
@@ -88,6 +91,18 @@
 			</p>
 		{/each}
 	</Group>
+	{#if edit && share}
+		<Group title="Share">
+			<button
+				class="flex cursor-pointer items-center gap-1.5 self-start rounded-lg border px-2.5 py-1.5 text-[12px] hover:bg-muted"
+				onclick={share}><Share2 class="size-3.5" />Share with the whole workspace</button
+			>
+			<p class="text-[11px] text-muted-foreground">
+				Moves it to the workspace’s Lookups, so every process there can choose from it. Changes to
+				it then go live for all of them straight away.
+			</p>
+		</Group>
+	{/if}
 	{#if edit && removal !== undefined}
 		<Group title="Remove">
 			<button

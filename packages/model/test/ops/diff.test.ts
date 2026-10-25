@@ -261,7 +261,11 @@ describe('diff', () => {
 					changes: {
 						values: [
 							{ value: 'SEV2', description: 'A major feature is broken or badly slow' },
-							{ value: 'SEV1', label: 'Critical', description: 'A customer-facing service is down' },
+							{
+								value: 'SEV1',
+								label: 'Critical',
+								description: 'A customer-facing service is down'
+							},
 							{
 								value: 'SEV3',
 								code: 'S3',

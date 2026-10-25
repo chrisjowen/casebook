@@ -4,12 +4,13 @@
 	// choice's values are its own options or come from a lookup of the process or a shared one
 	// (ADR 0025), and switching between them is one edit.
 	import type { FactNode, LookupNode, Operation } from '@casebook/model';
-	import { ArrowUpRight, ChevronRight, Trash2 } from '@lucide/svelte';
+	import { ChevronRight, Trash2 } from '@lucide/svelte';
 	import type { ResolvedPathname } from '$app/types';
 	import type { SharedLookupRef } from '$lib/definitions/types';
 	import {
 		changeValues,
 		chooseFrom,
+		copyIntoProcess,
 		lookupFromFact,
 		removeFact,
 		rename,
@@ -239,10 +240,16 @@
 				{#if manage}<a
 						href={manage(sharedList?.id)}
 						class="inline-flex items-center gap-0.5 self-start text-[11.5px] text-muted-foreground hover:text-foreground"
-						>{sharedList
-							? 'Change it on the Lookups page'
-							: 'Make it on the Lookups page'}<ArrowUpRight class="size-3" /></a
+						>{sharedList ? 'Change it on the Lookups page' : 'Make it on the Lookups page'}</a
 					>{/if}
+				{#if change && sharedList}
+					<button
+						class="self-start text-[11.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+						title="Make this process's own copy, to change without changing it for everyone"
+						onclick={() => change(copyIntoProcess(ix, id, sharedList))}
+						>Copy into this process</button
+					>
+				{/if}
 			{:else if change}
 				<LookupValues
 					values={choicesOf(ix, id).map((c) => ({ value: c.value }))}

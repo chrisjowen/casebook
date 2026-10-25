@@ -11,7 +11,8 @@ import {
 	type Refusal
 } from '@casebook/store';
 import { getDb } from '$lib/server/db';
-import { namespaceLabel } from '$lib/server/definitions';
+import { loadWorkspaces, namespaceLabel } from '$lib/server/definitions';
+import { factsUsingLookup } from '@casebook/model';
 import { actorOf } from '$lib/server/runner';
 import { links } from '$lib/runner/links';
 import type { Actions, PageServerLoad } from './$types';
@@ -34,12 +35,34 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 			off: l.values.filter((v) => v.disabled).length
 		}))
 	}));
+	// Lookups kept inside a process, which open in the editor.
+	const inProcesses = (await loadWorkspaces(actor, params.instance)).flatMap((w) =>
+		w.definitions.flatMap((d) => {
+			const process = d.document.nodes.find((n) => n.core.kind === 'process');
+			return d.document.nodes.flatMap((n) =>
+				n.core.kind === 'lookup'
+					? [
+							{
+								id: n.core.id,
+								title: n.core.title ?? n.core.id,
+								count: n.core.values.length,
+								uses: factsUsingLookup(d.document, n.core.id).length,
+								process: process?.core.title ?? d.document.slug,
+								slug: d.document.slug,
+								namespace: w.namespace
+							}
+						]
+					: []
+			);
+		})
+	);
 	const wanted = url.searchParams.get('l') ?? groups.flatMap((g) => g.lookups)[0]?.id;
 	const read = wanted ? await readSharedLookup(getDb(), actor, wanted) : undefined;
-	if (!read?.ok) return { groups, open: undefined };
+	if (!read?.ok) return { groups, inProcesses, open: undefined };
 	const { lookup, can } = read;
 	return {
 		groups,
+		inProcesses,
 		open: {
 			id: lookup.id,
 			name: lookup.name,
@@ -70,6 +93,22 @@ const STATUS: Partial<Record<Refusal['code'], number>> = {
 const refused = (r: Refusal) => fail(STATUS[r.code] ?? 422, { code: r.code, reason: r.reason });
 
 export const actions: Actions = {
+	/** Makes a shared lookup from a process's own, for the editor to point its facts at. */
+	share: async ({ request, locals }) => {
+		const form = await request.formData();
+		let values: unknown;
+		try {
+			values = JSON.parse(String(form.get('values') ?? '[]'));
+		} catch {
+			return fail(400, { code: 'invalid-operation', reason: 'The values were not valid JSON' });
+		}
+		const result = await createSharedLookup(getDb(), actorOf(locals), {
+			namespaceId: String(form.get('namespaceId') ?? ''),
+			title: String(form.get('title') ?? ''),
+			values: values as Parameters<typeof createSharedLookup>[2]['values']
+		});
+		return result.ok ? result : refused(result);
+	},
 	create: async ({ request, locals, params }) => {
 		const form = await request.formData();
 		const result = await createSharedLookup(getDb(), actorOf(locals), {
