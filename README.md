@@ -23,6 +23,7 @@ A [moon](https://moonrepo.dev) workspace with pnpm workspaces underneath, all Ty
 | `apps/web`              | SvelteKit 2 app (Svelte 5, Tailwind 4, shadcn-svelte).                                 |
 | `packages/model`        | Process-definition types, JSON Schema, validation and publish checks. Pure TypeScript. |
 | `packages/store`        | Postgres persistence with Drizzle ORM; migrations via drizzle-kit.                     |
+| `packages/sheet-import` | Reads .xlsx workbooks into neutral rows and cells for the wizard.                      |
 | `packages/wizard-agent` | Placeholder for the deepagents-based authoring agent.                                  |
 
 ## Prerequisites

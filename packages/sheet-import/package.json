@@ -1,0 +1,24 @@
+{
+	"name": "@casebook/sheet-import",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Reads .xlsx workbooks into a neutral, serializable rows-and-cells model with source references, plus a bounded text rendering for LLMs. Pure TypeScript.",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+	},
+	"devDependencies": {
+		"@types/node": "22.20.5",
+		"typescript": "6.0.3",
+		"vitest": "5.0.5"
+	}
+}
