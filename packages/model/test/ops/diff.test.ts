@@ -26,11 +26,10 @@ describe('diff', () => {
 	});
 
 	it('tells apart required and collected facts that share a title', () => {
-		const twin = (id: string, title: string) =>
-			({
-				op: 'add_node',
-				node: { core: { id, kind: 'fact', title, schema: { type: 'string' } } }
-			}) as const;
+		const twin = (id: `fact.${string}`, title: string): Operation => ({
+			op: 'add_node',
+			node: { core: { id, kind: 'fact', title, schema: { type: 'string' } } }
+		});
 		const summary = summaryOf(incidentManagement, [
 			twin('fact.severity-copy', 'Severity'),
 			twin('fact.rca-copy', 'Root cause analysis'),
