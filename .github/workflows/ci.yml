@@ -14,7 +14,10 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
+      # moon's affected checks diff against the base branch, which needs full history.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # Installs proto, then moon, Node and pnpm at the versions pinned in .prototools.
       - uses: moonrepo/setup-toolchain@v0
