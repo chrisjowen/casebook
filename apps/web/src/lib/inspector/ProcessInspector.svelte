@@ -46,6 +46,10 @@
 	const run = async ({ ops, select }: Edit) => {
 		if (edit && (await edit(ops)) && select) onselect?.(select);
 	};
+	const renameFrom = async (field: HTMLInputElement, id: string) => {
+		const title = field.value.trim();
+		if (!title || !(await edit?.([rename(id, title)]))) field.value = labelOf(ix, id);
+	};
 	const small =
 		'flex cursor-pointer items-center gap-1.5 self-start text-[12px] text-muted-foreground hover:text-foreground';
 	const MAX_CHANGES = 8;
@@ -188,9 +192,7 @@
 						class="h-7 min-w-0 flex-1 rounded-md bg-transparent px-1.5 outline-none hover:bg-muted/70 focus:bg-muted/70 focus:ring-2 focus:ring-brand-ring"
 						aria-label="Role name"
 						value={labelOf(ix, role.core.id)}
-						onchange={(e) =>
-							e.currentTarget.value.trim() &&
-							edit([rename(role.core.id, e.currentTarget.value.trim())])}
+						onchange={(e) => renameFrom(e.currentTarget, role.core.id)}
 						onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
 					/>
 				{:else}{labelOf(ix, role.core.id)}{/if}
@@ -221,9 +223,7 @@
 							class="h-7 min-w-0 flex-1 rounded-md bg-transparent px-1.5 outline-none hover:bg-muted/70 focus:bg-muted/70 focus:ring-2 focus:ring-brand-ring"
 							aria-label="Stage name"
 							value={labelOf(ix, stage.core.id)}
-							onchange={(e) =>
-								e.currentTarget.value.trim() &&
-								edit([rename(stage.core.id, e.currentTarget.value.trim())])}
+							onchange={(e) => renameFrom(e.currentTarget, stage.core.id)}
 							onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
 						/>
 						<button

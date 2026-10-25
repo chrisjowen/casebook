@@ -13,7 +13,7 @@
 		label: string;
 		value: string;
 		options: { value: string; label: string }[];
-		onsave?: (value: string) => void;
+		onsave?: (value: string) => Promise<boolean>;
 		/** How the value reads when read-only; defaults to its option label. */
 		children?: Snippet;
 	} = $props();
@@ -25,7 +25,10 @@
 		<select
 			class="h-9 w-full cursor-pointer rounded-lg bg-muted/70 px-2.5 text-[13px] outline-none focus:ring-2 focus:ring-brand-ring"
 			{value}
-			onchange={(e) => e.currentTarget.value !== value && onsave(e.currentTarget.value)}
+			onchange={async (e) => {
+				const field = e.currentTarget;
+				if (field.value !== value && !(await onsave(field.value))) field.value = value;
+			}}
 		>
 			{#each options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
 		</select>
