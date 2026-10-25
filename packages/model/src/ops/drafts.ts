@@ -46,8 +46,6 @@ export type DraftResult =
 	  })
 	| Rejection;
 
-const LIVING_PUBLISH_ATTEMPTS = 3;
-
 /** Stores `document` as revision 1 of a new draft. */
 export function createDraft(
 	context: DraftContext,
@@ -106,7 +104,14 @@ export async function publishDraft(
 	const { store, definitionId } = context;
 	const head = await store.head(definitionId);
 	if (head === undefined) return noDraft(context);
-	return publishRevision(context, head, await store.latestVersion(definitionId), options);
+	const decision = await publishRevision(
+		context,
+		head,
+		await store.latestVersion(definitionId),
+		options
+	);
+	if (decision.allowed || decision.code !== 'version-conflict') return decision;
+	return { ...decision, reason: `${decision.reason}; publish again to make the next one` };
 }
 
 async function publishRevision(
@@ -130,7 +135,7 @@ async function publishRevision(
 		return {
 			allowed: false,
 			code: 'version-conflict',
-			reason: `Version ${decision.version.version} was published by someone else at the same time; publish again to make the next one`,
+			reason: `Version ${decision.version.version} was published by someone else at the same time`,
 			errors: [],
 			issues: []
 		};
@@ -155,7 +160,7 @@ async function save(
 		if (decision.code === 'superseded' && latest !== undefined) {
 			return { ...result, supersededBy: latest };
 		}
-		if (decision.code !== 'version-conflict' || attempt === LIVING_PUBLISH_ATTEMPTS) {
+		if (decision.code !== 'version-conflict' || attempt === result.revision.number) {
 			return { ...result, publishRefused: decision };
 		}
 	}

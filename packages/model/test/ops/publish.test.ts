@@ -517,6 +517,40 @@ describe('stored drafts', () => {
 				[2, 3]
 			]);
 		});
+
+		it('four edits that all read the same latest version each publish in turn, so the newest goes live', async () => {
+			const store = new GatedStore();
+			const draft: DraftContext = {
+				store,
+				definitionId: 'def-incident',
+				policy: { mode: 'living' }
+			};
+			await createDraft(draft, incidentManagement, alice, at);
+			store.gating = true;
+			const edits: Promise<DraftResult>[] = [];
+			for (const content of ['one', 'two', 'three', 'four']) {
+				edits.push(editDraft(draft, [{ op: 'set_content', id: 'stage.detect', content }], bob, at));
+				await settle();
+			}
+			for (let waiter = 0; waiter < 10; waiter++) {
+				store.release(waiter);
+				await settle();
+			}
+			const results = await Promise.all(edits);
+			expect(results.map((r) => (r.ok ? r.published?.version : undefined))).toEqual([2, 3, 4, 5]);
+			for (const result of results) expect(result).not.toHaveProperty('publishRefused');
+			const versions = await store.versions('def-incident');
+			expect(versions.map((v) => [v.version, v.revision])).toEqual([
+				[1, 1],
+				[2, 2],
+				[3, 3],
+				[4, 4],
+				[5, 5]
+			]);
+			expect(versions[4]?.document.nodes.find((n) => n.core.id === 'stage.detect')?.content).toBe(
+				'four'
+			);
+		});
 	});
 
 	it('rejects editing a draft that does not exist', async () => {
