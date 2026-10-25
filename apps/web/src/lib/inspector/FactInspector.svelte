@@ -164,7 +164,7 @@
 			>
 			<p class="text-[11px] text-muted-foreground">
 				{typeof removal === 'string'
-					? `${removal}; delete the decision instead.`
+					? `${removal}.`
 					: 'Takes it off every step that records or needs it. Undo brings it back.'}
 			</p>
 		</Group>

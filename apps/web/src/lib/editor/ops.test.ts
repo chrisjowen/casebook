@@ -258,6 +258,26 @@ describe('a step’s Records and Needs first', () => {
 		);
 	});
 
+	it('removing a fact a rule or an assignment still reads only takes it off this step', () => {
+		const resolved = apply(
+			doc,
+			edits.removeFromList(ix, 'step.resolve-incident', 'records', 'fact.resolved-at')
+		);
+		expect(node(resolved, 'fact.resolved-at')).toBeDefined();
+		expect(collectsOf(work(resolved, 'step.resolve-incident')).map((c) => c.fact)).not.toContain(
+			'fact.resolved-at'
+		);
+
+		const group = apply(
+			doc,
+			edits.removeFromList(ix, 'step.form-working-group', 'records', 'fact.working-group')
+		);
+		expect(node(group, 'fact.working-group')).toBeDefined();
+		expect(collectsOf(work(group, 'step.form-working-group')).map((c) => c.fact)).not.toContain(
+			'fact.working-group'
+		);
+	});
+
 	it('removing something a step needs takes the link away', () => {
 		const after = apply(
 			doc,
@@ -302,7 +322,16 @@ describe('moving and removing', () => {
 		const after = apply(doc, edits.removeFact(ix, 'fact.incident-summary'));
 		expect(node(after, 'fact.incident-summary')).toBeUndefined();
 		expect(edits.removeFact(ix, 'fact.severity')).toBe(
-			'Severity is what Classify severity decides'
+			'Severity is what Classify severity decides; delete the decision instead'
+		);
+	});
+
+	it('says why a fact a rule or an assignment reads cannot be deleted', () => {
+		expect(edits.removeFact(ix, 'fact.resolved-at')).toMatch(
+			/^Resolved at is still used by Post a status update/
+		);
+		expect(edits.removeFact(ix, 'fact.working-group')).toMatch(
+			/^Working group is still used by Form the working group/
 		);
 	});
 

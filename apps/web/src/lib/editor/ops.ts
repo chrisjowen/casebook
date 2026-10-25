@@ -17,6 +17,7 @@ import type {
 	RoleId,
 	StageId
 } from '@casebook/model';
+import { nodeReferences } from '@casebook/model';
 import {
 	collectsOf,
 	indexDocument,
@@ -264,23 +265,16 @@ export function addFactByName(
 }
 
 /**
- * Takes a fact off a step's list with one click. A fact nothing else records or needs, and that is
- * not a decision's outcome, goes away entirely rather than lingering unused.
+ * Takes a fact off a step's list with one click. A fact nothing else refers to goes away entirely
+ * rather than lingering unused.
  */
 export function removeFromList(ix: ProcessIndex, item: string, list: FactList, fact: FactId): Edit {
-	const work = workItem(ix, item);
-	const recordsHere = collectsOf(work).some((c) => c.fact === fact);
-	const elsewhere =
-		ix.work.some(
-			(w) =>
-				w.core.id !== item &&
-				(collectsOf(w).some((c) => c.fact === fact) || requiresOf(w).includes(fact))
-		) || ix.approvals.some((a) => requiresOf(a).includes(fact));
-	const otherListHere = list === 'records' ? requiresOf(work).includes(fact) : recordsHere;
-	if (!elsewhere && !otherListHere) {
-		const all = removeFact(ix, fact);
-		if (typeof all !== 'string') return { ...all, label: `Removed ${labelOf(ix, fact)}` };
-	}
+	workItem(ix, item);
+	const entry = list === 'records' ? 'collects' : 'requires';
+	const used = ix.document.nodes.some((n) =>
+		nodeReferences(n).some((r) => r.target === fact && !(n.core.id === item && r.at[1] === entry))
+	);
+	if (!used) return { ...(removeFact(ix, fact) as Edit), label: `Removed ${labelOf(ix, fact)}` };
 	return list === 'records' ? setCollects(ix, item, fact, false) : setNeeds(ix, item, fact, false);
 }
 
@@ -423,10 +417,26 @@ export function removeStage(ix: ProcessIndex, id: string): Edit | string {
 	};
 }
 
-/** Deletes a fact everywhere it is used. A decision's outcome goes only with its decision. */
+/**
+ * Deletes a fact off every step that records or needs it. Returns the reason instead when
+ * something else uses it: a decision's outcome goes only with its decision, and a rule, evidence
+ * or assignment reading it has to change first.
+ */
 export function removeFact(ix: ProcessIndex, id: FactId): Edit | string {
 	const outcomeOf = ix.work.find((w) => w.core.kind === 'decision' && w.core.outcome === id);
-	if (outcomeOf) return `${labelOf(ix, id)} is what ${labelOf(ix, outcomeOf.core.id)} decides`;
+	if (outcomeOf) {
+		return `${labelOf(ix, id)} is what ${labelOf(ix, outcomeOf.core.id)} decides; delete the decision instead`;
+	}
+	const users = ix.document.nodes.filter(
+		(n) =>
+			n.core.id !== id &&
+			nodeReferences(n).some(
+				(r) => r.target === id && r.at[1] !== 'collects' && r.at[1] !== 'requires'
+			)
+	);
+	if (users.length) {
+		return `${labelOf(ix, id)} is still used by ${users.map((n) => labelOf(ix, n.core.id)).join(', ')}; change that first`;
+	}
 	const ops: Operation[] = [];
 	for (const w of ix.work) {
 		if (w.core.kind === 'step' && w.core.collects?.some((c) => c.fact === id)) {

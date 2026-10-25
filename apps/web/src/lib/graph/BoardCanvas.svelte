@@ -263,12 +263,14 @@
 		const col = columnAt(built.columns, flow.screenToFlowPosition(clientOf(event)));
 		ui.dropStage = col && col.id !== (targetNode.data as BoardCardData).stage ? col.id : undefined;
 	}
-	function onnodedragstop({ targetNode }: { targetNode: Node | null }) {
+	async function onnodedragstop({ targetNode }: { targetNode: Node | null }) {
 		const into = ui.dropStage;
 		ui.dropStage = undefined;
-		if (targetNode?.type === 'card' && into)
-			void run(ops.moveToStage(ix, targetNode.id, into as StageId));
-		else nodes = built.nodes.map((n) => ({ ...n, selected: n.id === selectedId }));
+		const moved =
+			targetNode?.type === 'card' && !!into
+				? await run(ops.moveToStage(ix, targetNode.id, into as StageId))
+				: false;
+		if (!moved) nodes = styledNodes();
 	}
 
 	// ---- menus ----------------------------------------------------------------------------------
@@ -336,18 +338,18 @@
 			{ label: 'Delete stage', icon: Trash2, danger: true, run: () => removeNode(stage) }
 		];
 	}
-	function removeNode(id: string | undefined) {
-		if (!id) return;
+	function removal(id: string): ops.Edit | string | undefined {
 		const kind = kindOf(id);
-		const edit =
-			kind === 'step' || kind === 'decision'
-				? ops.removeWork(ix, id)
-				: kind === 'fact'
-					? ops.removeFact(ix, id as FactId)
-					: kind === 'stage'
-						? ops.removeStage(ix, id)
-						: undefined;
-		void run(edit).then((ok) => ok && onselect(undefined));
+		return kind === 'step' || kind === 'decision'
+			? ops.removeWork(ix, id)
+			: kind === 'fact'
+				? ops.removeFact(ix, id as FactId)
+				: kind === 'stage'
+					? ops.removeStage(ix, id)
+					: undefined;
+	}
+	function removeNode(id: string) {
+		void run(removal(id)).then((ok) => ok && onselect(undefined));
 	}
 
 	setBoard(ui, {
@@ -500,15 +502,20 @@
 	$effect(() => {
 		if (ui.addingStage) reveal(GHOST_ID);
 	});
+	const TEXT_ENTRY = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+	const CONTROL =
+		'button, a[href], summary, [role="button"], [role="link"], [role="menu"], [role="menuitem"], [role="tab"], [role="radio"], [role="checkbox"], [role="switch"], [role="option"], [role="combobox"], [role="listbox"]';
 	function onkey(e: KeyboardEvent) {
 		if (!editable) return;
-		if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]'))
-			return;
+		const target = e.target as HTMLElement;
+		if (target.closest(TEXT_ENTRY)) return;
 		const meta = e.metaKey || e.ctrlKey;
 		if (meta && e.key.toLowerCase() === 'z' && !e.shiftKey) {
 			if (!editor?.undoable) return;
 			e.preventDefault();
 			void editor.undo();
+		} else if (target.closest(CONTROL)) {
+			return;
 		} else if (e.key === '/' && !meta) {
 			e.preventDefault();
 			ui.palette = true;
@@ -527,8 +534,31 @@
 			ui.renaming = selectedId;
 		} else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
 			e.preventDefault();
-			removeNode(selectedId);
+			removeByKey(selectedId);
 		}
+	}
+	/** Deleting by key: a whole fact or stage is only deleted once the person confirms it. */
+	function removeByKey(id: string) {
+		const kind = kindOf(id);
+		if ((kind !== 'fact' && kind !== 'stage') || typeof removal(id) !== 'object')
+			return removeNode(id);
+		const r = (
+			document.querySelector(`.svelte-flow__node[data-id="${id}"]`) ?? wrap
+		)?.getBoundingClientRect();
+		ui.menu = {
+			x: (r?.left ?? 300) + 16,
+			y: (r?.top ?? 200) + 16,
+			title: `Delete ${kind} ${labelOf(ix, id)}?`,
+			items: [
+				{ label: 'Keep it', icon: X, run: () => {} },
+				{
+					label: kind === 'fact' ? 'Delete it from every step' : 'Delete stage',
+					icon: Trash2,
+					danger: true,
+					run: () => removeNode(id)
+				}
+			]
+		};
 	}
 
 	// ---- palette ------------------------------------------------------------------------------
