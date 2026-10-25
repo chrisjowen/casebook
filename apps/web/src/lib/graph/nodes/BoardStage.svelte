@@ -63,7 +63,7 @@
 			/>
 		{:else}
 			<button
-				class="nodrag min-w-0 cursor-pointer truncate font-medium text-foreground/85"
+				class="nodrag nopan min-w-0 cursor-pointer truncate font-medium text-foreground/85"
 				title={editable ? 'Double-click to rename' : undefined}
 				onmousedown={releaseFocus}
 				onclick={() => actions.select(id)}
