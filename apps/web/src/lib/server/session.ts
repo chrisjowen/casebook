@@ -1,6 +1,6 @@
 /**
  * Dev sign-in: choose one of the seeded demo users, with no password. It stands in for the OIDC
- * sign-in to come and is on only in development, or when CASEBOOK_DEV_SIGNIN=true is set.
+ * sign-in to come and is on only in development builds.
  */
 import { dev } from '$app/environment';
 import type { Cookies } from '@sveltejs/kit';
@@ -9,7 +9,7 @@ import { getDb } from './db';
 
 const COOKIE = 'casebook_dev_user';
 
-export const devSignInEnabled = () => dev || process.env.CASEBOOK_DEV_SIGNIN === 'true';
+export const devSignInEnabled = () => dev;
 
 /** The signed-in demo user, if the cookie names one. */
 export async function currentUser(cookies: Cookies): Promise<UserSummary | undefined> {

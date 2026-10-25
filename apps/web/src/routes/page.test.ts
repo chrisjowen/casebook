@@ -58,7 +58,6 @@ const pageFor = (query: string, can: Permission = allow) => {
 		namespace: workspace.namespace,
 		slug: p === 'map' ? undefined : (p ?? workspace.definitions[0]!.document.slug),
 		view: 'cards' as const,
-		published: false,
 		selected: url.searchParams.get('sel') ?? undefined
 	};
 	return render(Page, { props: { data, params: {} } as never }).body;

@@ -33,8 +33,6 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		namespace: workspace?.namespace,
 		slug,
 		view,
-		/** Show the latest published version instead of the draft. */
-		published: url.searchParams.get('rev') === 'published',
 		selected: url.searchParams.get('sel') ?? undefined
 	};
 };
@@ -73,7 +71,8 @@ export const actions: Actions = {
 		const form = await request.formData();
 		return outcome(
 			await publishDefinition(getDb(), actorOf(locals), {
-				definitionId: String(form.get('definitionId'))
+				definitionId: String(form.get('definitionId')),
+				baseRevision: Number(form.get('baseRevision'))
 			})
 		);
 	},

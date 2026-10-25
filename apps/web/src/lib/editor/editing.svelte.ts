@@ -27,23 +27,22 @@ export class Editor {
 	#timer: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
-		/** The open definition, and whether its published version is shown instead of the draft. */
-		private readonly current: () => { definition?: LoadedDefinition; published: boolean }
+		/** The open definition. */
+		private readonly current: () => LoadedDefinition | undefined
 	) {}
 
 	get definition() {
-		return this.current().definition;
+		return this.current();
 	}
 
 	/** Why the open definition cannot be edited right now, or undefined when it can. */
 	get blocked(): string | undefined {
-		const { definition, published } = this.current();
+		const definition = this.current();
 		if (!definition) return 'No process is open';
 		if (!definition.can.edit.allowed) return definition.can.edit.reason;
 		if (definition.policy === 'living' && !definition.can.publish.allowed) {
 			return `Every edit of a living process is published, and ${definition.can.publish.reason}`;
 		}
-		if (published) return 'This is the published version; switch to the draft to edit';
 		return undefined;
 	}
 
@@ -73,7 +72,10 @@ export class Editor {
 	async publish(): Promise<void> {
 		const definition = this.definition;
 		if (!definition) return;
-		const result = await this.#submit('publish', { definitionId: definition.id });
+		const result = await this.#submit('publish', {
+			definitionId: definition.id,
+			baseRevision: String(definition.revision ?? 0)
+		});
 		if (result?.version !== undefined) this.#say('info', `Published version ${result.version}`);
 	}
 

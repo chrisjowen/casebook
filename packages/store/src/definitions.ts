@@ -364,12 +364,13 @@ export interface Published {
  * Publishes a governed definition's draft head as its next version. The actor needs
  * `definition.publish`, and the publish checks must pass (ADR 0005). A living definition is
  * refused: each of its edits is already published. A definition whose policy requires approval
- * is refused until the approval flow exists.
+ * is refused until the approval flow exists. A draft head newer than `baseRevision` is refused as
+ * stale, so only the revision the actor reviewed is published.
  */
 export async function publishDefinition(
 	db: Db,
 	actor: Actor,
-	input: { definitionId: string }
+	input: Omit<DefinitionEdit, 'ops'>
 ): Promise<Published | Refusal> {
 	const stored = await loadStored(db, input.definitionId);
 	if (!stored) return notFound(input.definitionId);
@@ -381,6 +382,7 @@ export async function publishDefinition(
 		return refuse('no-change', 'This is a living definition: every edit is already published');
 	}
 	if (!head) return refuse('unknown-revision', `${definition.slug} has no draft to publish`);
+	if (head.revision !== input.baseRevision) return stale(head.revision, input.baseRevision);
 	const attribution = await attributionOf(db, actor);
 	const decision = publish({
 		policy: { mode: 'governed', requiresApproval: definition.publishRequiresApproval },
@@ -793,6 +795,9 @@ function storeRefusal(error: unknown): Refusal {
 				'stale-draft',
 				'Someone else edited the draft at the same time; reload to see the latest'
 			);
+		}
+		if (error.rule === 'revision-already-published') {
+			return refuse('no-change', 'Someone else published this draft at the same time');
 		}
 		if (error.rule === 'definition-missing') return refuse('not-found', error.message);
 	}

@@ -11,9 +11,9 @@ There is no identity provider yet, and agents will act through MCP as the user t
 - `@casebook/store` gets a definition service (`src/definitions.ts`) that composes the model's pure functions (`commit`, `undo`, `startHistory`, `publish`, `diff`, `checkPublish`) with the repository writes, instead of a `RevisionStore` adapter.
   Draft revisions also store their operations and the revision they revert to.
 - Every read and write takes an `Actor` and checks it with `can`: namespaces the actor cannot read are hidden, and refused writes return a plain-language reason.
-- An edit names the draft revision it was made against; a newer head refuses it as stale instead of overwriting.
+- An edit, undo or publish names the draft revision it was made against; a newer head refuses it as stale instead of overwriting or publishing what the actor did not see.
 - The web app's sign-in is a dev-only stand-in: choose one of the seeded demo users, with no password.
-  It is on in development, and in a production build only when `CASEBOOK_DEV_SIGNIN=true` is set.
+  It is on only in development builds, never in production.
 - The model's fixtures are seed data only (0014): `pnpm db:seed` loads them as published definitions with demo users holding different roles.
 
 ## Consequences

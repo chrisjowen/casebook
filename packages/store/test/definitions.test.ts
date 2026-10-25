@@ -158,7 +158,7 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 			'access-denied'
 		);
 		expectRefusal(
-			await publishDefinition(db, users.rae, { definitionId: incident.id }),
+			await publishDefinition(db, users.rae, { definitionId: incident.id, baseRevision: 1 }),
 			'access-denied',
 			/cannot publish/
 		);
@@ -239,7 +239,10 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 	it('publishes a governed draft through the publish checks', async () => {
 		const start = await definition(users.wren, 'incident-management');
 		expectRefusal(
-			await publishDefinition(db, users.wren, { definitionId: start.id }),
+			await publishDefinition(db, users.wren, {
+				definitionId: start.id,
+				baseRevision: start.draft!.number
+			}),
 			'no-change',
 			/Nothing has changed since version 1/
 		);
@@ -260,7 +263,10 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 			baseRevision: start.draft!.number
 		});
 		expect(broken.ok).toBe(true);
-		const failing = await publishDefinition(db, users.wren, { definitionId: start.id });
+		const failing = await publishDefinition(db, users.wren, {
+			definitionId: start.id,
+			baseRevision: (broken as { revision: number }).revision
+		});
 		expectRefusal(failing, 'checks-failed', /Fix these before publishing/);
 		expect((failing as Refusal).issues.length).toBeGreaterThan(0);
 
@@ -276,11 +282,31 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 		});
 		expect(renamed.ok).toBe(true);
 
-		const published = await publishDefinition(db, users.wren, { definitionId: start.id });
-		expect(published).toMatchObject({ ok: true, version: 2 });
+		const reviewed = (renamed as { revision: number }).revision;
+		const moved = await editDefinition(db, users.olive, {
+			definitionId: start.id,
+			ops: [rename('step.write-rca', 'Write up the incident')],
+			baseRevision: reviewed
+		});
+		expect(moved.ok).toBe(true);
+		expectRefusal(
+			await publishDefinition(db, users.wren, { definitionId: start.id, baseRevision: reviewed }),
+			'stale-draft'
+		);
+		const head = (moved as { revision: number }).revision;
+		const publishers = [users.wren, users.olive];
+		const results = await Promise.all(
+			publishers.map((actor) =>
+				publishDefinition(db, actor, { definitionId: start.id, baseRevision: head })
+			)
+		);
+		const winner = results.findIndex((r) => r.ok);
+		expect(results.filter((r) => r.ok)).toHaveLength(1);
+		expect(results[winner]).toMatchObject({ ok: true, version: 2 });
+		expectRefusal(results[1 - winner]!, 'no-change');
 		const after = (await loadDefinition(db, start.id))!;
 		expect(after.published?.version).toBe(2);
-		expect(after.published?.publishedByName).toBe('Wren Writer');
+		expect(after.published?.publishedByName).toBe(['Wren Writer', 'Olive Owner'][winner]);
 		expect(after.changes).toEqual([]);
 		const [version] = await db
 			.select()
@@ -302,7 +328,10 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 		expect(after.published?.version).toBe(2);
 		expect(after.changes).toEqual([]);
 		expectRefusal(
-			await publishDefinition(db, users.olive, { definitionId: birth.id }),
+			await publishDefinition(db, users.olive, {
+				definitionId: birth.id,
+				baseRevision: (edited as { revision: number }).revision
+			}),
 			'no-change',
 			/living/
 		);
@@ -332,10 +361,12 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 		expect(state.draft?.document.namespace).toBe('acme/eng/platform');
 		expect(state.check.ok).toBe(true);
 		expect(state.can.publish.allowed).toBe(true);
-		expect(await publishDefinition(db, users.devon, { definitionId: state.id })).toMatchObject({
-			ok: true,
-			version: 1
-		});
+		expect(
+			await publishDefinition(db, users.devon, {
+				definitionId: state.id,
+				baseRevision: state.draft!.number
+			})
+		).toMatchObject({ ok: true, version: 1 });
 
 		const living = await createDefinition(db, users.devon, {
 			namespaceId: platform.namespace.id,

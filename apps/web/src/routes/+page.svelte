@@ -40,7 +40,6 @@
 		CircleAlert,
 		SquarePen,
 		Upload,
-		Radio,
 		LoaderCircle
 	} from '@lucide/svelte';
 	import type { PageProps } from './$types';
@@ -50,13 +49,8 @@
 	const workspace = $derived(
 		data.workspaces.find((w) => w.namespace === data.namespace) ?? data.workspaces[0]
 	);
-	/** The published version of the open process, when asked for and it differs from the draft. */
-	const shownPublished = (d: (typeof data.workspaces)[number]['definitions'][number]) =>
-		data.published && d.document.slug === data.slug ? d.published?.document : undefined;
 	const indexes = $derived(
-		workspace
-			? workspace.definitions.map((d) => indexDocument(shownPublished(d) ?? d.document))
-			: []
+		workspace ? workspace.definitions.map((d) => indexDocument(d.document)) : []
 	);
 	const shared = $derived(sharedFactTypes(indexes.map((ix) => ix.document)));
 	const isMap = $derived(!data.slug);
@@ -76,9 +70,8 @@
 	const selectedFact = $derived(
 		selectedNode?.core.kind === 'fact' ? (selectedNode as FactNode) : undefined
 	);
-	const viewingPublished = $derived(!!loaded && !!shownPublished(loaded));
 
-	const editor = new Editor(() => ({ definition: loaded, published: viewingPublished }));
+	const editor = new Editor(() => loaded);
 	setEditor(editor);
 	/** Saves an edit of the open draft, or is absent when the user cannot edit it. */
 	const edit = $derived(
@@ -136,7 +129,7 @@
 		const slug = await editor.create(workspace.id, title, changePolicy);
 		if (slug) {
 			details = true;
-			nav({ ws: workspace.namespace, p: slug, sel: undefined, rev: undefined });
+			nav({ ws: workspace.namespace, p: slug, sel: undefined });
 		}
 	}
 
@@ -165,13 +158,11 @@
 	const layoutKey = $derived(
 		isMap
 			? `map:${workspace?.namespace}:${workspace?.definitions.map((d) => d.revision).join(',')}`
-			: `${active?.document.slug}:${data.view}:${viewingPublished ? 'published' : loaded?.revision}`
+			: `${active?.document.slug}:${data.view}:${loaded?.revision}`
 	);
 	const load = () => (isMap ? buildMap(indexes) : build(data.view as ViewId, active!));
 	const failing = $derived(
-		loaded && !viewingPublished
-			? loaded.errors.length + loaded.issues.filter((i) => i.severity === 'error').length
-			: 0
+		loaded ? loaded.errors.length + loaded.issues.filter((i) => i.severity === 'error').length : 0
 	);
 </script>
 
@@ -204,9 +195,8 @@
 					{shared}
 					activeSlug={data.slug}
 					selectedId={selected}
-					onworkspace={(namespace) =>
-						nav({ ws: namespace, p: undefined, sel: undefined, rev: undefined })}
-					onprocess={(slug) => nav({ p: slug, sel: undefined, rev: undefined })}
+					onworkspace={(namespace) => nav({ ws: namespace, p: undefined, sel: undefined })}
+					onprocess={(slug) => nav({ p: slug, sel: undefined })}
 					onitem={(slug, id) => {
 						focusId = id;
 						nav({ p: slug, sel: id });
@@ -246,28 +236,12 @@
 										? 'bg-background font-medium shadow-xs'
 										: 'border-transparent text-muted-foreground hover:text-foreground'
 								]}
-								onclick={() => nav({ p: ix.document.slug, sel: undefined, rev: undefined })}
+								onclick={() => nav({ p: ix.document.slug, sel: undefined })}
 								><Workflow class="size-3.5 text-brand" />{labelOf(ix, ix.process?.core.id)}</button
 							>
 						{/each}
 					</div>
 					{#if !isMap && active && loaded}
-						{#if loaded.published?.document}
-							<Segmented
-								label="Draft or published version"
-								value={viewingPublished ? 'published' : 'draft'}
-								options={[
-									{ value: 'draft' as const, label: 'Draft', icon: SquarePen },
-									{
-										value: 'published' as const,
-										label: `Version ${loaded.published.version}`,
-										icon: Radio
-									}
-								]}
-								onchange={(rev) =>
-									nav({ rev: rev === 'published' ? 'published' : undefined, sel: undefined })}
-							/>
-						{/if}
 						<Segmented
 							label="Graph view"
 							value={data.view}
@@ -364,11 +338,7 @@
 						<span
 							class="inline-flex items-center gap-1.5 rounded-md bg-brand-soft px-1.5 py-0.5 font-medium text-brand"
 							title={isMap ? undefined : editor.blocked}
-							><Eye class="size-3" />{isMap || !loaded
-								? 'Viewing definitions'
-								: viewingPublished
-									? 'Viewing published version'
-									: 'Read only'}</span
+							><Eye class="size-3" />{isMap || !loaded ? 'Viewing definitions' : 'Read only'}</span
 						>
 					{/if}
 					{#if isMap}
@@ -389,9 +359,7 @@
 								><CircleCheck class="size-3" />Publish checks pass</span
 							>{/if}
 						{#if loaded}<span
-								>{viewingPublished
-									? `Version ${active.document.version}`
-									: `${loaded.policy === 'living' ? 'Living' : 'Draft'} · ${draftStatus(loaded)}`}</span
+								>{`${loaded.policy === 'living' ? 'Living' : 'Draft'} · ${draftStatus(loaded)}`}</span
 							>{/if}
 					{/if}
 					<span class="ml-auto truncate">Workspace: {workspace.label} ({workspace.namespace})</span>

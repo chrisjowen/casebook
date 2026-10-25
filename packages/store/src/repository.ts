@@ -67,6 +67,7 @@ export type StoreRule =
 	| 'revision-conflict'
 	| 'publish-body-missing'
 	| 'publish-body-mismatch'
+	| 'revision-already-published'
 	| 'draft-author-kind'
 	| 'draft-on-behalf-of-required'
 	| 'draft-on-behalf-of-forbidden'
@@ -659,6 +660,16 @@ export async function publishVersion(
 			throw new StoreRuleError(
 				'publish-body-mismatch',
 				`the body differs from draft revision ${input.sourceRevisionId}; publish the revision's body or omit it`
+			);
+		}
+		const [already] = await tx
+			.select({ version: definitionVersions.version })
+			.from(definitionVersions)
+			.where(eq(definitionVersions.sourceRevisionId, input.sourceRevisionId));
+		if (already) {
+			throw new StoreRuleError(
+				'revision-already-published',
+				`draft revision ${input.sourceRevisionId} is already published as version ${already.version}`
 			);
 		}
 		return insertVersion(tx, { ...input, body: source.body });

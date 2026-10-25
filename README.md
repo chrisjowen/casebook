@@ -60,7 +60,7 @@ A governed process publishes when someone presses Publish and the publish checks
 "New process" (the + next to Processes) starts a process in the workspace.
 
 Sign-in is a dev-only stand-in for OIDC: pick one of the seeded users at `/signin`, with no password.
-It is on in `pnpm dev`, and in a production build only with `CASEBOOK_DEV_SIGNIN=true`.
+It is on only in `pnpm dev`, never in a production build.
 Every read and write acts as that user and goes through `can()`, and actions they cannot take are disabled with the reason.
 The seed (`packages/store/src/seed.ts`) creates account `acme` with these users, and loads the model's synthetic fixtures as published definitions:
 

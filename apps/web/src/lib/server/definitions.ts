@@ -35,8 +35,7 @@ function toLoaded(d: DefinitionForActor): LoadedDefinition {
 					published: {
 						version: d.published.version,
 						at: d.published.publishedAt.toISOString(),
-						by: d.published.publishedByName,
-						...(d.draft && d.changes.length > 0 ? { document: d.published.document } : {})
+						by: d.published.publishedByName
 					}
 				}
 			: {}),

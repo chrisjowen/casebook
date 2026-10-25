@@ -12,8 +12,6 @@ export interface PublishedInfo {
 	/** ISO 8601 timestamp. */
 	at: string;
 	by: string;
-	/** Present only when the draft differs from it, so the editor can show it instead. */
-	document?: DefinitionDocument;
 }
 
 /** A definition as the editor receives it: its draft, publish-check results and permissions. */

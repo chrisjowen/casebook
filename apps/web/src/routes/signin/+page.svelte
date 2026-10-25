@@ -25,7 +25,7 @@
 
 		{#if !data.enabled}
 			<p class="mt-4 text-[13px] text-muted-foreground">
-				Dev sign-in is off in this build. Set <code>CASEBOOK_DEV_SIGNIN=true</code> to turn it on.
+				Dev sign-in is off in this build. It runs only under <code>pnpm dev</code>.
 			</p>
 		{:else if data.problem}
 			<p class="mt-4 flex items-start gap-2 text-[13px]">
