@@ -96,7 +96,7 @@ describe.skipIf(!url)('store schema (Postgres)', () => {
 		return row!;
 	}
 
-	async function draftVersion(definitionId: string, authorId: string, version = 1) {
+	async function publishedVersion(definitionId: string, authorId: string, version = 1) {
 		const [row] = await db
 			.insert(definitionVersions)
 			.values({
@@ -105,18 +105,9 @@ describe.skipIf(!url)('store schema (Postgres)', () => {
 				body: { title: 'Birth registration', nodes: [] },
 				schemaVersion: '1',
 				contentHash: `sha256:${randomUUID()}`,
-				authorId
+				authorId,
+				publishedById: authorId
 			})
-			.returning();
-		return row!;
-	}
-
-	async function publishedVersion(definitionId: string, authorId: string, version = 1) {
-		const draft = await draftVersion(definitionId, authorId, version);
-		const [row] = await db
-			.update(definitionVersions)
-			.set({ status: 'published', publishedById: authorId, publishedAt: new Date() })
-			.where(eq(definitionVersions.id, draft.id))
 			.returning();
 		return row!;
 	}
@@ -414,37 +405,11 @@ describe.skipIf(!url)('store schema (Postgres)', () => {
 			return { author, def };
 		}
 
-		it('lets drafts change and be deleted', async () => {
+		it('creates a version as published', async () => {
 			const { author, def } = await setup();
-			const draft = await draftVersion(def.id, author.id);
-			const [edited] = await db
-				.update(definitionVersions)
-				.set({ body: { title: 'Edited' } })
-				.where(eq(definitionVersions.id, draft.id))
-				.returning();
-			expect(edited!.body).toEqual({ title: 'Edited' });
-			await db.delete(definitionVersions).where(eq(definitionVersions.id, draft.id));
-		});
-
-		it('requires publish fields exactly when published', async () => {
-			const { author, def } = await setup();
-			const draft = await draftVersion(def.id, author.id);
-			await expectPgError(
-				db
-					.update(definitionVersions)
-					.set({ status: 'published' })
-					.where(eq(definitionVersions.id, draft.id)),
-				PG.check,
-				'definition_versions_publish_fields'
-			);
-			await expectPgError(
-				db
-					.update(definitionVersions)
-					.set({ publishedAt: new Date() })
-					.where(eq(definitionVersions.id, draft.id)),
-				PG.check,
-				'definition_versions_publish_fields'
-			);
+			const version = await publishedVersion(def.id, author.id);
+			expect(version).toMatchObject({ status: 'published', publishedById: author.id });
+			expect(version.publishedAt).toBeInstanceOf(Date);
 		});
 
 		it('refuses any change to a published version', async () => {
@@ -469,13 +434,6 @@ describe.skipIf(!url)('store schema (Postgres)', () => {
 				PG.check
 			);
 			await expectPgError(db.update(definitionVersions).set({ version: 2 }).where(byId), PG.check);
-			await expectPgError(
-				db
-					.update(definitionVersions)
-					.set({ status: 'draft', publishedById: null, publishedAt: null })
-					.where(byId),
-				PG.check
-			);
 			await expectPgError(db.delete(definitionVersions).where(byId), PG.check);
 
 			const [row] = await db.select().from(definitionVersions).where(byId);
@@ -502,21 +460,48 @@ describe.skipIf(!url)('store schema (Postgres)', () => {
 			await expectPgError(db.delete(definitionVersions).where(byId), PG.check);
 		});
 
-		it('refuses retiring a draft and duplicate version numbers', async () => {
+		it('refuses duplicate version numbers', async () => {
 			const { author, def } = await setup();
-			const draft = await draftVersion(def.id, author.id);
+			await publishedVersion(def.id, author.id);
 			await expectPgError(
-				db
-					.update(definitionVersions)
-					.set({ status: 'retired', publishedById: author.id, publishedAt: new Date() })
-					.where(eq(definitionVersions.id, draft.id)),
-				PG.check
-			);
-			await expectPgError(
-				draftVersion(def.id, author.id, 1),
+				publishedVersion(def.id, author.id, 1),
 				PG.unique,
 				'definition_versions_definition_version_key'
 			);
+		});
+
+		it('pins cases to published versions only', async () => {
+			const tree = await namespaceTree();
+			const { author, def } = await setup();
+			const published = await publishedVersion(def.id, author.id, 1);
+			const retired = await publishedVersion(def.id, author.id, 2);
+			await db
+				.update(definitionVersions)
+				.set({ status: 'retired' })
+				.where(eq(definitionVersions.id, retired.id));
+
+			const [pinned] = await db
+				.insert(cases)
+				.values({ namespaceId: tree.id(), definitionVersionId: published.id, title: 'Baby Tan' })
+				.returning();
+			await expectPgError(
+				db
+					.insert(cases)
+					.values({ namespaceId: tree.id(), definitionVersionId: retired.id, title: 'Baby Lim' }),
+				PG.check
+			);
+			await expectPgError(
+				db.update(cases).set({ definitionVersionId: retired.id }).where(eq(cases.id, pinned!.id)),
+				PG.check
+			);
+
+			// Retiring a version leaves the cases already pinned to it in place.
+			await db
+				.update(definitionVersions)
+				.set({ status: 'retired' })
+				.where(eq(definitionVersions.id, published.id));
+			const [still] = await db.select().from(cases).where(eq(cases.id, pinned!.id));
+			expect(still!.definitionVersionId).toBe(published.id);
 		});
 
 		it('keeps a definition with versions from being deleted', async () => {
@@ -530,41 +515,143 @@ describe.skipIf(!url)('store schema (Postgres)', () => {
 	});
 
 	describe('draft revisions', () => {
-		it('records agent edits on behalf of a user, numbered per definition', async () => {
+		async function setup() {
 			const tree = await namespaceTree();
 			const user = await principal('user');
-			const agent = await principal('agent');
 			const def = await definition(tree.id(), user.id);
-
-			const [revision] = await db
-				.insert(draftRevisions)
-				.values({
-					definitionId: def.id,
-					revision: 1,
-					body: { title: 'v1' },
-					authorId: agent.id,
-					onBehalfOfId: user.id
-				})
-				.returning();
-			expect(revision).toMatchObject({ authorId: agent.id, onBehalfOfId: user.id });
-
-			await expectPgError(
+			let revision = 0;
+			const revise = (values: Partial<typeof draftRevisions.$inferInsert>) =>
 				db
 					.insert(draftRevisions)
-					.values({ definitionId: def.id, revision: 1, body: {}, authorId: user.id }),
-				PG.unique,
-				'draft_revisions_definition_revision_key'
-			);
+					.values({
+						definitionId: def.id,
+						revision: ++revision,
+						body: { title: `r${revision}` },
+						authorId: user.id,
+						authorKind: 'user',
+						...values
+					})
+					.returning();
+			return { user, def, revise };
+		}
+
+		it('records user edits, numbered per definition', async () => {
+			const { user, def, revise } = await setup();
+			const [revision] = await revise({});
+			expect(revision).toMatchObject({ authorId: user.id, onBehalfOfId: null });
+
 			await expectPgError(
 				db.insert(draftRevisions).values({
 					definitionId: def.id,
-					revision: 2,
+					revision: 1,
 					body: {},
 					authorId: user.id,
-					onBehalfOfId: user.id
+					authorKind: 'user'
+				}),
+				PG.unique,
+				'draft_revisions_definition_revision_key'
+			);
+		});
+
+		it('records agent and service edits on behalf of a user, group or service', async () => {
+			const { user, revise } = await setup();
+			const agent = await principal('agent');
+			const service = await principal('service');
+			const group = await principal('group');
+			const other = await principal('service');
+
+			for (const [author, onBehalfOf] of [
+				[agent, user],
+				[agent, group],
+				[agent, service],
+				[service, user],
+				[service, group],
+				[service, other]
+			] as const) {
+				const [revision] = await revise({
+					authorId: author.id,
+					authorKind: author.kind,
+					onBehalfOfId: onBehalfOf.id,
+					onBehalfOfKind: onBehalfOf.kind
+				});
+				expect(revision).toMatchObject({ authorId: author.id, onBehalfOfId: onBehalfOf.id });
+			}
+		});
+
+		it('requires on_behalf_of exactly for agent and service authors', async () => {
+			const { user, revise } = await setup();
+			const agent = await principal('agent');
+			const service = await principal('service');
+			const group = await principal('group');
+
+			await expectPgError(
+				revise({ onBehalfOfId: service.id, onBehalfOfKind: 'service' }),
+				PG.check,
+				'draft_revisions_author_on_behalf_of'
+			);
+			for (const author of [agent, service]) {
+				await expectPgError(
+					revise({ authorId: author.id, authorKind: author.kind }),
+					PG.check,
+					'draft_revisions_author_on_behalf_of'
+				);
+			}
+			await expectPgError(
+				revise({
+					authorId: group.id,
+					authorKind: 'group',
+					onBehalfOfId: user.id,
+					onBehalfOfKind: 'user'
+				}),
+				PG.check,
+				'draft_revisions_author_on_behalf_of'
+			);
+			await expectPgError(
+				revise({
+					authorId: service.id,
+					authorKind: 'service',
+					onBehalfOfId: service.id,
+					onBehalfOfKind: 'service'
 				}),
 				PG.check,
 				'draft_revisions_on_behalf_of_other'
+			);
+		});
+
+		it('checks author and on_behalf_of kinds against the principals', async () => {
+			const { user, revise } = await setup();
+			const agent = await principal('agent');
+			const other = await principal('agent');
+
+			await expectPgError(
+				revise({
+					authorId: agent.id,
+					authorKind: 'agent',
+					onBehalfOfId: other.id,
+					onBehalfOfKind: 'agent'
+				}),
+				PG.check,
+				'draft_revisions_on_behalf_of_kind'
+			);
+			await expectPgError(
+				revise({ authorId: agent.id, authorKind: 'agent', onBehalfOfId: user.id }),
+				PG.check,
+				'draft_revisions_on_behalf_of_kind'
+			);
+			await expectPgError(
+				revise({ authorId: agent.id, authorKind: 'user' }),
+				PG.foreignKey,
+				'draft_revisions_author_fk'
+			);
+			await expectPgError(
+				revise({
+					authorId: agent.id,
+					authorKind: 'agent',
+					onBehalfOfId: user.id,
+					onBehalfOfKind: 'group'
+				}),
+				PG.foreignKey,
+				'draft_revisions_on_behalf_of_fk'
 			);
 		});
 	});

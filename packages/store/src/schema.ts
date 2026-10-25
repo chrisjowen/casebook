@@ -1,7 +1,7 @@
 // Drizzle table definitions for definition storage (ADR 0002), namespaces (ADR 0007),
 // principals and role bindings (ADR 0008) and agent delegation (ADR 0009).
-// Rules that a column or check cannot express (namespace path consistency and published
-// version immutability) live in triggers in the hand-written migration under drizzle/.
+// Rules that a column or check cannot express (namespace path consistency, version
+// immutability and case pinning) live in triggers in the hand-written migration under drizzle/.
 import { sql } from 'drizzle-orm';
 import {
 	type AnyPgColumn,
@@ -29,7 +29,6 @@ const updatedAt = () =>
 
 export const principalKind = pgEnum('principal_kind', ['user', 'group', 'agent', 'service']);
 export const definitionVersionStatus = pgEnum('definition_version_status', [
-	'draft',
 	'published',
 	'retired'
 ]);
@@ -117,7 +116,7 @@ export const groupMembers = pgTable(
 	]
 );
 
-/** A named process in a namespace. Its content lives in definition versions and drafts. */
+/** A named process in a namespace. Its content lives in draft revisions and published versions. */
 export const processDefinitions = pgTable(
 	'process_definitions',
 	{
@@ -139,10 +138,11 @@ export const processDefinitions = pgTable(
 );
 
 /**
- * A numbered version of a definition. The body is validated by the model layer, not here.
+ * A published, numbered version of a definition, created at publish time. Drafts live only in
+ * `draft_revisions`. The body is validated by the model layer, not here.
  *
- * Once published a row is immutable: a trigger refuses any change except retiring it, and
- * refuses deleting published or retired rows (ADR 0002).
+ * A row is immutable: a trigger refuses any change except retiring a published version, and
+ * refuses deletes (ADR 0002).
  */
 export const definitionVersions = pgTable(
 	'definition_versions',
@@ -152,30 +152,33 @@ export const definitionVersions = pgTable(
 			.notNull()
 			.references(() => processDefinitions.id),
 		version: integer('version').notNull(),
-		status: definitionVersionStatus('status').notNull().default('draft'),
+		status: definitionVersionStatus('status').notNull().default('published'),
 		body: jsonb('body').notNull(),
 		schemaVersion: text('schema_version').notNull(),
 		contentHash: text('content_hash').notNull(),
 		authorId: uuid('author_id')
 			.notNull()
 			.references(() => principals.id),
-		publishedById: uuid('published_by_id').references(() => principals.id),
-		publishedAt: timestamp('published_at', { withTimezone: true }),
+		publishedById: uuid('published_by_id')
+			.notNull()
+			.references(() => principals.id),
+		publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
 		createdAt: createdAt(),
 		updatedAt: updatedAt()
 	},
 	(t) => [
 		unique('definition_versions_definition_version_key').on(t.definitionId, t.version),
-		check('definition_versions_version_positive', sql`${t.version} > 0`),
-		check(
-			'definition_versions_publish_fields',
-			sql`(${t.status} = 'draft' AND ${t.publishedById} IS NULL AND ${t.publishedAt} IS NULL)
-				OR (${t.status} <> 'draft' AND ${t.publishedById} IS NOT NULL AND ${t.publishedAt} IS NOT NULL)`
-		)
+		check('definition_versions_version_positive', sql`${t.version} > 0`)
 	]
 );
 
-/** Edit history of a definition's draft. Agent edits record the user they act for. */
+/**
+ * Edit history of a definition's draft, the only place drafts live (ADR 0002).
+ *
+ * Following ADR 0009, a user author edits for themselves and leaves `on_behalf_of` unset, while
+ * an agent or service author records the user, group or service principal it acts for. Both
+ * kinds are checked through composite foreign keys to `(id, kind)`.
+ */
 export const draftRevisions = pgTable(
 	'draft_revisions',
 	{
@@ -185,22 +188,43 @@ export const draftRevisions = pgTable(
 			.references(() => processDefinitions.id),
 		revision: integer('revision').notNull(),
 		body: jsonb('body').notNull(),
-		authorId: uuid('author_id')
-			.notNull()
-			.references(() => principals.id),
-		onBehalfOfId: uuid('on_behalf_of_id').references(() => principals.id),
+		authorId: uuid('author_id').notNull(),
+		authorKind: principalKind('author_kind').notNull(),
+		onBehalfOfId: uuid('on_behalf_of_id'),
+		onBehalfOfKind: principalKind('on_behalf_of_kind'),
 		createdAt: createdAt()
 	},
 	(t) => [
 		unique('draft_revisions_definition_revision_key').on(t.definitionId, t.revision),
+		foreignKey({
+			name: 'draft_revisions_author_fk',
+			columns: [t.authorId, t.authorKind],
+			foreignColumns: [principals.id, principals.kind]
+		}),
+		foreignKey({
+			name: 'draft_revisions_on_behalf_of_fk',
+			columns: [t.onBehalfOfId, t.onBehalfOfKind],
+			foreignColumns: [principals.id, principals.kind]
+		}),
 		check('draft_revisions_revision_positive', sql`${t.revision} > 0`),
+		check(
+			'draft_revisions_on_behalf_of_kind',
+			sql`(${t.onBehalfOfId} IS NULL) = (${t.onBehalfOfKind} IS NULL)
+				AND ${t.onBehalfOfKind} IS DISTINCT FROM 'agent'`
+		),
+		check(
+			'draft_revisions_author_on_behalf_of',
+			sql`(${t.authorKind} = 'user' AND ${t.onBehalfOfId} IS NULL)
+				OR (${t.authorKind} IN ('agent', 'service') AND ${t.onBehalfOfId} IS NOT NULL)`
+		),
 		check('draft_revisions_on_behalf_of_other', sql`${t.onBehalfOfId} <> ${t.authorId}`)
 	]
 );
 
 /**
  * Stub of the case runtime table: only what case-scoped role bindings and delegations need.
- * The rest of the case runtime (facts, evidence, events) is deferred.
+ * The rest of the case runtime (facts, evidence, events) is deferred. A case pins a published
+ * definition version; a trigger refuses pinning a retired one.
  */
 export const cases = pgTable(
 	'cases',

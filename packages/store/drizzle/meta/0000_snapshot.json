@@ -1,5 +1,5 @@
 {
-  "id": "fed8fa77-9849-4ef3-a676-b1fcddc83398",
+  "id": "72b1c2a9-c53d-47a3-9601-8f2f1055af55",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -121,7 +121,7 @@
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "default": "'draft'"
+          "default": "'published'"
         },
         "body": {
           "name": "body",
@@ -151,13 +151,14 @@
           "name": "published_by_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "published_at": {
           "name": "published_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "now()"
         },
         "created_at": {
           "name": "created_at",
@@ -232,10 +233,6 @@
         "definition_versions_version_positive": {
           "name": "definition_versions_version_positive",
           "value": "\"definition_versions\".\"version\" > 0"
-        },
-        "definition_versions_publish_fields": {
-          "name": "definition_versions_publish_fields",
-          "value": "(\"definition_versions\".\"status\" = 'draft' AND \"definition_versions\".\"published_by_id\" IS NULL AND \"definition_versions\".\"published_at\" IS NULL)\n\t\t\t\tOR (\"definition_versions\".\"status\" <> 'draft' AND \"definition_versions\".\"published_by_id\" IS NOT NULL AND \"definition_versions\".\"published_at\" IS NOT NULL)"
         }
       },
       "isRLSEnabled": false
@@ -472,9 +469,23 @@
           "primaryKey": false,
           "notNull": true
         },
+        "author_kind": {
+          "name": "author_kind",
+          "type": "principal_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
         "on_behalf_of_id": {
           "name": "on_behalf_of_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "on_behalf_of_kind": {
+          "name": "on_behalf_of_kind",
+          "type": "principal_kind",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": false
         },
@@ -501,28 +512,32 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "draft_revisions_author_id_principals_id_fk": {
-          "name": "draft_revisions_author_id_principals_id_fk",
+        "draft_revisions_author_fk": {
+          "name": "draft_revisions_author_fk",
           "tableFrom": "draft_revisions",
           "tableTo": "principals",
           "columnsFrom": [
-            "author_id"
+            "author_id",
+            "author_kind"
           ],
           "columnsTo": [
-            "id"
+            "id",
+            "kind"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "draft_revisions_on_behalf_of_id_principals_id_fk": {
-          "name": "draft_revisions_on_behalf_of_id_principals_id_fk",
+        "draft_revisions_on_behalf_of_fk": {
+          "name": "draft_revisions_on_behalf_of_fk",
           "tableFrom": "draft_revisions",
           "tableTo": "principals",
           "columnsFrom": [
-            "on_behalf_of_id"
+            "on_behalf_of_id",
+            "on_behalf_of_kind"
           ],
           "columnsTo": [
-            "id"
+            "id",
+            "kind"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -544,6 +559,14 @@
         "draft_revisions_revision_positive": {
           "name": "draft_revisions_revision_positive",
           "value": "\"draft_revisions\".\"revision\" > 0"
+        },
+        "draft_revisions_on_behalf_of_kind": {
+          "name": "draft_revisions_on_behalf_of_kind",
+          "value": "(\"draft_revisions\".\"on_behalf_of_id\" IS NULL) = (\"draft_revisions\".\"on_behalf_of_kind\" IS NULL)\n\t\t\t\tAND \"draft_revisions\".\"on_behalf_of_kind\" IS DISTINCT FROM 'agent'"
+        },
+        "draft_revisions_author_on_behalf_of": {
+          "name": "draft_revisions_author_on_behalf_of",
+          "value": "(\"draft_revisions\".\"author_kind\" = 'user' AND \"draft_revisions\".\"on_behalf_of_id\" IS NULL)\n\t\t\t\tOR (\"draft_revisions\".\"author_kind\" IN ('agent', 'service') AND \"draft_revisions\".\"on_behalf_of_id\" IS NOT NULL)"
         },
         "draft_revisions_on_behalf_of_other": {
           "name": "draft_revisions_on_behalf_of_other",
@@ -1175,7 +1198,6 @@
       "name": "definition_version_status",
       "schema": "public",
       "values": [
-        "draft",
         "published",
         "retired"
       ]

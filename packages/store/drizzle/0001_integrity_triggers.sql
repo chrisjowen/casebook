@@ -1,4 +1,4 @@
--- Rules that column checks cannot express. Both raise check_violation (SQLSTATE 23514).
+-- Rules that column checks cannot express. All raise check_violation (SQLSTATE 23514).
 
 -- A namespace path is its parent's path plus one segment, and a root path has one segment.
 -- Paths and parents never change: moving a namespace would need every descendant path rewritten.
@@ -33,25 +33,14 @@ CREATE TRIGGER namespaces_check_path
 	FOR EACH ROW EXECUTE FUNCTION namespaces_check_path();
 --> statement-breakpoint
 
--- Published definition versions are immutable (ADR 0002). Allowed status moves are
--- draft -> published and published -> retired; retiring changes nothing but status and
--- updated_at. Published and retired rows cannot be deleted.
+-- Definition versions are immutable (ADR 0002). They are created at publish time, and the
+-- only allowed change is retiring a published version, which changes nothing but status and
+-- updated_at. Versions cannot be deleted.
 CREATE FUNCTION definition_versions_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
 	IF TG_OP = 'DELETE' THEN
-		IF OLD.status <> 'draft' THEN
-			RAISE EXCEPTION 'definition version % is % and cannot be deleted', OLD.id, OLD.status
-				USING ERRCODE = 'check_violation';
-		END IF;
-		RETURN OLD;
-	END IF;
-
-	IF OLD.status = 'draft' THEN
-		IF NEW.status = 'retired' THEN
-			RAISE EXCEPTION 'definition version % is a draft and cannot be retired', OLD.id
-				USING ERRCODE = 'check_violation';
-		END IF;
-		RETURN NEW;
+		RAISE EXCEPTION 'definition version % is % and cannot be deleted', OLD.id, OLD.status
+			USING ERRCODE = 'check_violation';
 	END IF;
 
 	IF (to_jsonb(NEW) - 'status' - 'updated_at') IS DISTINCT FROM (to_jsonb(OLD) - 'status' - 'updated_at')
@@ -59,7 +48,7 @@ BEGIN
 	THEN
 		RAISE EXCEPTION 'definition version % is % and immutable', OLD.id, OLD.status
 			USING ERRCODE = 'check_violation',
-				HINT = 'Create a new version instead; a published version can only be retired.';
+				HINT = 'Publish a new version instead; a published version can only be retired.';
 	END IF;
 	RETURN NEW;
 END;
@@ -68,3 +57,26 @@ $$;
 CREATE TRIGGER definition_versions_guard
 	BEFORE UPDATE OR DELETE ON definition_versions
 	FOR EACH ROW EXECUTE FUNCTION definition_versions_guard();
+--> statement-breakpoint
+
+-- A case pins a published version; a retired version takes no new cases (ADR 0002).
+-- FOR SHARE makes a concurrent retire wait, so it cannot slip in between check and insert.
+CREATE FUNCTION cases_check_definition_version() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+	pinned_status definition_version_status;
+BEGIN
+	SELECT status INTO pinned_status FROM definition_versions
+		WHERE id = NEW.definition_version_id FOR SHARE;
+	-- A missing version is left to the foreign key to report.
+	IF FOUND AND pinned_status <> 'published' THEN
+		RAISE EXCEPTION 'definition version % is % and cannot take new cases',
+			NEW.definition_version_id, pinned_status
+			USING ERRCODE = 'check_violation';
+	END IF;
+	RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+CREATE TRIGGER cases_check_definition_version
+	BEFORE INSERT OR UPDATE OF definition_version_id ON cases
+	FOR EACH ROW EXECUTE FUNCTION cases_check_definition_version();
