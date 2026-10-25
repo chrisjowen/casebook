@@ -27,4 +27,5 @@ Undo and revert add a revision that restores an earlier document, so history onl
 - Removing a widely used node takes several operations, which a batch keeps atomic.
 - Renaming a node id is not supported yet.
 - Persistence sits behind a `RevisionStore` interface in `@casebook/model`.
-  Implementing it in `@casebook/store` is the follow-up once the definition tables merge; revisions also need their operations and revert target stored.
+  The follow-up is a `RevisionStore` adapter in `@casebook/store` over its merged definition tables; revisions also need their operations and revert target stored.
+  The store spells the case binding `follow_latest` where the model's `CaseVersionBinding` uses `follow-latest`, so the adapter maps between them.

@@ -26,32 +26,29 @@ describe('diff', () => {
 	});
 
 	it('tells apart required and collected facts that share a title', () => {
-		const twin = {
-			op: 'add_node',
-			node: {
-				core: {
-					id: 'fact.severity-copy',
-					kind: 'fact',
-					title: 'Severity',
-					schema: { type: 'string' }
-				}
-			}
-		} as const;
+		const twin = (id: string, title: string) =>
+			({
+				op: 'add_node',
+				node: { core: { id, kind: 'fact', title, schema: { type: 'string' } } }
+			}) as const;
 		const summary = summaryOf(incidentManagement, [
-			twin,
+			twin('fact.severity-copy', 'Severity'),
+			twin('fact.rca-copy', 'Root cause analysis'),
 			{
 				op: 'update_core',
 				id: 'step.write-rca',
 				changes: {
 					requires: ['fact.severity-copy', 'fact.resolution-summary'],
-					collects: [{ fact: 'fact.rca-document' }, { fact: 'fact.severity-copy' }]
+					collects: [{ fact: 'fact.rca-copy' }]
 				}
 			}
 		]);
 		expect(summary).toContain(
 			'Step Write the root cause analysis now requires fact Severity and no longer requires fact Severity'
 		);
-		expect(summary).toContain('Step Write the root cause analysis now collects fact Severity');
+		expect(summary).toContain(
+			'Step Write the root cause analysis now collects fact Root cause analysis and no longer collects fact Root cause analysis'
+		);
 	});
 
 	it('reports an added node with its kind and title', () => {

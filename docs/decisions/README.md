@@ -21,5 +21,5 @@ Architecture decisions for casebook, one file per decision.
 | 0015 | [Accounts, account roles and namespace permissions](0015-accounts-and-access.md) | Accepted |
 | 0016 | [Governed and living definitions, pinned and following cases](0016-change-policies.md) | Accepted |
 | 0017 | [Permission resolution](0017-permission-resolution.md) | Accepted |
-| 0017 | [Change policies: governed and living definitions](0017-change-policies.md) | Accepted |
+| 0017 | [Publishing under change policies: approval, attribution and living versions](0017-change-policies.md) | Accepted (amends 0016) |
 | 0018 | [Node operations: checks, history and undo](0018-node-operations.md) | Accepted |
