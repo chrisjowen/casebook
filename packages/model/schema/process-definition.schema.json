@@ -1,7 +1,391 @@
 {
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
-	"$id": "urn:casebook:schema:process-definition:v0",
-	"title": "Process definition",
-	"description": "Placeholder for the versioned process-definition schema (ADR 0002). Node shapes follow ADR 0003.",
-	"type": "object"
+	"$id": "urn:casebook:schema:process-definition:v1",
+	"title": "Process definition version",
+	"description": "One version of a process definition (ADR 0002): metadata plus a flat list of nodes. Every node has a typed core, Markdown content and a namespaced data map (ADR 0003). Edges live in each node's core; the graph is derived.",
+	"type": "object",
+	"required": ["schemaVersion", "namespace", "slug", "version", "nodes"],
+	"additionalProperties": false,
+	"properties": {
+		"$schema": {
+			"description": "Optional pointer to this schema, for editor tooling.",
+			"type": "string"
+		},
+		"schemaVersion": {
+			"description": "Version of this process-definition schema the document conforms to.",
+			"const": 1
+		},
+		"namespace": {
+			"description": "Hierarchical owning namespace (ADR 0007), for example acme/eng/sre.",
+			"type": "string",
+			"pattern": "^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*$"
+		},
+		"slug": {
+			"description": "Stable identifier of the process within its namespace.",
+			"$ref": "#/$defs/kebab"
+		},
+		"version": {
+			"description": "Definition version number. Cases pin to one.",
+			"type": "integer",
+			"minimum": 1
+		},
+		"nodes": {
+			"type": "array",
+			"minItems": 1,
+			"items": { "$ref": "#/$defs/node" }
+		}
+	},
+	"$defs": {
+		"kebab": {
+			"type": "string",
+			"pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+		},
+		"processId": { "type": "string", "pattern": "^process\\.[a-z0-9]+(-[a-z0-9]+)*$" },
+		"stageId": { "type": "string", "pattern": "^stage\\.[a-z0-9]+(-[a-z0-9]+)*$" },
+		"stepId": { "type": "string", "pattern": "^step\\.[a-z0-9]+(-[a-z0-9]+)*$" },
+		"factId": { "type": "string", "pattern": "^fact\\.[a-z0-9]+(-[a-z0-9]+)*$" },
+		"roleId": { "type": "string", "pattern": "^role\\.[a-z0-9]+(-[a-z0-9]+)*$" },
+		"decisionId": { "type": "string", "pattern": "^decision\\.[a-z0-9]+(-[a-z0-9]+)*$" },
+		"approvalId": { "type": "string", "pattern": "^approval\\.[a-z0-9]+(-[a-z0-9]+)*$" },
+		"factIds": {
+			"type": "array",
+			"uniqueItems": true,
+			"items": { "$ref": "#/$defs/factId" }
+		},
+		"text": { "type": "string", "minLength": 1 },
+		"actor": {
+			"description": "Who may perform the work (ADR 0009). Agents cannot complete human-only work.",
+			"enum": ["human", "agent", "either"]
+		},
+		"guard": {
+			"description": "A condition in prose, with an optional expression in a small safe language over facts and roles (ADR 0004).",
+			"type": "object",
+			"required": ["text"],
+			"additionalProperties": false,
+			"properties": {
+				"text": { "$ref": "#/$defs/text" },
+				"expr": { "$ref": "#/$defs/text" }
+			}
+		},
+		"source": {
+			"description": "Where a node came from in its source material, and whether it was inferred rather than stated.",
+			"type": "object",
+			"required": ["doc", "inferred"],
+			"additionalProperties": false,
+			"properties": {
+				"doc": { "$ref": "#/$defs/text" },
+				"ref": { "$ref": "#/$defs/text" },
+				"inferred": { "type": "boolean" }
+			}
+		},
+		"invariants": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": ["text"],
+				"additionalProperties": false,
+				"properties": {
+					"text": { "$ref": "#/$defs/text" }
+				}
+			}
+		},
+		"evidence": {
+			"description": "Proof required to back a fact or complete a step: what it is, acceptable formats and how many copies.",
+			"type": "object",
+			"required": ["description"],
+			"additionalProperties": false,
+			"properties": {
+				"description": { "$ref": "#/$defs/text" },
+				"formats": {
+					"type": "array",
+					"minItems": 1,
+					"uniqueItems": true,
+					"items": { "$ref": "#/$defs/text" }
+				},
+				"copies": { "type": "integer", "minimum": 1 }
+			}
+		},
+		"lookup": {
+			"description": "Where a fact's value is chosen from (ADR 0006).",
+			"type": "object",
+			"required": ["kind"],
+			"properties": {
+				"kind": { "enum": ["dataset", "principal", "fact", "case"] }
+			},
+			"allOf": [
+				{
+					"if": { "required": ["kind"], "properties": { "kind": { "const": "dataset" } } },
+					"then": {
+						"required": ["dataset"],
+						"additionalProperties": false,
+						"properties": {
+							"kind": true,
+							"dataset": { "$ref": "#/$defs/kebab" },
+							"version": { "$ref": "#/$defs/text" }
+						}
+					}
+				},
+				{
+					"if": { "required": ["kind"], "properties": { "kind": { "const": "principal" } } },
+					"then": {
+						"additionalProperties": false,
+						"properties": {
+							"kind": true,
+							"role": { "$ref": "#/$defs/roleId" }
+						}
+					}
+				},
+				{
+					"if": { "required": ["kind"], "properties": { "kind": { "const": "fact" } } },
+					"then": {
+						"required": ["fact"],
+						"additionalProperties": false,
+						"properties": {
+							"kind": true,
+							"fact": { "$ref": "#/$defs/factId" }
+						}
+					}
+				},
+				{
+					"if": { "required": ["kind"], "properties": { "kind": { "const": "case" } } },
+					"then": {
+						"additionalProperties": false,
+						"properties": {
+							"kind": true,
+							"process": { "$ref": "#/$defs/kebab" }
+						}
+					}
+				}
+			]
+		},
+		"factSchema": {
+			"description": "A JSON Schema 2020-12 for the fact's value, with casebook extensions (ADR 0006).",
+			"type": "object",
+			"allOf": [{ "$ref": "https://json-schema.org/draft/2020-12/schema" }],
+			"properties": {
+				"x-lookup": { "$ref": "#/$defs/lookup" },
+				"x-evidence": { "$ref": "#/$defs/evidence" },
+				"x-sensitivity": {
+					"description": "Personal-data level: none, personal (PII) or sensitive (special category, such as health or identity documents).",
+					"enum": ["none", "personal", "sensitive"]
+				}
+			}
+		},
+		"processCore": {
+			"type": "object",
+			"required": ["id", "kind"],
+			"additionalProperties": false,
+			"properties": {
+				"id": { "$ref": "#/$defs/processId" },
+				"kind": { "const": "process" },
+				"title": { "$ref": "#/$defs/text" },
+				"source": { "$ref": "#/$defs/source" },
+				"invariants": { "$ref": "#/$defs/invariants" }
+			}
+		},
+		"stageCore": {
+			"type": "object",
+			"required": ["id", "kind"],
+			"additionalProperties": false,
+			"properties": {
+				"id": { "$ref": "#/$defs/stageId" },
+				"kind": { "const": "stage" },
+				"title": { "$ref": "#/$defs/text" },
+				"source": { "$ref": "#/$defs/source" },
+				"invariants": { "$ref": "#/$defs/invariants" }
+			}
+		},
+		"stepCore": {
+			"type": "object",
+			"required": ["id", "kind", "stage", "role", "actor"],
+			"additionalProperties": false,
+			"properties": {
+				"id": { "$ref": "#/$defs/stepId" },
+				"kind": { "const": "step" },
+				"title": { "$ref": "#/$defs/text" },
+				"stage": { "$ref": "#/$defs/stageId" },
+				"role": { "$ref": "#/$defs/roleId" },
+				"actor": { "$ref": "#/$defs/actor" },
+				"requires": { "$ref": "#/$defs/factIds" },
+				"collects": {
+					"type": "array",
+					"items": {
+						"description": "A fact this step records, and the role that records it when not the step's own role.",
+						"type": "object",
+						"required": ["fact"],
+						"additionalProperties": false,
+						"properties": {
+							"fact": { "$ref": "#/$defs/factId" },
+							"by": { "$ref": "#/$defs/roleId" }
+						}
+					}
+				},
+				"evidence": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"required": ["description"],
+						"additionalProperties": false,
+						"properties": {
+							"description": { "$ref": "#/$defs/text" },
+							"formats": { "$ref": "#/$defs/evidence/properties/formats" },
+							"copies": { "$ref": "#/$defs/evidence/properties/copies" },
+							"fact": { "$ref": "#/$defs/factId" }
+						}
+					}
+				},
+				"assigns": {
+					"description": "Case role assignments this step produces: the principals recorded in each fact are bound to the role on the case (ADR 0008).",
+					"type": "array",
+					"items": {
+						"type": "object",
+						"required": ["role", "fact"],
+						"additionalProperties": false,
+						"properties": {
+							"role": { "$ref": "#/$defs/roleId" },
+							"fact": { "$ref": "#/$defs/factId" }
+						}
+					}
+				},
+				"when": { "$ref": "#/$defs/guard" },
+				"repeat": {
+					"description": "Makes the step repeat until a condition holds (ADR 0004).",
+					"type": "object",
+					"required": ["until"],
+					"additionalProperties": false,
+					"properties": {
+						"until": { "$ref": "#/$defs/guard" },
+						"every": {
+							"description": "Suggested interval between repetitions, as an ISO 8601 duration.",
+							"type": "string",
+							"pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+W)?(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+S)?)?$"
+						}
+					}
+				},
+				"approval": { "$ref": "#/$defs/approvalId" },
+				"source": { "$ref": "#/$defs/source" },
+				"invariants": { "$ref": "#/$defs/invariants" }
+			}
+		},
+		"factCore": {
+			"type": "object",
+			"required": ["id", "kind", "schema"],
+			"additionalProperties": false,
+			"properties": {
+				"id": { "$ref": "#/$defs/factId" },
+				"kind": { "const": "fact" },
+				"title": { "$ref": "#/$defs/text" },
+				"schema": { "$ref": "#/$defs/factSchema" },
+				"source": { "$ref": "#/$defs/source" },
+				"invariants": { "$ref": "#/$defs/invariants" }
+			}
+		},
+		"roleCore": {
+			"type": "object",
+			"required": ["id", "kind"],
+			"additionalProperties": false,
+			"properties": {
+				"id": { "$ref": "#/$defs/roleId" },
+				"kind": { "const": "role" },
+				"title": { "$ref": "#/$defs/text" },
+				"scope": {
+					"description": "Where principals are bound to this role (ADR 0008): standing at namespace level, or assigned per case at runtime.",
+					"enum": ["namespace", "case"]
+				},
+				"source": { "$ref": "#/$defs/source" },
+				"invariants": { "$ref": "#/$defs/invariants" }
+			}
+		},
+		"decisionCore": {
+			"type": "object",
+			"required": ["id", "kind", "stage", "role", "actor", "outcome"],
+			"additionalProperties": false,
+			"properties": {
+				"id": { "$ref": "#/$defs/decisionId" },
+				"kind": { "const": "decision" },
+				"title": { "$ref": "#/$defs/text" },
+				"stage": { "$ref": "#/$defs/stageId" },
+				"role": { "$ref": "#/$defs/roleId" },
+				"actor": { "$ref": "#/$defs/actor" },
+				"requires": { "$ref": "#/$defs/factIds" },
+				"outcome": {
+					"description": "The fact the decision records; its schema lists the possible outcomes.",
+					"$ref": "#/$defs/factId"
+				},
+				"when": { "$ref": "#/$defs/guard" },
+				"source": { "$ref": "#/$defs/source" },
+				"invariants": { "$ref": "#/$defs/invariants" }
+			}
+		},
+		"approvalCore": {
+			"type": "object",
+			"required": ["id", "kind", "role", "actor"],
+			"additionalProperties": false,
+			"properties": {
+				"id": { "$ref": "#/$defs/approvalId" },
+				"kind": { "const": "approval" },
+				"title": { "$ref": "#/$defs/text" },
+				"role": { "$ref": "#/$defs/roleId" },
+				"actor": { "$ref": "#/$defs/actor" },
+				"requires": { "$ref": "#/$defs/factIds" },
+				"when": { "$ref": "#/$defs/guard" },
+				"source": { "$ref": "#/$defs/source" },
+				"invariants": { "$ref": "#/$defs/invariants" }
+			}
+		},
+		"core": {
+			"type": "object",
+			"required": ["id", "kind"],
+			"properties": {
+				"kind": { "enum": ["process", "stage", "step", "fact", "role", "decision", "approval"] }
+			},
+			"allOf": [
+				{
+					"if": { "required": ["kind"], "properties": { "kind": { "const": "process" } } },
+					"then": { "$ref": "#/$defs/processCore" }
+				},
+				{
+					"if": { "required": ["kind"], "properties": { "kind": { "const": "stage" } } },
+					"then": { "$ref": "#/$defs/stageCore" }
+				},
+				{
+					"if": { "required": ["kind"], "properties": { "kind": { "const": "step" } } },
+					"then": { "$ref": "#/$defs/stepCore" }
+				},
+				{
+					"if": { "required": ["kind"], "properties": { "kind": { "const": "fact" } } },
+					"then": { "$ref": "#/$defs/factCore" }
+				},
+				{
+					"if": { "required": ["kind"], "properties": { "kind": { "const": "role" } } },
+					"then": { "$ref": "#/$defs/roleCore" }
+				},
+				{
+					"if": { "required": ["kind"], "properties": { "kind": { "const": "decision" } } },
+					"then": { "$ref": "#/$defs/decisionCore" }
+				},
+				{
+					"if": { "required": ["kind"], "properties": { "kind": { "const": "approval" } } },
+					"then": { "$ref": "#/$defs/approvalCore" }
+				}
+			]
+		},
+		"node": {
+			"type": "object",
+			"required": ["core"],
+			"additionalProperties": false,
+			"properties": {
+				"core": { "$ref": "#/$defs/core" },
+				"content": {
+					"description": "Markdown prose guidance for people.",
+					"type": "string"
+				},
+				"data": {
+					"description": "Open extension map. Every key is namespaced, such as ui.icon, bpmn.x, excel.cell or hooks.on_completed.",
+					"type": "object",
+					"propertyNames": { "pattern": "^[a-z][a-z0-9-]*\\.[A-Za-z0-9_.-]+$" }
+				}
+			}
+		}
+	}
 }
