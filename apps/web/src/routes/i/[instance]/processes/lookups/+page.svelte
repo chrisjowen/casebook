@@ -124,8 +124,7 @@
 	user={data.user}
 	instance={data.instance}
 	instances={data.instances}
-	mode="processes"
-	crumbs={[{ label: 'Processes', href: links.processes(slug) }, { label: 'Lookups' }]}
+	crumbs={[{ label: 'Lookups' }]}
 >
 	<div class="flex min-h-[calc(100dvh-3.5rem)] flex-col md:flex-row">
 		<aside
@@ -224,7 +223,7 @@
 							{#each data.inProcesses as l (`${l.slug}:${l.id}`)}
 								<li>
 									<a
-										href={links.editor(slug, l.namespace, l.slug, l.id)}
+										href={links.editor(slug, l.namespace, l.slug, { select: l.id })}
 										class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-foreground/85 hover:bg-muted"
 										title="Opens in the editor of {l.process}"
 									>
@@ -374,7 +373,8 @@
 											<p class="mt-0.5 text-[11.5px] text-muted-foreground">
 												{#each u.facts as f, i (f.id)}{i ? ', ' : ''}<a
 														class="underline-offset-2 hover:text-foreground hover:underline"
-														href={links.editor(slug, u.namespace, u.slug, { select: f.id })}>{f.title}</a
+														href={links.editor(slug, u.namespace, u.slug, { select: f.id })}
+														>{f.title}</a
 													>{/each}{u.draftOnly ? ' · in its draft only' : ''}{u.cases
 													? ` · ${u.cases} ${u.cases === 1 ? 'case' : 'cases'}`
 													: ''}

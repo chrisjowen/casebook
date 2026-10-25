@@ -33,7 +33,6 @@
 	import SharedFactsInspector from '$lib/inspector/SharedFactsInspector.svelte';
 	import LookupInspector from '$lib/inspector/LookupInspector.svelte';
 	import LookupsInspector from '$lib/inspector/LookupsInspector.svelte';
-	import { links } from '$lib/runner/links';
 	import Assistant from '$lib/wizard/Assistant.svelte';
 	import { inspector } from '$lib/conditions/layout.svelte';
 	import * as Select from '$lib/components/ui/select';

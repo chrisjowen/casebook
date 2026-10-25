@@ -22,7 +22,7 @@ describe('conditions in the editor', () => {
 	it('words conditions with the facts’ names', () => {
 		expect(words(ix, "fact.severity in ['SEV1', 'SEV2']")).toBe('Severity is SEV1 or SEV2');
 		expect(words(ix, 'fact.resolved-at != null')).toBe('Resolved at has a value');
-		expect(factInfo(ix)('fact.severity').kind).toBe('choice');
+		expect(factInfo(ix)('fact.severity').kind).toBe('lookup');
 		expect(choicesOf(ix, 'fact.severity')).toEqual(['SEV1', 'SEV2', 'SEV3', 'SEV4']);
 	});
 

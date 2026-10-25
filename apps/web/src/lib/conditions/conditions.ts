@@ -18,6 +18,7 @@ import {
 	type GuardAst
 } from '@casebook/model';
 import {
+	choicesOf as factChoices,
 	collectsOf,
 	factType,
 	labelOf,
@@ -77,11 +78,10 @@ export function factInfo(ix: ProcessIndex, people?: Person[]): FactInfo {
 	};
 }
 
-/** The values a fact can be chosen from, when its schema lists them. */
+/** The values a fact can be chosen from, from its own options or its lookup, when it has them. */
 export function choicesOf(ix: ProcessIndex, ref: string): string[] | undefined {
-	const node = ix.byId.get(splitRef(ref).fact) as FactNode | undefined;
-	const values = node?.core.schema.enum;
-	return Array.isArray(values) ? values.map(String) : undefined;
+	const values = factChoices(ix, splitRef(ref).fact).map((c) => c.value);
+	return values.length ? values : undefined;
 }
 
 /** A condition in plain English, or undefined when its code does not parse. */

@@ -130,7 +130,9 @@
 					>
 						<option value="">Any outcome</option>
 						{#if branch.length > 1}<option value="several" disabled
-								>{branch.map((c) => choiceLabel(ix, decision?.core.outcome, c)).join(' or ')}</option
+								>{branch
+									.map((c) => choiceLabel(ix, decision?.core.outcome, c))
+									.join(' or ')}</option
 							>{/if}
 						{#each choices as c (c)}<option value={c}
 								>{choiceLabel(ix, decision?.core.outcome, c)}</option
