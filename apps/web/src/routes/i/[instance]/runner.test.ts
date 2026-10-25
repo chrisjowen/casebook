@@ -394,7 +394,9 @@ describe('a task', () => {
 	it('hands over to what comes next after completing, sending back or posting an update', async () => {
 		const { page: state } = await import('$app/state');
 		const done = (outcome: string, view = taskView()) => {
-			state.url = new URL(`http://localhost/i/example-family/c/case-mira/t/a/i?done=${outcome}`);
+			state.url = new URL(
+				`http://localhost/i/example-family/c/case-mira/t/a/i?done=${outcome}`
+			) as never;
 			try {
 				return text(
 					render(TaskPage, {
@@ -412,7 +414,7 @@ describe('a task', () => {
 					}).body
 				);
 			} finally {
-				state.url = new URL('http://localhost/i/example-family');
+				state.url = new URL('http://localhost/i/example-family') as never;
 			}
 		};
 		expect(done('done', taskView({ task: task({ status: 'done' }) }))).toContain(
