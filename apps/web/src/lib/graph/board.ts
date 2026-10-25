@@ -71,6 +71,8 @@ export interface BoardCardData extends Record<string, unknown> {
 	/** Nothing comes after it yet, so its "+" stays faintly visible as the place to continue. */
 	leaf: boolean;
 	dim?: boolean;
+	/** How a proposal under review changes it, such as the wizard agent's. */
+	mark?: 'new' | 'changed';
 }
 
 export interface BoardStageData extends Record<string, unknown> {

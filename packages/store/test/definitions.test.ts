@@ -8,7 +8,9 @@ import {
 	editDefinition,
 	listDefinitions,
 	loadDefinition,
+	previewDefinitionEdit,
 	publishDefinition,
+	readDraft,
 	undoDefinitionEdit,
 	type DefinitionForActor,
 	type Refusal
@@ -276,6 +278,40 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 		);
 	});
 
+	it('previews an edit with the checks an edit gets, without saving it', async () => {
+		const start = await definition(users.wren, 'incident-management');
+		const step = start.draft!.document.nodes.find((n) => n.core.kind === 'step')!;
+		const edit = {
+			definitionId: start.id,
+			ops: [rename(step.core.id, 'Triage the incident')],
+			baseRevision: start.draft!.number
+		};
+		const preview = await previewDefinitionEdit(db, users.wren, edit);
+		expect(preview).toMatchObject({ ok: true, revision: start.draft!.number });
+		if (!preview.ok) return;
+		expect(preview.changes.map((c) => c.summary)).toEqual([
+			`Renamed step ${step.core.title} to Triage the incident`
+		]);
+		expect(preview.document.nodes.find((n) => n.core.id === step.core.id)?.core.title).toBe(
+			'Triage the incident'
+		);
+		expect((await loadDefinition(db, start.id))!.draft!.number).toBe(start.draft!.number);
+
+		expectRefusal(await previewDefinitionEdit(db, users.rae, edit), 'access-denied');
+		expectRefusal(
+			await previewDefinitionEdit(db, users.wren, { ...edit, baseRevision: 99 }),
+			'stale-draft'
+		);
+		expectRefusal(
+			await previewDefinitionEdit(db, users.wren, { ...edit, ops: [{ op: 'explode' }] }),
+			'invalid-operation'
+		);
+		expect(await readDraft(db, users.rae, start.id)).toMatchObject({
+			ok: true,
+			revision: start.draft!.number
+		});
+	});
+
 	it('saves a stage reorder as a draft change, which undo takes back', async () => {
 		const start = await definition(users.wren, 'incident-management');
 		const moved = await editDefinition(db, users.wren, {
@@ -434,6 +470,25 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 			changePolicy: 'living'
 		});
 		expect(living).toMatchObject({ ok: true, version: 1 });
+
+		// A blank start holds the process alone, with where it came from, for the wizard to build on.
+		const source = { doc: 'tracker.xlsx', ref: 'Tasks!A1:C9', inferred: false };
+		const blank = await createDefinition(db, users.devon, {
+			namespaceId: platform.namespace.id,
+			title: 'From a sheet',
+			blank: true,
+			source
+		});
+		if (!blank.ok) throw new Error(blank.reason);
+		expect(await readDraft(db, users.devon, blank.definitionId)).toMatchObject({
+			ok: true,
+			revision: 1,
+			document: {
+				nodes: [
+					{ core: { id: 'process.from-a-sheet', kind: 'process', title: 'From a sheet', source } }
+				]
+			}
+		});
 		expectRefusal(
 			await createDefinition(db, users.devon, { namespaceId: sre.namespace.id, title: 'No' }),
 			'access-denied',

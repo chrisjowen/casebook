@@ -4,6 +4,7 @@
 	// lenses on it, and the process map shows a workspace's processes. Edits are draft revisions;
 	// governed processes publish explicitly, living ones publish every edit. No cases or instances.
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import type { FactNode, Operation, StageId } from '@casebook/model';
@@ -20,6 +21,7 @@
 	import FactInspector from '$lib/inspector/FactInspector.svelte';
 	import ProcessInspector from '$lib/inspector/ProcessInspector.svelte';
 	import SharedFactsInspector from '$lib/inspector/SharedFactsInspector.svelte';
+	import Assistant from '$lib/wizard/Assistant.svelte';
 	import * as Select from '$lib/components/ui/select';
 	import {
 		indexDocument,
@@ -45,7 +47,10 @@
 		Upload,
 		LoaderCircle,
 		Plus,
-		Undo2
+		Undo2,
+		FileSpreadsheet,
+		Sparkles,
+		Download
 	} from '@lucide/svelte';
 	import type { PageProps } from './$types';
 
@@ -78,6 +83,40 @@
 	const selectedStage = $derived(
 		selectedNode?.core.kind === 'stage' ? (selectedNode.core.id as StageId) : undefined
 	);
+
+	// A spreadsheet import in progress: its assistant, and its pending proposal on the open process,
+	// which the board shows in place of the draft until it is accepted or rejected.
+	const wizard = $derived(data.wizard);
+	const proposal = $derived(wizard?.preview?.ok ? wizard.preview : undefined);
+	const boardIx = $derived(proposal ? indexDocument(proposal.document) : active);
+	const imported = $derived(new Map(wizard?.state.processes.map((p) => [p.slug, p]) ?? []));
+	let assistantOpen = $state(true);
+	let importing = $state(false);
+	let importAt = $state(0);
+	let importError = $state<string | undefined>();
+	let uploading = $state(false);
+
+	async function startImport(body: FormData) {
+		if (!workspace) return;
+		body.set('namespaceId', workspace.id);
+		uploading = true;
+		importError = undefined;
+		try {
+			const response = await fetch('/wizard', { method: 'POST', body });
+			const result = await response.json();
+			if (!result.ok) {
+				importError = result.reason ?? 'The import did not start';
+				return;
+			}
+			importing = false;
+			assistantOpen = true;
+			nav({ wizard: result.id, sel: undefined });
+		} catch (error) {
+			importError = error instanceof Error ? error.message : String(error);
+		} finally {
+			uploading = false;
+		}
+	}
 
 	const editor = new Editor(() => loaded);
 	setEditor(editor);
@@ -194,7 +233,8 @@
 					<Select.Root
 						type="single"
 						value={workspace.namespace}
-						onValueChange={(namespace) => nav({ ws: namespace, p: undefined, sel: undefined })}
+						onValueChange={(namespace) =>
+							nav({ ws: namespace, p: undefined, sel: undefined, wizard: undefined })}
 					>
 						<Select.Trigger
 							class="h-8 w-44 shrink-0 rounded-lg text-[12.5px] font-medium"
@@ -239,7 +279,12 @@
 										: 'border-transparent text-muted-foreground hover:text-foreground'
 								]}
 								onclick={() => nav({ p: ix.document.slug, sel: undefined })}
-								><Workflow class="size-3.5 text-brand" />{labelOf(ix, ix.process?.core.id)}</button
+								><Workflow class="size-3.5 text-brand" />{labelOf(
+									ix,
+									ix.process?.core.id
+								)}{#if imported.get(ix.document.slug) && !imported.get(ix.document.slug)?.drafted}<span
+										class="text-[11px] font-normal text-muted-foreground">· not drafted</span
+									>{/if}</button
 							>
 						{/each}
 						<div class="relative shrink-0">
@@ -257,7 +302,26 @@
 								}}><Plus class="size-4" /></button
 							>
 						</div>
+						<button
+							class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-muted-foreground enabled:cursor-pointer enabled:hover:bg-muted enabled:hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+							title={workspace.can.create.allowed
+								? 'Import a spreadsheet: the assistant proposes processes and drafts them'
+								: `Import a spreadsheet: ${workspace.can.create.reason}`}
+							aria-expanded={importing}
+							disabled={!workspace.can.create.allowed}
+							onclick={(e) => {
+								importAt = e.currentTarget.getBoundingClientRect().left;
+								importError = undefined;
+								importing = !importing;
+							}}><FileSpreadsheet class="size-4" />Import a spreadsheet</button
+						>
 					</div>
+					{#if wizard && !assistantOpen}
+						<button
+							class="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px] font-medium hover:bg-muted"
+							onclick={() => (assistantOpen = true)}><Sparkles class="size-3.5" />Assistant</button
+						>
+					{/if}
 					{#if !isMap && active && loaded}
 						<Segmented
 							label="View"
@@ -329,12 +393,107 @@
 					</form>
 				{/if}
 
+				{#if importing}
+					<div
+						class="fixed top-[108px] z-40 flex w-80 flex-col gap-2.5 rounded-xl border bg-popover p-3 text-[12.5px] shadow-lg"
+						style:left="{Math.max(8, importAt - 8)}px"
+					>
+						<div class="flex items-start gap-2">
+							<p class="flex-1 text-muted-foreground">
+								The assistant reads the sheet, suggests processes and drafts them on the board.
+								Nothing is created or changed until you accept it.
+							</p>
+							<button
+								class="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+								aria-label="Close"
+								onclick={() => (importing = false)}><X class="size-3.5" /></button
+							>
+						</div>
+						<form
+							class="flex flex-col gap-2"
+							onsubmit={(e) => {
+								e.preventDefault();
+								void startImport(new FormData(e.currentTarget));
+							}}
+						>
+							<input
+								type="file"
+								name="file"
+								accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+								required
+								aria-label="Spreadsheet"
+								class="text-[12px] file:mr-2 file:cursor-pointer file:rounded-md file:border file:bg-background file:px-2 file:py-1"
+							/>
+							<button
+								class="h-8 cursor-pointer rounded-lg bg-brand px-3 font-medium text-white hover:opacity-90 disabled:opacity-45"
+								disabled={uploading}>Import</button
+							>
+						</form>
+						<div class="flex items-center gap-2 border-t pt-2.5">
+							<button
+								class="inline-flex h-8 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-foreground px-2 font-medium text-background hover:opacity-90 disabled:opacity-45"
+								disabled={uploading}
+								onclick={() => {
+									const body = new FormData();
+									body.set('sample', '1');
+									void startImport(body);
+								}}><FileSpreadsheet class="size-3.5" />Use the sample: newborn-tracker.xlsx</button
+							>
+							<a
+								href={resolve('/wizard/sample.xlsx')}
+								class="flex size-8 items-center justify-center rounded-lg border text-muted-foreground hover:bg-muted"
+								title="Download the sample"
+								aria-label="Download the sample"><Download class="size-3.5" /></a
+							>
+						</div>
+						{#if uploading}<p class="flex items-center gap-1.5 text-muted-foreground">
+								<LoaderCircle class="size-3.5 animate-spin" />Reading the spreadsheet…
+							</p>{/if}
+						{#if importError}<p class="text-destructive" role="alert">{importError}</p>{/if}
+						{#if data.imports.length}
+							<div class="flex flex-col gap-1 border-t pt-2.5">
+								<p class="text-[11px] font-medium text-muted-foreground">Continue an import</p>
+								{#each data.imports.slice(0, 4) as imp (imp.id)}
+									<button
+										class="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-muted"
+										onclick={() => {
+											importing = false;
+											assistantOpen = true;
+											nav({ wizard: imp.id });
+										}}
+										><FileSpreadsheet class="size-3.5 shrink-0 text-muted-foreground" /><span
+											class="min-w-0 flex-1 truncate">{imp.fileName}</span
+										><span class="shrink-0 text-[11px] text-muted-foreground"
+											>{imp.processes
+												? `${imp.processes} ${imp.processes === 1 ? 'process' : 'processes'}`
+												: 'choosing processes'}</span
+										></button
+									>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
+
 				<main class="relative min-h-0 flex-1">
-					{#if active}
+					{#if wizard?.state.phase === 'split'}
+						<div
+							class="absolute inset-0 m-auto flex h-fit w-[min(384px,calc(100%-32px))] flex-col items-center gap-2 rounded-2xl border border-dashed bg-background p-8 text-center"
+							style:transform={assistantOpen ? 'translateX(-200px)' : undefined}
+						>
+							<FileSpreadsheet class="size-5 text-muted-foreground" />
+							<p class="text-[14px] font-medium">Choose the processes</p>
+							<p class="text-[12.5px] text-muted-foreground">
+								The assistant suggests how to split {wizard.fileName} into processes. Rename, merge or
+								split them in the assistant panel, then accept the split to draft them here.
+							</p>
+						</div>
+					{:else if active && boardIx}
 						{#if onBoard}
 							<Board
-								ix={active}
-								editable={editor.blocked === undefined}
+								ix={boardIx}
+								marks={proposal?.marks}
+								editable={editor.blocked === undefined && !proposal}
 								selectedId={selected === 'shared' ? undefined : selected}
 								onselect={(id) => nav({ sel: id })}
 								{query}
@@ -360,6 +519,16 @@
 							No processes in {workspace.namespace} yet.{#if workspace.can.create.allowed}
 								Use + beside the processes to start one.{/if}
 						</p>
+					{/if}
+					{#if wizard}
+						<Assistant
+							view={wizard}
+							open={assistantOpen}
+							openSlug={isMap ? undefined : data.slug}
+							openRevision={loaded?.revision}
+							onclose={() => (assistantOpen = false)}
+							onopen={(slug) => nav({ p: slug, sel: undefined, view: undefined })}
+						/>
 					{/if}
 					{#if editor.notice}
 						<div

@@ -61,7 +61,7 @@ A [moon](https://moonrepo.dev) workspace with pnpm workspaces underneath, all Ty
 | `packages/store`        | Postgres persistence, permission checks, definition editing, the case runtime and the demo seed; Drizzle ORM migrations.               |
 | `packages/mcp`          | The MCP server: tools for agents to work cases as the user they sign in as, over Streamable HTTP with OAuth.                           |
 | `packages/sheet-import` | Reads .xlsx workbooks into neutral rows and cells for the wizard.                                                                      |
-| `packages/wizard-agent` | Placeholder for the deepagents-based authoring agent.                                                                                  |
+| `packages/wizard-agent` | The spreadsheet wizard's authoring agent (deepagents), its state and the sample tracker.                                               |
 
 ## Prerequisites
 
@@ -124,6 +124,27 @@ Every gesture changes the draft through the model's node operations and is saved
 The process details list what the draft changes since the latest published version, with Publish and Undo.
 A governed process publishes when someone presses Publish and the publish checks pass; a living process publishes every edit straight away.
 "New process" (the + after the process tabs) starts a process in the workspace.
+
+## Spreadsheet wizard
+
+"Import a spreadsheet", beside the process tabs, turns an `.xlsx` tracker into processes (ADR 0011, ADR 0024); "Use the sample" imports a synthetic newborn tracker, also downloadable from `/wizard/sample.xlsx`.
+The board stays in view, with the assistant in a slide-over beside it that can be closed and reopened:
+
+1. The assistant proposes how to split the workbook into processes, each with the cells it comes from. Rename, merge, split off a range or ask in chat for a different split, then accept it to create the processes.
+2. It drafts a process as one proposal, shown on the board with new and changed cards marked and listed in the panel. Accept saves it to the draft as one revision; Reject drops it; a reply in chat revises it.
+3. Publish runs the usual publish checks; when they fail, "Ask the assistant to fix it" sends them back.
+
+The agent only proposes node operations, which the store checks as edits by the signed-in user, and every node it adds links back to its source cells.
+It runs on any tool-calling chat model LangChain supports, set in `.env`:
+
+| Setting                 | Default                  | Meaning                                                                                                          |
+| ----------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `CASEBOOK_WIZARD_MODEL` | `ollama:qwen2.5:7b`      | `provider:model`, where the provider is `ollama`, `anthropic` (such as `anthropic:claude-sonnet-5`) or `openai`. |
+| `OLLAMA_BASE_URL`       | `http://127.0.0.1:11434` | Where Ollama runs; pull the model first with `ollama pull qwen2.5:7b`.                                           |
+| `ANTHROPIC_API_KEY`     |                          | For `anthropic:` models.                                                                                         |
+| `OPENAI_API_KEY`        |                          | For `openai:` models; `OPENAI_BASE_URL` points it at a compatible server.                                        |
+
+Small local models are slower and propose less, which shows up as proposals to reject or push back on rather than broken drafts.
 
 Sign-in is a dev-only stand-in for OIDC: pick one of the seeded users at `/signin`, with no password.
 It is on only in `pnpm dev`, never in a production build.
@@ -193,7 +214,8 @@ pnpm format              # Prettier (pnpm format:check to verify only)
 ```
 
 Run a single project's task with moon directly, for example `moon run model:test`.
-The `store` tests, which cover the seed, editing, publishing, running cases and permission refusals, and the `mcp` tests, which cover the tools and the OAuth sign-in, need Postgres (`pnpm db:up` and a `.env`): they migrate a throwaway database next to the one `DATABASE_URL` names, and are skipped when it is unset outside CI.
+The `store` tests, which cover the seed, editing, publishing, running cases and permission refusals, the `mcp` tests, which cover the tools and the OAuth sign-in, and the `wizard-agent` tests that work through the store need Postgres (`pnpm db:up` and a `.env`): they migrate a throwaway database next to the one `DATABASE_URL` names, and are skipped when it is unset outside CI.
+The wizard agent's tests use a scripted model; `CASEBOOK_LIVE_AGENT=1 moon run wizard-agent:test` also runs one against the configured model.
 
 ## Database migrations
 

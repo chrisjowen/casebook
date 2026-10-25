@@ -10,6 +10,7 @@ import {
 import { getDb } from '$lib/server/db';
 import { loadWorkspaces } from '$lib/server/definitions';
 import { actorOf } from '$lib/server/runner';
+import { listImports, loadWizard } from '$lib/server/wizard';
 import type { ViewId } from '$lib/graph/layout';
 
 const VIEWS: ViewId[] = ['board', 'lanes', 'facts'];
@@ -28,13 +29,19 @@ export const load: PageServerLoad = async ({ url, locals, params }) => {
 					?.document.slug;
 	// "cards" was the board's name before it could be built on; old links still open it
 	const view = VIEWS.find((v) => v === url.searchParams.get('view')) ?? 'board';
+	const actor = actorOf(locals);
+	const wizardId = url.searchParams.get('wizard');
+	const wizard = wizardId ? await loadWizard(actor, wizardId, slug) : undefined;
 	return {
 		user: locals.user!,
 		workspaces,
 		namespace: workspace?.namespace,
 		slug,
 		view,
-		selected: url.searchParams.get('sel') ?? undefined
+		selected: url.searchParams.get('sel') ?? undefined,
+		// A spreadsheet import in progress, shown with its assistant, and the others to go back to.
+		wizard: wizard && wizard.namespaceId === workspace?.id ? wizard : undefined,
+		imports: workspace?.can.create.allowed ? await listImports(actor, workspace.id) : []
 	};
 };
 
