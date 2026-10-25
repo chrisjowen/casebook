@@ -3,19 +3,32 @@ $schema: '../../.moon/cache/schemas/project.json'
 language: 'typescript'
 layer: 'library'
 
+# The agent writes through @casebook/store and reads workbooks with @casebook/sheet-import, which
+# resolve to their built output.
+dependsOn:
+  - 'model'
+  - 'sheet-import'
+  - 'store'
+
 tasks:
   build:
-    command: 'tsc -p tsconfig.json'
+    command: 'tsc -p tsconfig.build.json'
+    deps:
+      - '^:build'
     inputs:
       - 'src/**/*'
-      - 'tsconfig.json'
+      - 'tsconfig.build.json'
       - '/tsconfig.base.json'
     outputs:
       - 'dist'
   check:
-    command: 'tsc -p tsconfig.json --noEmit'
+    command: 'tsc -p tsconfig.json'
+    deps:
+      - '^:build'
     inputs:
       - 'src/**/*'
+      - 'test/**/*'
+      - 'vitest.config.ts'
       - 'tsconfig.json'
       - '/tsconfig.base.json'
   lint:
@@ -23,3 +36,15 @@ tasks:
     inputs:
       - '**/*'
       - '/eslint.config.js'
+  # The store-backed tests need Postgres, like @casebook/store's; the live model test runs only
+  # when CASEBOOK_LIVE_AGENT is set.
+  test:
+    command: 'vitest run'
+    deps:
+      - '^:build'
+    inputs:
+      - 'src/**/*'
+      - 'test/**/*'
+      - 'vitest.config.ts'
+      - '$DATABASE_URL'
+      - '$CASEBOOK_LIVE_AGENT'

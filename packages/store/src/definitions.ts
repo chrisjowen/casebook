@@ -26,6 +26,7 @@ import {
 	type PublishRefusalCode,
 	type RejectionCode,
 	type Revision,
+	type SourceRef,
 	type ValidationError
 } from '@casebook/model';
 import { can, type Action, type Actor, type Decision, type Resource } from './authz.js';
@@ -232,6 +233,13 @@ export interface NewDefinition {
 	/** The process title; the slug is made from it, numbered when already taken. */
 	title: string;
 	changePolicy?: ChangePolicy;
+	/**
+	 * Start from the process node alone instead of the starter stage, role and step, for a draft
+	 * that something else builds, such as the wizard agent.
+	 */
+	blank?: boolean;
+	/** Where the process came from, recorded on its process node. */
+	source?: SourceRef;
 }
 
 export interface Created {
@@ -244,7 +252,7 @@ export interface Created {
 
 /**
  * Creates a definition in a namespace with a starter draft: the process, one stage, one role and
- * one step, for the editor to build on. The actor needs `definition.create` on the namespace and
+ * one step, for the editor to build on, or the process alone when `blank`. The actor needs `definition.create` on the namespace and
  * becomes the definition's creator; the principal they act for, or they themselves, its owner.
  * A living definition publishes the starter draft as version 1 straight away.
  */
@@ -266,7 +274,7 @@ export async function createDefinition(
 
 	const title = input.title.trim() || 'New process';
 	const slug = await freeSlug(db, input.namespaceId, slugify(title));
-	const document = starterDocument(namespace.path, slug, title);
+	const document = starterDocument(namespace.path, slug, title, input);
 	const attribution = await attributionOf(db, actor);
 	const started = startHistory(document, attribution);
 	if (!started.ok) return refusal(started);
@@ -334,6 +342,73 @@ export async function editDefinition(
 	const attribution = await attributionOf(db, actor);
 	const result = commit(head, input.ops as Operation[], attribution);
 	return record(db, actor, input.definitionId, stored.definition.changePolicy, result, stored);
+}
+
+/** A definition's draft head, as an actor who may read it sees it. */
+export interface DraftRead {
+	ok: true;
+	/** The head revision's number; 0 for a definition published without a draft. */
+	revision: number;
+	document: DefinitionDocument;
+}
+
+/** Reads a definition's draft head, or its latest version when it has no draft. */
+export async function readDraft(
+	db: Db,
+	actor: Actor,
+	definitionId: string
+): Promise<DraftRead | Refusal> {
+	const stored = await loadStored(db, definitionId);
+	if (!stored) return notFound(definitionId);
+	const denied = await permission(db, actor, 'definition.read', {
+		type: 'definition',
+		definitionId
+	});
+	if (denied) return denied;
+	const head = headRevision(stored);
+	if (!head) return refuse('unknown-revision', `${stored.definition.slug} has no draft`);
+	return { ok: true, revision: head.number, document: head.document };
+}
+
+export interface EditPreview {
+	ok: true;
+	/** The draft revision the edit was checked against. */
+	revision: number;
+	/** The draft as the edit would leave it. */
+	document: DefinitionDocument;
+	/** What the edit changes in the draft. */
+	changes: Change[];
+	/** Draft incompleteness the edit would leave, which blocks only a governed publish. */
+	warnings: InvariantIssue[];
+}
+
+/**
+ * Checks node operations as an edit of a definition's draft without saving them: the same
+ * permission, staleness and model checks as `editDefinition`, so an edit that previews can be
+ * saved unchanged against the same revision. Proposals, such as a wizard agent's turn, are
+ * reviewed this way before anyone accepts them.
+ */
+export async function previewDefinitionEdit(
+	db: Db,
+	actor: Actor,
+	input: DefinitionEdit
+): Promise<EditPreview | Refusal> {
+	const stored = await loadStored(db, input.definitionId);
+	if (!stored) return notFound(input.definitionId);
+	const denied = await editPermission(db, actor, input.definitionId, stored.definition);
+	if (denied) return denied;
+	const head = headRevision(stored);
+	if (!head) return refuse('unknown-revision', `${stored.definition.slug} has no draft to edit`);
+	if (head.number !== input.baseRevision) return stale(head.number, input.baseRevision);
+	const result = commit(head, input.ops as Operation[], await attributionOf(db, actor));
+	if (!result.ok) return refusal(result);
+	return {
+		ok: true,
+		revision: head.number,
+		document: result.revision.document,
+		changes: diff(head.document, result.revision.document),
+		warnings: result.warnings
+	};
 }
 
 /** Undoes the latest edit of a definition's draft, as a new revision. Needs what an edit does. */
@@ -687,15 +762,25 @@ async function attributionOf(db: Db, actor: Actor): Promise<Attribution> {
 	};
 }
 
-/** A first draft to build on: the process, one stage, one role and one step. */
-function starterDocument(namespace: string, slug: string, title: string): DefinitionDocument {
+/** A first draft to build on: the process, then one stage, one role and one step unless blank. */
+function starterDocument(
+	namespace: string,
+	slug: string,
+	title: string,
+	{ blank, source }: Pick<NewDefinition, 'blank' | 'source'>
+): DefinitionDocument {
+	const process = {
+		core: { id: `process.${slug}`, kind: 'process', title, ...(source ? { source } : {}) }
+	} as const;
+	if (blank)
+		return { schemaVersion: SCHEMA_VERSION, namespace, slug, version: 1, nodes: [process] };
 	return {
 		schemaVersion: SCHEMA_VERSION,
 		namespace,
 		slug,
 		version: 1,
 		nodes: [
-			{ core: { id: `process.${slug}`, kind: 'process', title } },
+			process,
 			{ core: { id: 'stage.start', kind: 'stage', title: 'Start' } },
 			{ core: { id: 'role.owner', kind: 'role', title: 'Owner', scope: 'namespace' } },
 			{

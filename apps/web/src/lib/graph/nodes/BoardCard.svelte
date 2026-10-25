@@ -112,9 +112,13 @@
 		'cb-card relative flex h-full w-full flex-col rounded-[14px] border bg-card text-left transition-[box-shadow,border-color,opacity] duration-150',
 		selected
 			? 'border-brand shadow-[0_0_0_3px_var(--brand-ring)]'
-			: needed
-				? 'border-brand-ring shadow-[0_0_0_3px_var(--brand-soft)]'
-				: 'border-border/80 shadow-xs hover:border-foreground/20 hover:shadow-md',
+			: data.mark === 'new'
+				? 'border-emerald-500 shadow-[0_0_0_3px_rgb(16_185_129/0.15)]'
+				: data.mark === 'changed'
+					? 'border-amber-400 shadow-[0_0_0_3px_rgb(251_191_36/0.2)]'
+					: needed
+						? 'border-brand-ring shadow-[0_0_0_3px_var(--brand-soft)]'
+						: 'border-border/80 shadow-xs hover:border-foreground/20 hover:shadow-md',
 		data.dim && 'opacity-35'
 	]}
 >
@@ -122,6 +126,15 @@
 		<span
 			class="absolute -top-[11px] left-3 rounded-md bg-foreground px-2 py-px text-[10.5px] font-medium text-background shadow-[0_0_0_3px_var(--card)]"
 			>Decision</span
+		>
+	{/if}
+	{#if data.mark}
+		<span
+			class={[
+				'absolute -top-[11px] rounded-md px-2 py-px text-[10.5px] font-medium shadow-[0_0_0_3px_var(--card)]',
+				data.kind === 'decision' ? 'left-[78px]' : 'left-3',
+				data.mark === 'new' ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-amber-950'
+			]}>{data.mark === 'new' ? 'New' : 'Changed'}</span
 		>
 	{/if}
 	<div class="flex items-start gap-1.5 px-3.5 pt-3" style:height="{BOARD_HEAD}px">

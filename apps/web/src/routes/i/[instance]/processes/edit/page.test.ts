@@ -7,11 +7,16 @@ import { indexDocument, labelOf } from '$lib/graph/derive';
 import { loadWorkspaces, namespaceLabel } from '$lib/server/definitions';
 import type { LoadedDefinition, Permission, Workspace } from '$lib/definitions/types';
 import { load } from './+page.server';
+import { listImports, loadWizard } from '$lib/server/wizard';
+import type { WizardView } from '$lib/wizard/types';
+import { proposeSplit, proposeTurn, say, splitAccepted, startState } from '@casebook/wizard-agent';
 
 vi.mock('$lib/server/definitions', async (importOriginal) => ({
 	...(await importOriginal<typeof import('$lib/server/definitions')>()),
 	loadWorkspaces: vi.fn()
 }));
+
+vi.mock('$lib/server/wizard', () => ({ loadWizard: vi.fn(), listImports: vi.fn() }));
 
 const allow: Permission = { allowed: true, reason: 'user "Olive Owner" is account-owner' };
 const deny: Permission = {
@@ -83,7 +88,11 @@ const dataFor = async (query: string, can: Permission = allow) => {
 const pageFor = async (query: string, can: Permission = allow) =>
 	render(Page, { props: { data: await dataFor(query, can), params: {} } as never }).body;
 
-beforeEach(() => vi.mocked(loadWorkspaces).mockReset());
+beforeEach(() => {
+	vi.mocked(loadWorkspaces).mockReset();
+	vi.mocked(loadWizard).mockReset().mockResolvedValue(undefined);
+	vi.mocked(listImports).mockReset().mockResolvedValue([]);
+});
 
 describe('editor route', () => {
 	const definitions = workspaces(allow).flatMap((w) =>
@@ -202,5 +211,113 @@ describe('editor route', () => {
 		expect(data.slug).toBe(birthRegistrationAbroad.slug);
 		expect(data.view).toBe('board');
 		expect(data.selected).toBe('step.x');
+	});
+});
+
+describe('spreadsheet import', () => {
+	const sre = 'acme/eng/sre';
+	const view = (state: WizardView['state'], extra: Partial<WizardView> = {}): WizardView => ({
+		id: 'w1',
+		version: 3,
+		fileName: 'newborn-tracker.xlsx',
+		namespaceId: sre,
+		model: 'ollama:qwen2.5:7b',
+		timeoutSeconds: 480,
+		state,
+		ranges: { p2: ['"Birth reg" A2:G7 · 6 rows'], p3: ['"Claims" A2:F8 · 7 rows'] },
+		...extra
+	});
+	const proposed = proposeSplit(startState('newborn-tracker.xlsx'), {
+		processes: [
+			{ title: 'Birth registration', summary: 'Register the birth', sources: [] },
+			{ title: 'Medical claims', summary: 'Claim the bills', sources: [] }
+		],
+		shared: [{ title: 'Shared document set', summary: 'Documents', sources: [] }]
+	});
+	const split = say(proposed, 'assistant', 'Two processes.', { type: 'split' });
+
+	it('offers the import beside the process tabs, with the reason when it is not allowed', async () => {
+		expect(await pageFor(`ws=${sre}`)).toContain('Import a spreadsheet');
+		expect(await pageFor(`ws=${sre}`, deny)).toContain(
+			`Import a spreadsheet: ${deny.reason.replaceAll('"', '&quot;')}`
+		);
+	});
+
+	it('shows the split to choose, with rename, merge and accept, in place of the board', async () => {
+		vi.mocked(loadWizard).mockResolvedValue(view(split));
+		const html = await pageFor(`ws=${sre}&wizard=w1`);
+		expect(html).toContain('Choose the processes');
+		expect(html).toContain('aria-label="Assistant"');
+		expect(html).toContain('Birth registration');
+		expect(html).toContain('A2:G7 · 6 rows');
+		expect(html).toContain('Rename');
+		expect(html).toContain('aria-label="Merge Birth registration into"');
+		expect(html).toContain('Shared document set');
+		expect(html).toContain('Accept split');
+		expect(html).toContain('ollama:qwen2.5:7b');
+		expect(html).not.toContain('aria-label="Add to Respond"');
+	});
+
+	it('draws a pending proposal on the board, marked, with Accept and Reject', async () => {
+		const drafting = proposeTurn(
+			splitAccepted(split, [
+				{
+					key: 'p2',
+					title: 'Incident management',
+					definitionId: 'incident-management',
+					slug: incidentManagement.slug,
+					sources: [],
+					drafted: false
+				}
+			]),
+			'p2',
+			[],
+			'I added a step to notify the customer.'
+		);
+		const document: DefinitionDocument = {
+			...incidentManagement,
+			nodes: [
+				...incidentManagement.nodes,
+				{
+					core: {
+						id: 'step.notify-customer',
+						kind: 'step',
+						title: 'Notify the customer',
+						stage: 'stage.respond',
+						role: 'role.incident-commander',
+						actor: 'human'
+					}
+				}
+			]
+		};
+		vi.mocked(loadWizard).mockResolvedValue(
+			view(drafting, {
+				preview: {
+					ok: true,
+					processKey: 'p2',
+					turnId: drafting.turns[0]!.id,
+					revision: 1,
+					document,
+					changes: [
+						{
+							kind: 'added',
+							summary: 'Added step Notify the customer',
+							nodeId: 'step.notify-customer'
+						}
+					],
+					marks: { 'step.notify-customer': 'new' },
+					blocking: []
+				}
+			})
+		);
+		const html = await pageFor(`ws=${sre}&p=incident-management&wizard=w1`);
+		expect(html).toContain('Notify the customer');
+		expect(html).toContain('>New<');
+		expect(html).toMatch(/1\s+change from the assistant/);
+		expect(html).toContain('Added step Notify the customer');
+		expect(html).toContain('Shown on the board');
+		expect(html).toContain('· not drafted');
+		// The board is for reviewing while a proposal is open, not for editing.
+		expect(html).not.toContain('Add stage');
 	});
 });

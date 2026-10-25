@@ -21,3 +21,6 @@ build/
 *.tsbuildinfo
 coverage/
 vite.config.*.timestamp-*
+
+# Browser-automation output from local test runs
+.playwright-mcp/

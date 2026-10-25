@@ -568,3 +568,30 @@ export const delegationGrants = pgTable(
 		)
 	]
 );
+
+/**
+ * A spreadsheet import in progress (ADR 0011): the workbook as read, and the wizard's own state
+ * (its split proposal, chat and proposed edits), which the wizard agent package defines. Only
+ * the principal who started it can see it. Definitions it creates are ordinary definitions;
+ * nothing here is part of them.
+ */
+export const wizardSessions = pgTable(
+	'wizard_sessions',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		namespaceId: uuid('namespace_id')
+			.notNull()
+			.references(() => namespaces.id),
+		ownerId: uuid('owner_id')
+			.notNull()
+			.references(() => principals.id, { onDelete: 'cascade' }),
+		fileName: text('file_name').notNull(),
+		workbook: jsonb('workbook').notNull(),
+		state: jsonb('state').notNull(),
+		/** Bumped on every save, so two saves of the same session cannot silently overwrite. */
+		version: integer('version').notNull().default(1),
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+	},
+	(t) => [index('wizard_sessions_owner_id_idx').on(t.ownerId)]
+);

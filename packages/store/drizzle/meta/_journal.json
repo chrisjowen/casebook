@@ -22,6 +22,13 @@
       "when": 1792931111218,
       "tag": "0002_case_runtime",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792940943445,
+      "tag": "0003_wizard_sessions",
+      "breakpoints": true
     }
   ]
 }

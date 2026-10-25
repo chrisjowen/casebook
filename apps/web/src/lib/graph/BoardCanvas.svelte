@@ -65,6 +65,7 @@
 		selectedId,
 		onselect,
 		query = '',
+		marks,
 		legend
 	}: {
 		ix: ProcessIndex;
@@ -73,6 +74,8 @@
 		selectedId?: string;
 		onselect: (id: string | undefined) => void;
 		query?: string;
+		/** Cards a proposal under review adds or changes, marked as such. */
+		marks?: Record<string, 'new' | 'changed'>;
 		legend?: Snippet;
 	} = $props();
 
@@ -93,7 +96,9 @@
 		return built.nodes.map((n) => ({
 			...n,
 			selected: n.id === selectedId,
-			...(n.type === 'card' ? { data: { ...n.data, dim: !!needle && !hit(n) } } : {})
+			...(n.type === 'card'
+				? { data: { ...n.data, dim: !!needle && !hit(n), mark: marks?.[n.id] } }
+				: {})
 		}));
 	}
 	/** The links, plus every link of the selected card, even those a longer path makes redundant. */

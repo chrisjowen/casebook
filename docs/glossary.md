@@ -29,4 +29,7 @@
 - **Namespace permission**: a built-in role at namespace scope, inherited by descendants: namespace-admin, write or read.
 - **Permission check**: the `can` question of whether a principal may perform an action on a resource, answered with a reason.
 - **Board**: the editor view where a process is built: a column per stage, step and decision cards in them, and links drawn from the facts one step hands to another (0021).
+- **Import**: a spreadsheet being turned into processes by the wizard: its workbook, the split into processes, the chat with the authoring agent and its proposals (0024).
+- **Split**: the wizard's proposal of which processes a spreadsheet holds, each with the cells it is drafted from, which the person renames, merges or splits before accepting.
+- **Proposal**: one agent turn's node operations on a draft, previewed but not saved, which the person accepts as one draft revision or rejects (0011, 0024).
 - **Projection**: a view generated from the canonical definition, such as Markdown, BPMN or the graph.

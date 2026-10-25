@@ -27,3 +27,4 @@ Architecture decisions for casebook, one file per decision.
 | 0021 | [Building a process on the board](0021-building-on-the-board.md) | Accepted (amends 0013, 0019) |
 | 0022 | [Running cases](0022-running-cases.md) | Accepted (amends 0016, 0017) |
 | 0023 | [Agents work cases over MCP, signed in as a user](0023-agents-over-mcp.md) | Accepted |
+| 0024 | [The spreadsheet wizard on the board](0024-the-wizard-on-the-board.md) | Accepted (amends 0011, 0012, 0013) |
