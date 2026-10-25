@@ -2,7 +2,7 @@
 // processes and of its descendants' processes, such as countries or insurers. Each saved change
 // is a new version, so processes always choose from the latest. `@casebook/model` decides what a
 // valid list is and describes changes; this file stores them and checks the actor with `can`.
-import { and, asc, count, desc, eq, inArray, max } from 'drizzle-orm';
+import { and, asc, countDistinct, desc, eq, inArray, max } from 'drizzle-orm';
 import {
 	describeValueChanges,
 	factsUsingShared,
@@ -226,7 +226,7 @@ export async function sharedLookupUses(db: Db, lookup: SharedLookup): Promise<Lo
 		).filter((v) => factsUsingShared(v.body as DefinitionDocument, lookup.name).length > 0);
 		const [bound] = versions.length
 			? await db
-					.select({ n: count() })
+					.select({ n: countDistinct(caseAttachments.caseId) })
 					.from(caseAttachments)
 					.where(
 						inArray(

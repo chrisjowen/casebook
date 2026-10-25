@@ -268,8 +268,19 @@ describe.skipIf(!url)('shared lookups (Postgres)', () => {
 		const definitionId = processes.groups
 			.flatMap((g) => g.definitions)
 			.find((d) => d.slug === 'incident-management')!.id;
+		const seen = (await listSharedLookups(db, users.olive, 'acme'))
+			.flatMap((n) => n.lookups)
+			.filter((l) => l.name === 'service-catalog')
+			.sort((a, b) => b.namespace.path.length - a.namespace.path.length)[0]!;
+		const before = (await sharedLookupUses(db, seen))[0]!.cases;
 		const started = await startCase(db, users.devon, { definitionId, title: 'INC-4000 Old' });
 		if (!started.ok) throw new Error(started.reason);
+		const again = await startCase(db, users.devon, {
+			definitionId,
+			caseId: started.caseId,
+			label: 'Follow-up'
+		});
+		if (!again.ok) throw new Error(again.reason);
 
 		const other = await createSharedLookup(db, users.olive, {
 			namespaceId: ns.get('acme/eng')!,
@@ -299,16 +310,12 @@ describe.skipIf(!url)('shared lookups (Postgres)', () => {
 		});
 		if (!published.ok) throw new Error(published.reason);
 
-		const seen = (await listSharedLookups(db, users.olive, 'acme'))
-			.flatMap((n) => n.lookups)
-			.filter((l) => l.name === 'service-catalog')
-			.sort((a, b) => b.namespace.path.length - a.namespace.path.length)[0]!;
 		expect(await sharedLookupUses(db, seen)).toEqual([
 			expect.objectContaining({
 				slug: 'incident-management',
 				facts: [{ id: 'fact.affected-services', title: 'Affected services' }],
 				draftOnly: false,
-				cases: expect.any(Number)
+				cases: before + 1
 			})
 		]);
 		refused(
