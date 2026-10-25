@@ -34,7 +34,9 @@
 		outcome: { true: string; false: string; unknown: string };
 	} = $props();
 
-	const samples = $derived(samplesFor(page.params.instance ?? '', ix.document.slug));
+	const samples = $derived(
+		samplesFor(page.params.instance ?? '', ix.document.slug, page.data.timeZone)
+	);
 	$effect(() => {
 		samples.load();
 	});
@@ -46,9 +48,10 @@
 		})
 	);
 	const timed = $derived(/\b(?:today|days_since|add_days)\s*\(/.test(expr));
+	const dated = $derived(timed || facts.some((f) => f.kind === 'date'));
 	const result = $derived.by((): GuardTrace | { error: string } => {
 		try {
-			return explainGuard(expr, samples.values, { now: new Date(`${samples.asOf}T12:00:00Z`) });
+			return explainGuard(expr, samples.values, samples.options);
 		} catch (error) {
 			if (error instanceof GuardSyntaxError) return { error: error.message };
 			throw error;
@@ -94,16 +97,22 @@
 	{:else}
 		<p class="text-[12px] text-muted-foreground">This condition reads no facts.</p>
 	{/if}
-	{#if timed}
-		<label class="flex items-center gap-2 text-[12px] text-muted-foreground">
-			<CalendarDays class="size-3.5" />As if today were
-			<input
-				type="date"
-				class="h-7 rounded-md border bg-background px-1.5 text-[12px] text-foreground outline-none focus:ring-2 focus:ring-brand-ring"
-				value={samples.asOf}
-				oninput={(e) => (samples.asOf = e.currentTarget.value || todayIso())}
-			/>
-		</label>
+	{#if dated}
+		<div class="flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
+			<CalendarDays class="size-3.5" />
+			{#if timed}
+				<label class="flex items-center gap-2"
+					>As if today were
+					<input
+						type="date"
+						class="h-7 rounded-md border bg-background px-1.5 text-[12px] text-foreground outline-none focus:ring-2 focus:ring-brand-ring"
+						value={samples.asOf}
+						oninput={(e) => (samples.asOf = e.currentTarget.value || todayIso(samples.timeZone))}
+					/>
+				</label>
+			{/if}
+			<span>Dates use {samples.timeZone} time</span>
+		</div>
 	{/if}
 
 	<div aria-live="polite" class="flex flex-col gap-2 border-t pt-3">

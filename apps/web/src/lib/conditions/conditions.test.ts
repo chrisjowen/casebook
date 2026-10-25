@@ -89,4 +89,15 @@ describe('helping people pick facts', () => {
 		]);
 		expect(choicesRunning(item, 'fact.other', ['a'])).toEqual([]);
 	});
+
+	it('counts a step for every choice its condition does not rule out, even when it waits on other facts', () => {
+		const when = (expr: string) => ({ core: { when: { text: '', expr } } }) as unknown as WorkItem;
+		const choices = ['A', 'B', 'C'];
+		expect(choicesRunning(when("fact.d == 'A' and fact.x == 1"), 'fact.d', choices)).toEqual(['A']);
+		expect(choicesRunning(when("fact.d == 'A' or fact.x == 1"), 'fact.d', choices)).toEqual(
+			choices
+		);
+		expect(choicesRunning(when("fact.d in ['A', 'B']"), 'fact.d', choices)).toEqual(['A', 'B']);
+		expect(choicesRunning(when('fact.d != null'), 'fact.d', choices)).toEqual([]);
+	});
 });

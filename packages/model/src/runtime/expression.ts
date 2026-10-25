@@ -12,6 +12,10 @@
  * three-valued: `false && unknown` is false, `true || unknown` is true. Comparing with `null` is
  * always known, because a missing fact counts as null there, which is how `until` conditions
  * such as `fact.resolved-at != null` are written; `is_set` and `is_empty` are always known too.
+ *
+ * Days are calendar days in the time zone the options name, UTC by default, so `today()` and a
+ * date-time's day agree with the people running the case. A date-time compared with a date, such
+ * as `fact.reported-at > '2026-10-26'`, is compared by the day it falls on.
  */
 
 /** True, false, or undefined when it depends on facts nobody has recorded yet. */
@@ -51,6 +55,8 @@ export type GuardAst = { span: Span } & (
 export interface GuardOptions {
 	/** The moment `today()` and `days_since` read; now when absent. */
 	now?: Date;
+	/** The IANA time zone calendar days are counted in, such as `Asia/Singapore`; UTC when absent. */
+	timeZone?: string;
 }
 
 /** A helper function a guard can call, as autocomplete and the docs present it. */
@@ -318,7 +324,14 @@ type Value = unknown;
 interface Scope {
 	facts: GuardFacts;
 	now: Date;
+	timeZone: string;
 }
+
+const scopeOf = (facts: GuardFacts, options: GuardOptions): Scope => ({
+	facts,
+	now: options.now ?? new Date(),
+	timeZone: options.timeZone ?? 'UTC'
+});
 
 /**
  * Evaluates a guard expression over the recorded facts. Returns undefined when the answer depends
@@ -331,7 +344,7 @@ export function evaluateGuard(
 	facts: GuardFacts,
 	options: GuardOptions = {}
 ): GuardValue {
-	const scope = { facts, now: options.now ?? new Date() };
+	const scope = scopeOf(facts, options);
 	const result = truth(evaluate(parseGuard(expr), scope));
 	return result === UNKNOWN ? undefined : result;
 }
@@ -361,7 +374,7 @@ export function explainGuard(
 	facts: GuardFacts,
 	options: GuardOptions = {}
 ): GuardTrace {
-	const scope = { facts, now: options.now ?? new Date() };
+	const scope = scopeOf(facts, options);
 	const trace = (ast: GuardAst): GuardTrace => {
 		const parts =
 			ast.kind === 'logic'
@@ -460,6 +473,12 @@ function compare(ast: GuardAst & { kind: 'compare' }, scope: Scope): Value {
 	}
 	if (left === UNKNOWN || right === UNKNOWN) return UNKNOWN;
 	if (Array.isArray(right) && right.includes(UNKNOWN)) return UNKNOWN;
+	// A date-time compared with a date is compared by the day it falls on.
+	if (typeof left === 'string' && typeof right === 'string') {
+		const [l, r] = [left, right];
+		if (isDate(r)) left = asDay(l, scope.timeZone);
+		if (isDate(l)) right = asDay(r, scope.timeZone);
+	}
 	switch (ast.op) {
 		case '==':
 			return equal(left, right);
@@ -500,10 +519,10 @@ function call(ast: GuardAst & { kind: 'call' }, scope: Scope): Value {
 	const args = ast.args.map((a) => evaluate(a, scope));
 	if (args.includes(UNKNOWN)) return UNKNOWN;
 	const day = (value: unknown): number => {
-		const ms = typeof value === 'string' ? dayOf(value) : undefined;
+		const ms = typeof value === 'string' ? dayOf(value, scope.timeZone) : undefined;
 		return ms ?? fail(`${ast.name} needs a date, not ${describeValue(value)}`);
 	};
-	const today = () => Date.UTC(...ymd(scope.now));
+	const today = () => Date.parse(calendarDay(scope.now, scope.timeZone));
 	switch (ast.name) {
 		case 'today':
 			return isoDay(today());
@@ -536,13 +555,41 @@ function call(ast: GuardAst & { kind: 'call' }, scope: Scope): Value {
 	}
 }
 
-const ymd = (d: Date) => [d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()] as const;
+const days = new Map<string, Intl.DateTimeFormat>();
 
-/** Midnight UTC of the day an ISO date or date-time falls on, or undefined when it is not one. */
-function dayOf(text: string): number | undefined {
+/** The calendar day a moment falls on in an IANA time zone, as YYYY-MM-DD. */
+export function calendarDay(at: Date, timeZone = 'UTC'): string {
+	const format =
+		days.get(timeZone) ??
+		new Intl.DateTimeFormat('en-CA', {
+			timeZone,
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit'
+		});
+	days.set(timeZone, format);
+	const parts = format.formatToParts(at);
+	const part = (type: string) => parts.find((p) => p.type === type)!.value;
+	return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+const isDate = (text: string) => /^\d{4}-\d{2}-\d{2}$/.test(text);
+
+/**
+ * Midnight UTC of the day an ISO date or date-time falls on in the time zone, or undefined when
+ * it is not one.
+ */
+function dayOf(text: string, timeZone: string): number | undefined {
 	if (!/^\d{4}-\d{2}-\d{2}/.test(text)) return undefined;
-	const at = new Date(text.length === 10 ? `${text}T00:00:00Z` : text);
-	return Number.isNaN(at.getTime()) ? undefined : Date.UTC(...ymd(at));
+	const at = new Date(isDate(text) ? `${text}T00:00:00Z` : text);
+	if (Number.isNaN(at.getTime())) return undefined;
+	return Date.parse(isDate(text) ? text : calendarDay(at, timeZone));
+}
+
+/** The day an ISO date-time falls on, as YYYY-MM-DD; any other text as it is. */
+function asDay(text: string, timeZone: string): string {
+	const ms = isDate(text) ? undefined : dayOf(text, timeZone);
+	return ms === undefined ? text : isoDay(ms);
 }
 
 const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);

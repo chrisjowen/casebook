@@ -124,6 +124,7 @@ Each reads as one plain line, such as "Severity is SEV1 or SEV2".
 The **Code** tab is the same condition as an expression, with suggestions of facts, operators, choices and helpers as you type, and a live check that points at what is wrong.
 **Test** fills in sample values, or the values on a case running the process, and shows whether the condition holds and which part decided it; a decision's **Test the branches** shows which of the steps that depend on its outcome would run.
 The expression language and its helpers (`today()`, `days_since`, `days_between`, `add_days`, `contains`, `count`, `is_set`, `is_empty`) are in `packages/model/src/runtime/expression.ts`; a condition whose code does not parse is a publish warning, and people decide it by hand until it is fixed.
+Conditions count calendar days in one time zone, `CASEBOOK_TIMEZONE` (an IANA name such as `Asia/Singapore`, UTC when unset): `today()`, the day helpers and the day a date-time falls on read it on cases and in **Test** alike, and a date-time compared with a date is compared by its day.
 
 Definitions are read from and saved to Postgres through `packages/store` (`apps/web/src/lib/server/definitions.ts` and the form actions in `apps/web/src/routes/i/[instance]/processes/edit/+page.server.ts`).
 Each workspace is a namespace the signed-in user can read.

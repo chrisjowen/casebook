@@ -60,7 +60,9 @@
 		timing?: Map<string, FactTiming>;
 	} = $props();
 
-	const samples = $derived(samplesFor(page.params.instance ?? '', ix.document.slug));
+	const samples = $derived(
+		samplesFor(page.params.instance ?? '', ix.document.slug, page.data.timeZone)
+	);
 	const people = $derived(samples.context?.people);
 	const options = $derived(factOptions(ix));
 	const summary = $derived(describe(ix, guard.expr, people));

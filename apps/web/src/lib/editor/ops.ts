@@ -337,13 +337,6 @@ export function branchGuard(ix: ProcessIndex, outcome: string, choice: string): 
 	};
 }
 
-/** Which choice of `outcome` a work item runs for, when its guard is one `branchGuard` wrote. */
-export function branchOf(item: WorkItem, outcome: string): string | undefined {
-	const expr = item.core.when?.expr;
-	if (!expr || !expr.startsWith(`${outcome} == '`) || !expr.endsWith("'")) return undefined;
-	return expr.slice(outcome.length + 5, -1).replaceAll("\\'", "'");
-}
-
 /** Linking a decision's choice to a step: the step needs the outcome and runs only for that choice. */
 export function branchTo(ix: ProcessIndex, decision: string, choice: string, to: string): Edit {
 	const d = workItem(ix, decision);

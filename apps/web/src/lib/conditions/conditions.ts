@@ -4,6 +4,7 @@
  * browser; the components in this folder draw it.
  */
 import {
+	calendarDay,
 	conditionKind,
 	describeGuard,
 	evaluateGuard,
@@ -158,11 +159,15 @@ function* walk(ast: GuardAst): Generator<GuardAst> {
 	}
 }
 
-/** Today's local date as YYYY-MM-DD. */
-export function todayIso(): string {
-	const d = new Date();
-	const pad = (n: number) => String(n).padStart(2, '0');
-	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/** Today's date in a time zone as YYYY-MM-DD. */
+export function todayIso(timeZone: string): string {
+	return calendarDay(new Date(), timeZone);
+}
+
+/** A moment on a day in a time zone, for evaluating a condition as if today were that day. */
+export function momentOn(day: string, timeZone: string): Date {
+	const noon = new Date(`${day}T12:00:00Z`);
+	return new Date(noon.getTime() - (Date.parse(calendarDay(noon, timeZone)) - Date.parse(day)));
 }
 
 const sentence = (text: string) => `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
@@ -331,18 +336,29 @@ export function factTiming(ix: ProcessIndex, itemId: string): Map<string, FactTi
 }
 
 /**
- * The choices of a decision's outcome a step runs for: those its condition does not rule out
- * when the outcome is that choice. Empty when its condition does not read the outcome.
+ * The choices of a decision's outcome a step is a branch for: those its condition does not rule
+ * out when the outcome is that choice, counting an answer that waits on other facts as one it may
+ * run for. Empty when its condition does not read the outcome, or reads the same whatever the
+ * choice, as `fact.severity != null` does.
  */
 export function choicesRunning(item: WorkItem, outcome: string, choices: string[]): string[] {
 	const expr = item.core.when?.expr;
 	if (!expr) return [];
 	try {
 		if (!guardReferences(expr).facts.includes(outcome)) return [];
-		return choices.filter((c) => evaluateGuard(expr, { [outcome]: c }) !== false);
+		const answers = choices.map((c) => evaluateGuard(expr, { [outcome]: c }));
+		if (answers.every((a) => a === answers[0])) return [];
+		return choices.filter((_, i) => answers[i] !== false);
 	} catch {
 		return [];
 	}
+}
+
+/** The choices of a decision a step is a branch for, as `choicesRunning` finds them. */
+export function branchChoices(ix: ProcessIndex, decision: WorkItem, item: WorkItem): string[] {
+	if (decision.core.kind !== 'decision') return [];
+	const outcome = decision.core.outcome;
+	return choicesRunning(item, outcome, choicesOf(ix, outcome) ?? []);
 }
 
 /** A helper's example, with facts of this process where it has one of the right kind. */

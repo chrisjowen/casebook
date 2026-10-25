@@ -117,6 +117,66 @@ describe('guard helpers', () => {
 	});
 });
 
+describe('calendar days', () => {
+	it('counts days in the time zone it is given', () => {
+		const now = new Date('2026-10-26T20:00:00Z');
+		const singapore = { now, timeZone: 'Asia/Singapore' };
+		expect(evaluateGuard("today() == '2026-10-27'", {}, singapore)).toBe(true);
+		expect(evaluateGuard("today() == '2026-10-26'", {}, { now })).toBe(true);
+		const reported = { 'fact.reported': '2026-10-26T17:00:00Z' };
+		expect(evaluateGuard('days_since(fact.reported) == 0', reported, { now })).toBe(true);
+		expect(evaluateGuard('days_since(fact.reported) == 0', reported, singapore)).toBe(true);
+		expect(
+			evaluateGuard(
+				'days_since(fact.reported) == 1',
+				{ 'fact.reported': '2026-10-26T15:00:00Z' },
+				singapore
+			)
+		).toBe(true);
+		expect(evaluateGuard("add_days(fact.reported, 1) == '2026-10-28'", reported, singapore)).toBe(
+			true
+		);
+		expect(
+			evaluateGuard(
+				'days_between(fact.a, fact.b) == 1',
+				{ 'fact.a': '2026-10-26T15:00:00Z', 'fact.b': '2026-10-26T17:00:00Z' },
+				singapore
+			)
+		).toBe(true);
+	});
+
+	it('compares a date-time with a date by the day it falls on', () => {
+		const at = { 'fact.at': '2026-10-26T09:00:00Z' };
+		const on = (expr: string, options = {}) => evaluateGuard(expr, at, options);
+		expect(on("fact.at == '2026-10-26'")).toBe(true);
+		expect(on("fact.at != '2026-10-26'")).toBe(false);
+		expect(on("fact.at > '2026-10-26'")).toBe(false);
+		expect(on("fact.at <= '2026-10-26'")).toBe(true);
+		expect(on("fact.at >= '2026-10-26'")).toBe(true);
+		expect(on("fact.at < '2026-10-27'")).toBe(true);
+		expect(on("'2026-10-26' == fact.at")).toBe(true);
+		const now = new Date('2026-10-26T12:00:00Z');
+		expect(on('fact.at == today()', { now })).toBe(true);
+		expect(on('fact.at > today()', { now })).toBe(false);
+		expect(on("fact.at == '2026-10-26'", { timeZone: 'America/Los_Angeles' })).toBe(true);
+		expect(
+			evaluateGuard(
+				"fact.at == '2026-10-27'",
+				{ 'fact.at': '2026-10-26T20:00:00Z' },
+				{
+					timeZone: 'Asia/Singapore'
+				}
+			)
+		).toBe(true);
+		expect(
+			evaluateGuard('fact.a < fact.b', {
+				'fact.a': '2026-10-26T09:00:00Z',
+				'fact.b': '2026-10-26T10:00:00Z'
+			})
+		).toBe(true);
+	});
+});
+
 describe('explainGuard', () => {
 	it('shows which part decided the answer', () => {
 		const trace = explainGuard("fact.severity in ['SEV1', 'SEV2'] and fact.customers > 10", {

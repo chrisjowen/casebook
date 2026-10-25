@@ -2,14 +2,15 @@
  * Sample values for testing conditions, one set per process while the editor is open, so values
  * filled in for one condition are there when testing the next. Nothing here is saved.
  */
+import type { GuardOptions } from '@casebook/model';
 import type { CaseFacts, PersonView } from '@casebook/store';
-import { todayIso } from './conditions';
+import { momentOn, todayIso } from './conditions';
 
 export class Samples {
 	/** The value of each fact, by fact id; a fact that is absent counts as not recorded. */
 	values = $state<Record<string, unknown>>({});
-	/** The day `today()` reads, as YYYY-MM-DD. */
-	asOf = $state(todayIso());
+	/** The day `today()` reads, as YYYY-MM-DD, in the time zone conditions count days in. */
+	asOf = $state('');
 	/** The case the values were filled from, while they are unchanged. */
 	from = $state<string | undefined>();
 	/** The cases running the process, and the people a people fact can hold, once loaded. */
@@ -20,8 +21,16 @@ export class Samples {
 
 	constructor(
 		private instance: string,
-		private process: string
-	) {}
+		private process: string,
+		readonly timeZone: string
+	) {
+		this.asOf = todayIso(timeZone);
+	}
+
+	/** How conditions are evaluated with these values: as if today were `asOf`. */
+	get options(): GuardOptions {
+		return { now: momentOn(this.asOf, this.timeZone), timeZone: this.timeZone };
+	}
 
 	/** Loads the cases and people once. */
 	load(): Promise<void> {
@@ -63,7 +72,10 @@ export class Samples {
 // Not reactive itself: each process's Samples is, and is made once on first use.
 const all: Record<string, Samples> = {};
 
-/** The sample values for a process in an instance. */
-export function samplesFor(instance: string, process: string): Samples {
-	return (all[`${instance}/${process}`] ??= new Samples(instance, process));
+/**
+ * The sample values for a process in an instance, counting days in the time zone the editor page
+ * was given.
+ */
+export function samplesFor(instance: string, process: string, timeZone: string): Samples {
+	return (all[`${instance}/${process}`] ??= new Samples(instance, process, timeZone));
 }

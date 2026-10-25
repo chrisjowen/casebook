@@ -36,7 +36,7 @@
 		type WorkItem
 	} from '$lib/graph/derive';
 	import BranchTest from '$lib/conditions/BranchTest.svelte';
-	import { choicesRunning, factTiming } from '$lib/conditions/conditions';
+	import { branchChoices, factTiming } from '$lib/conditions/conditions';
 	import ConditionEditor from '$lib/conditions/ConditionEditor.svelte';
 	import { roleTone } from '$lib/graph/layout';
 	import { toneBar } from '$lib/graph/tones';
@@ -160,12 +160,7 @@
 	}
 	const branchSteps = (choice: string) =>
 		decision
-			? ix.work.filter(
-					(w) =>
-						w.core.id !== id &&
-						choicesRunning(w, decision.core.outcome, choices).includes(choice) &&
-						choicesRunning(w, decision.core.outcome, choices).length < choices.length
-				)
+			? ix.work.filter((w) => w.core.id !== id && branchChoices(ix, decision, w).includes(choice))
 			: [];
 	const focus = (el: HTMLInputElement) => el.focus();
 	const quiet =

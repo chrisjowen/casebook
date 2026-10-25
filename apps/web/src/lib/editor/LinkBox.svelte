@@ -4,6 +4,7 @@
 	// to record. From a decision, pick which choice the later step runs for.
 	import type { DecisionNode, FactId, FactNode, Operation } from '@casebook/model';
 	import { ArrowRight, Check, Plus } from '@lucide/svelte';
+	import { branchChoices } from '$lib/conditions/conditions';
 	import type { PickerState } from '$lib/graph/board-context.svelte';
 	import {
 		collectsOf,
@@ -13,16 +14,7 @@
 		type WorkItem
 	} from '$lib/graph/derive';
 	import { glyphIcon } from '$lib/graph/glyphs';
-	import {
-		FACT_KINDS,
-		branchOf,
-		branchTo,
-		factByTitle,
-		newFact,
-		setNeeds,
-		setWhen,
-		type Edit
-	} from './ops';
+	import { FACT_KINDS, branchTo, factByTitle, newFact, setNeeds, setWhen, type Edit } from './ops';
 
 	let {
 		state: box,
@@ -50,7 +42,7 @@
 			: undefined;
 		return Array.isArray(outcome?.core.schema.enum) ? outcome.core.schema.enum.map(String) : [];
 	});
-	const branch = $derived(decision && to ? branchOf(to, decision.core.outcome) : undefined);
+	const branch = $derived(decision && to ? branchChoices(ix, decision, to) : []);
 
 	let pos = $state({ x: 0, y: 0 });
 	$effect(() => {
@@ -131,10 +123,12 @@
 					>Runs when {labelOf(ix, decision.core.id)} is
 					<select
 						class="h-8 cursor-pointer rounded-lg border bg-background px-2 text-[12.5px] text-foreground outline-none focus:ring-2 focus:ring-brand-ring"
-						value={branch ?? ''}
+						value={branch.length > 1 ? 'several' : (branch[0] ?? '')}
 						onchange={(e) => runsWhen(e.currentTarget.value)}
 					>
 						<option value="">Any outcome</option>
+						{#if branch.length > 1}<option value="several" disabled>{branch.join(' or ')}</option
+							>{/if}
 						{#each choices as c (c)}<option value={c}>{c}</option>{/each}
 					</select>
 				</label>

@@ -1,6 +1,12 @@
 import { guardReferences } from '../guard.js';
 import type { FactId, Guard } from '../node.js';
-import { evaluateGuard, GuardSyntaxError, type GuardFacts, type GuardValue } from './expression.js';
+import {
+	evaluateGuard,
+	GuardSyntaxError,
+	type GuardFacts,
+	type GuardOptions,
+	type GuardValue
+} from './expression.js';
 import type { RunnableProcess, StageInfo, WorkItem } from './items.js';
 import type { ItemProgress } from './progress.js';
 
@@ -68,12 +74,12 @@ const OPEN: ReadonlySet<ItemStatus> = new Set(['ready', 'held', 'waiting', 'bloc
 /** True for an item someone still has to do or unblock: ready, held, waiting or blocked. */
 export const isOpen = (status: ItemStatus) => OPEN.has(status);
 
-function readGuard(guard: Guard | undefined, facts: GuardFacts, now: Date): GuardState {
+function readGuard(guard: Guard | undefined, facts: GuardFacts, options: GuardOptions): GuardState {
 	if (guard === undefined) return 'none';
 	if (guard.expr === undefined) return 'open';
 	let value: GuardValue;
 	try {
-		value = evaluateGuard(guard.expr, facts, { now });
+		value = evaluateGuard(guard.expr, facts, options);
 	} catch (error) {
 		if (error instanceof GuardSyntaxError) return 'open';
 		throw error;
@@ -93,12 +99,14 @@ function readGuard(guard: Guard | undefined, facts: GuardFacts, now: Date): Guar
  *
  * @param facts the case's recorded facts: the current value of each, by fact id.
  * @param progress each item's progress, from `foldProgress`.
+ * @param timeZone the IANA time zone its conditions count calendar days in.
  */
 export function evaluateProcess(
 	process: RunnableProcess,
 	facts: GuardFacts,
 	progress: Readonly<Record<string, ItemProgress>>,
-	now: Date
+	now: Date,
+	timeZone = 'UTC'
 ): ProcessState {
 	const stageIndex = new Map(process.stages.map((s, i) => [s.id, i]));
 	const progressOf = (id: string): ItemProgress => progress[id] ?? { count: 0, started: [] };
@@ -108,11 +116,12 @@ export function evaluateProcess(
 	const guards = new Map<string, GuardState>();
 	for (const item of process.items) {
 		const p = progressOf(item.id);
-		const guard = readGuard(item.when, facts, now);
+		const guard = readGuard(item.when, facts, { now, timeZone });
 		guards.set(item.id, guard);
 		if (p.skipped) settled.set(item.id, 'skipped');
 		else if (item.repeat) {
-			if (readGuard(item.repeat.until, facts, now) === 'applies') settled.set(item.id, 'done');
+			if (readGuard(item.repeat.until, facts, { now, timeZone }) === 'applies')
+				settled.set(item.id, 'done');
 		} else if (p.done) settled.set(item.id, 'done');
 		else if (guard === 'does-not-apply') settled.set(item.id, 'skipped');
 		else if (item.reviews && settled.get(item.reviews) === 'skipped') {

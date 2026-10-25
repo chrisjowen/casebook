@@ -58,6 +58,19 @@ describe('board layout', () => {
 		expect(rows).toEqual(['SEV1', 'SEV2', 'SEV3', 'SEV4']);
 	});
 
+	it('labels a branch with every choice it runs for, from the first choice’s row', () => {
+		const branch = board.all.find(
+			(e) => e.id === 'decision.classify-severity->step.form-working-group'
+		)!;
+		expect(branch.sourceHandle).toBe('b:SEV1');
+		expect((branch.data as BoardEdgeData).branch).toBe('SEV1 or SEV2');
+		const any = board.all.find(
+			(e) => e.id === 'decision.classify-severity->step.resolve-incident'
+		)!;
+		expect(any.sourceHandle).toBe('out');
+		expect((any.data as BoardEdgeData).branch).toBeUndefined();
+	});
+
 	it('routes a link over the top of the board when a card is in the way, never behind it', () => {
 		const around = edge('decision.classify-severity->step.resolve-incident');
 		expect((around?.data as BoardEdgeData).route?.mode).toBe('top');

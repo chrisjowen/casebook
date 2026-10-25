@@ -29,7 +29,9 @@
 
 	const outcome = $derived(decision.core.outcome);
 	const choices = $derived(choicesOf(ix, outcome) ?? []);
-	const samples = $derived(samplesFor(page.params.instance ?? '', ix.document.slug));
+	const samples = $derived(
+		samplesFor(page.params.instance ?? '', ix.document.slug, page.data.timeZone)
+	);
 	$effect(() => {
 		samples.load();
 	});
@@ -53,11 +55,7 @@
 	const info = $derived(factInfo(ix, samples.context?.people));
 	function answer(expr: string, choice: string) {
 		try {
-			const t = explainGuard(
-				expr,
-				{ ...samples.values, [outcome]: choice },
-				{ now: new Date(`${samples.asOf}T12:00:00Z`) }
-			);
+			const t = explainGuard(expr, { ...samples.values, [outcome]: choice }, samples.options);
 			return { result: t.result, missing: t.missing };
 		} catch (error) {
 			if (error instanceof GuardSyntaxError) return { result: 'error' as const, missing: [] };
@@ -98,16 +96,22 @@
 			{/each}
 		</div>
 	{/if}
-	{#if timed}
-		<label class="flex items-center gap-2 text-[12px] text-muted-foreground">
-			<CalendarDays class="size-3.5" />As if today were
-			<input
-				type="date"
-				class="h-7 rounded-md border bg-background px-1.5 text-[12px] text-foreground outline-none focus:ring-2 focus:ring-brand-ring"
-				value={samples.asOf}
-				oninput={(e) => (samples.asOf = e.currentTarget.value || todayIso())}
-			/>
-		</label>
+	{#if timed || others.some((f) => f.kind === 'date')}
+		<div class="flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
+			<CalendarDays class="size-3.5" />
+			{#if timed}
+				<label class="flex items-center gap-2"
+					>As if today were
+					<input
+						type="date"
+						class="h-7 rounded-md border bg-background px-1.5 text-[12px] text-foreground outline-none focus:ring-2 focus:ring-brand-ring"
+						value={samples.asOf}
+						oninput={(e) => (samples.asOf = e.currentTarget.value || todayIso(samples.timeZone))}
+					/>
+				</label>
+			{/if}
+			<span>Dates use {samples.timeZone} time</span>
+		</div>
 	{/if}
 
 	{#if branches.length}
