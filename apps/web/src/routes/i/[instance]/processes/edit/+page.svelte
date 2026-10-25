@@ -180,7 +180,7 @@
 >
 
 <div class="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-	<TopBar bind:query user={data.user} />
+	<TopBar bind:query user={data.user} instance={data.instance} />
 
 	{#if !workspace}
 		<p class="m-auto max-w-sm text-center text-[13px] text-muted-foreground">

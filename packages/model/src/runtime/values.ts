@@ -128,7 +128,9 @@ function describe(error: ErrorObject | undefined, schema: FactSchema): string {
 		case 'minLength':
 			return 'cannot be empty';
 		case 'pattern': {
-			const example = Array.isArray(schema.examples) ? schema.examples[0] : undefined;
+			// For a list, its items carry the pattern, so the example is the first item's.
+			const first: unknown = Array.isArray(schema.examples) ? schema.examples[0] : undefined;
+			const example = Array.isArray(first) ? first[0] : first;
 			return example === undefined
 				? `does not match the expected format`
 				: `does not match the expected format, such as ${JSON.stringify(example)}`;

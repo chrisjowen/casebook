@@ -18,8 +18,10 @@ import { can, type Action, type Actor, type Resource } from '../authz.js';
 import type { Db, Tx } from '../client.js';
 import type { FileStore } from '../files.js';
 import {
+	AccessDeniedError,
 	insertAttachment,
 	insertCase,
+	moveAttachmentVersion,
 	StoreRuleError,
 	type CaseBinding,
 	type PrincipalKind
@@ -395,6 +397,51 @@ async function knownInAccount(tx: Tx, accountId: string, principalId: string): P
 		.where(and(eq(roleBindings.accountId, accountId), eq(roleBindings.principalId, principalId)))
 		.limit(1);
 	return row !== undefined;
+}
+
+/**
+ * Moves a pinned process on a case to its definition's latest published version: an explicit,
+ * recorded move (ADR 0016), which needs write on the case's namespace.
+ */
+export async function moveToLatest(
+	db: Db,
+	actor: Actor,
+	attachmentId: string
+): Promise<{ ok: true; version: number } | RuntimeRefusal> {
+	const missing = refuse('not-found', 'That process is not on a case.');
+	if (!/^[0-9a-f-]{36}$/i.test(attachmentId)) return missing;
+	const [run] = await db
+		.select({ definitionId: definitionVersions.definitionId })
+		.from(caseAttachments)
+		.innerJoin(definitionVersions, eq(definitionVersions.id, caseAttachments.definitionVersionId))
+		.where(eq(caseAttachments.id, attachmentId));
+	if (!run) return missing;
+	const [latest] = await db
+		.select({ id: definitionVersions.id, version: definitionVersions.version })
+		.from(definitionVersions)
+		.where(
+			and(
+				eq(definitionVersions.definitionId, run.definitionId),
+				eq(definitionVersions.status, 'published')
+			)
+		)
+		.orderBy(desc(definitionVersions.version))
+		.limit(1);
+	if (!latest) return missing;
+	return attempt(async () => {
+		try {
+			await moveAttachmentVersion(
+				db,
+				{ attachmentId, toVersionId: latest.id, movedById: actor.id },
+				{ actor }
+			);
+		} catch (error) {
+			if (error instanceof AccessDeniedError)
+				throw new Refused(refuse('access-denied', error.reason));
+			throw error;
+		}
+		return { ok: true as const, version: latest.version };
+	});
 }
 
 // Work items

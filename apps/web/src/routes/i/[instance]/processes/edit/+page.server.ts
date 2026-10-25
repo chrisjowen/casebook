@@ -1,21 +1,21 @@
-import { error, fail } from '@sveltejs/kit';
+import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import {
 	createDefinition,
 	editDefinition,
 	publishDefinition,
 	undoDefinitionEdit,
-	type Actor,
 	type Refusal
 } from '@casebook/store';
 import { getDb } from '$lib/server/db';
 import { loadWorkspaces } from '$lib/server/definitions';
+import { actorOf } from '$lib/server/runner';
 import type { ViewId } from '$lib/graph/layout';
 
 const VIEWS: ViewId[] = ['board', 'lanes', 'facts'];
 
-export const load: PageServerLoad = async ({ url, locals }) => {
-	const workspaces = await loadWorkspaces(actorOf(locals));
+export const load: PageServerLoad = async ({ url, locals, params }) => {
+	const workspaces = await loadWorkspaces(actorOf(locals), params.instance);
 	const workspace =
 		workspaces.find((w) => w.namespace === url.searchParams.get('ws')) ??
 		workspaces.find((w) => w.definitions.length > 0) ??
@@ -88,11 +88,6 @@ export const actions: Actions = {
 		);
 	}
 };
-
-function actorOf(locals: App.Locals): Actor {
-	if (!locals.user) error(401, 'Sign in first');
-	return { id: locals.user.id };
-}
 
 const STATUS: Partial<Record<Refusal['code'], number>> = {
 	'access-denied': 403,

@@ -11,6 +11,7 @@ export {
 	DEMO_ACCOUNT,
 	DEMO_FAMILY_ACCOUNT,
 	DEMO_ISSUER,
+	demoPdf,
 	seedDemo,
 	type Seeded,
 	type SeedOptions

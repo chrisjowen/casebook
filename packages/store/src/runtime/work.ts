@@ -8,6 +8,7 @@ import {
 	collectedBy,
 	isFileFact,
 	isOpen,
+	referencedFile,
 	type DefinitionDocument,
 	type FactNode,
 	type FactSchema,
@@ -101,6 +102,7 @@ export interface WaitingEntry {
 	caseTitle: string;
 	attachmentId: string;
 	process: string;
+	definitionSlug: string;
 	stage: StageLine;
 	/** What the others are doing, with any pause and its note: pausing notifies only them. */
 	on: { title: string; holders: PersonView[]; held?: Mark & { note: string } }[];
@@ -412,6 +414,7 @@ export async function loadWork(
 				caseTitle: c.title,
 				attachmentId: a.id,
 				process: attachmentName(a),
+				definitionSlug: a.definitionSlug,
 				stage: stageLine(a),
 				on: others.map((s) => ({
 					title: s.item.title,
@@ -644,24 +647,28 @@ function sharedBy(c: LoadedCase, factId: string): string[] {
  */
 function caseRecord(c: LoadedCase, people: ReadonlyMap<string, Person>): RecordEntry[] {
 	const p = (id: string) => person(people, id);
-	const files = [...c.files].reverse().map((f): RecordEntry => ({
-		title: f.name,
-		display: f.name,
-		file: fileView(f),
-		at: iso(f.at),
-		by: p(f.by),
-		sharedBy: f.fact ? sharedBy(c, f.fact) : [],
-		...(f.fact ? { fact: f.fact } : {}),
-		...(f.evidence ? { evidence: f.evidence } : {}),
-		...(f.onBehalfOf ? { onBehalfOf: p(f.onBehalfOf) } : {}),
-		...source(c, f.attachmentId, f.item)
-	}));
-	const values = [...c.facts.values()]
+	// A file that is a fact's current value is listed once, as that fact.
+	const values = new Set([...c.facts.values()].map((f) => referencedFile(f.value)));
+	const files = [...c.files]
+		.reverse()
+		.filter((f) => !values.has(f.id))
+		.map((f): RecordEntry => ({
+			title: f.name,
+			display: f.name,
+			file: fileView(f),
+			at: iso(f.at),
+			by: p(f.by),
+			sharedBy: f.fact ? sharedBy(c, f.fact) : [],
+			...(f.fact ? { fact: f.fact } : {}),
+			...(f.evidence ? { evidence: f.evidence } : {}),
+			...(f.onBehalfOf ? { onBehalfOf: p(f.onBehalfOf) } : {}),
+			...source(c, f.attachmentId, f.item)
+		}));
+	const recorded = [...c.facts.values()]
 		.sort((x, y) => y.at.getTime() - x.at.getTime())
 		.map((f): RecordEntry => {
 			const node = factNode(c, f.fact);
-			const fileId =
-				typeof f.value === 'string' ? /casebook:file\/(.+)$/.exec(f.value)?.[1] : undefined;
+			const fileId = referencedFile(f.value);
 			const file = c.files.find((x) => x.id === fileId);
 			return {
 				fact: f.fact,
@@ -675,7 +682,7 @@ function caseRecord(c: LoadedCase, people: ReadonlyMap<string, Person>): RecordE
 				...source(c, f.attachmentId, f.item)
 			};
 		});
-	return [...files, ...values];
+	return [...files, ...recorded];
 }
 
 // One task
@@ -950,6 +957,25 @@ async function accountPeople(
 		if (narrowed.length) return narrowed;
 	}
 	return rows;
+}
+
+/**
+ * The people a member can name on a case in this instance: everyone who holds a role in its
+ * account, members and guests, by name.
+ */
+export async function casebookPeople(
+	db: Db,
+	actor: Actor,
+	instanceSlug: string
+): Promise<PersonView[] | ReadRefusal> {
+	const found = await instanceFor(db, actor, instanceSlug);
+	if ('ok' in found) return found;
+	return db
+		.selectDistinct({ id: principals.id, name: principals.displayName })
+		.from(roleBindings)
+		.innerJoin(principals, eq(principals.id, roleBindings.principalId))
+		.where(and(eq(roleBindings.accountId, found.accountId), eq(principals.kind, 'user')))
+		.orderBy(asc(principals.displayName));
 }
 
 // Guests

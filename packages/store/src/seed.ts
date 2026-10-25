@@ -307,7 +307,7 @@ async function seedCases(db: Db, seed: CaseSeed) {
 	const mira = await start(alex, ago(40), {
 		definitionId: definitions.get('birth-registration-abroad')!,
 		title: 'Mira Example',
-		subject: 'Newborn, born abroad on 12 Sep 2026',
+		subject: 'Newborn, born abroad on 12 Sept 2026',
 		roles: { 'role.parent': [alex.id, sam.id] }
 	});
 	await complete(

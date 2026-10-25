@@ -1,15 +1,19 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import Logo from './Logo.svelte';
-	import { FlaskConical, LogOut, Search } from '@lucide/svelte';
+	import { ChevronRight, FlaskConical, LogOut, Search } from '@lucide/svelte';
+	import { links } from '$lib/runner/links';
 
 	let {
 		query = $bindable(''),
-		user
+		user,
+		instance
 	}: {
 		query?: string;
 		/** The signed-in user, shown with their roles and a way to switch. */
 		user?: { displayName: string; roles: string[] };
+		/** The instance the editor belongs to, inside its Processes half. */
+		instance?: { slug: string; name: string };
 	} = $props();
 	let input = $state<HTMLInputElement>();
 </script>
@@ -25,9 +29,20 @@
 <header
 	class="grid h-14 shrink-0 grid-cols-[1fr_minmax(0,440px)_1fr] items-center gap-4 border-b bg-background px-4"
 >
-	<a href={resolve('/')} class="flex items-center gap-2"
-		><Logo /><span class="text-[15px] font-semibold tracking-tight">casebook</span></a
-	>
+	<div class="flex min-w-0 items-center gap-1.5 text-[13px]">
+		<a href={resolve('/')} class="flex shrink-0 items-center gap-2"
+			><Logo /><span class="text-[15px] font-semibold tracking-tight max-lg:hidden">casebook</span
+			></a
+		>
+		{#if instance}
+			<ChevronRight class="size-3.5 shrink-0 text-muted-foreground/60" />
+			<a
+				href={links.processes(instance.slug)}
+				class="truncate rounded-md px-1.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+				>{instance.name} · Processes</a
+			>
+		{/if}
+	</div>
 	<label
 		class="flex h-9 items-center gap-2 rounded-xl bg-muted/80 px-3 text-[13px] text-muted-foreground focus-within:ring-2 focus-within:ring-brand-ring"
 	>
@@ -42,6 +57,22 @@
 		<kbd class="rounded-md border bg-background px-1.5 text-[11px]">⌘K</kbd>
 	</label>
 	<div class="flex min-w-0 items-center justify-end gap-2">
+		{#if instance}
+			<nav
+				aria-label="Work or processes"
+				class="flex shrink-0 items-center rounded-lg border bg-muted p-0.5 text-[13px]"
+			>
+				<a
+					href={links.myWork(instance.slug)}
+					class="rounded-md px-3 py-0.5 text-muted-foreground hover:text-foreground">Work</a
+				>
+				<a
+					href={links.processes(instance.slug)}
+					aria-current="page"
+					class="rounded-md bg-background px-3 py-0.5 font-medium shadow-sm">Processes</a
+				>
+			</nav>
+		{/if}
 		{#if user}
 			<a
 				href={resolve('/signin')}
