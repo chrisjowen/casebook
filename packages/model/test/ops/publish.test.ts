@@ -16,6 +16,7 @@ import {
 	undoDraft,
 	type Attribution,
 	type DraftContext,
+	type DraftResult,
 	type PrincipalRef,
 	type PublishedVersion,
 	type PublishRequest
@@ -361,7 +362,10 @@ describe('stored drafts', () => {
 		const bob: Attribution = { author: { id: 'u-bob', kind: 'user' } };
 		const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-		async function race() {
+		async function race(
+			bobsEdit: (draft: DraftContext) => Promise<DraftResult> = (draft) =>
+				editDraft(draft, [{ op: 'remove_node', id: 'step.notify-downstream' }], bob, at)
+		) {
 			const store = new GatedStore();
 			const draft: DraftContext = {
 				store,
@@ -372,7 +376,7 @@ describe('stored drafts', () => {
 			store.gating = true;
 			const alices = editDraft(draft, [uncollect], alice, at);
 			await settle();
-			const bobs = editDraft(draft, [{ op: 'remove_node', id: 'step.notify-downstream' }], bob, at);
+			const bobs = bobsEdit(draft);
 			await settle();
 			store.gating = false;
 			const revisions = await store.revisions('def-incident');
@@ -405,6 +409,27 @@ describe('stored drafts', () => {
 			expect(versions[2]?.document.nodes.map((n) => n.core)).toEqual(
 				revisions[2]?.document.nodes.map((n) => n.core)
 			);
+		});
+
+		it('an undo that matched the stale latest version still goes live once the edit it undoes is published', async () => {
+			const { store, alices, bobs } = await race((draft) => undoDraft(draft, bob, at));
+			store.release(0);
+			expect(await alices).toMatchObject({ published: { version: 2, revision: 2 } });
+			store.release(1);
+			const bobsResult = await bobs;
+			expect(bobsResult).toMatchObject({
+				ok: true,
+				revision: { number: 3, revertedTo: 1 },
+				published: { version: 3, revision: 3, publishedBy: bob.author }
+			});
+			expect(bobsResult).not.toHaveProperty('publishRefused');
+			const versions = await store.versions('def-incident');
+			expect(versions.map((v) => [v.version, v.revision])).toEqual([
+				[1, 1],
+				[2, 2],
+				[3, 3]
+			]);
+			expect(versions[2]?.document.nodes).toEqual(versions[0]?.document.nodes);
 		});
 
 		it('the newer revision publishing first supersedes the older one, which is not an error', async () => {
