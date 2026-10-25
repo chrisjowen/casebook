@@ -42,15 +42,15 @@ export async function loadShell(actor: Actor, instanceSlug: string): Promise<She
 		})
 	);
 	// New case is open when there is a published process the user may start (ADR 0022).
-	let startable = false;
-	for (const { definitions } of namespaces) {
-		for (const d of definitions) {
-			if (startable || !d.published) continue;
-			startable = (
-				await can(getDb(), actor, 'case.start', { type: 'definition', definitionId: d.id })
-			).allowed;
-		}
-	}
+	const startable = (
+		await Promise.all(
+			namespaces.flatMap(({ definitions }) =>
+				definitions
+					.filter((d) => d.published)
+					.map((d) => can(getDb(), actor, 'case.start', { type: 'definition', definitionId: d.id }))
+			)
+		)
+	).some((decision) => decision.allowed);
 	const canStart = startable
 		? { allowed: true, reason: '' }
 		: { allowed: false, reason: 'You can follow cases here, not start them' };
