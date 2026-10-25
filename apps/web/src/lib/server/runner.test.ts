@@ -1,12 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isHttpError, isRedirect } from '@sveltejs/kit';
-import { findCaseFile, listDefinitions, listInstances, startCase } from '@casebook/store';
+import {
+	findCaseFile,
+	listDefinitions,
+	listInstances,
+	loadGuestTask,
+	loadRequests,
+	startCase
+} from '@casebook/store';
 import { readForm } from './task-actions';
 import { load as instanceLayout } from '../../routes/i/[instance]/+layout.server';
-import { GET as home } from '../../routes/+server';
+import { load as home } from '../../routes/+page.server';
 import { GET as file } from '../../routes/files/[id]/+server';
 import { actions as newCase } from '../../routes/i/[instance]/cases/new/+page.server';
-import { acme, family, user } from '$lib/runner/test-data';
+import { load as requests } from '../../routes/requests/+page.server';
+import { load as guestForm } from '../../routes/requests/[attachment]/[item]/+page.server';
+import { acme, family, taskView, user } from '$lib/runner/test-data';
 
 vi.mock('$lib/server/db', () => ({ getDb: () => ({}) }));
 vi.mock('$lib/server/session', () => ({ devSignInEnabled: () => true }));
@@ -19,6 +28,8 @@ vi.mock('@casebook/store', async (importOriginal) => ({
 	listInstances: vi.fn(),
 	listDefinitions: vi.fn(),
 	findCaseFile: vi.fn(),
+	loadGuestTask: vi.fn(),
+	loadRequests: vi.fn(),
 	startCase: vi.fn()
 }));
 
@@ -131,6 +142,33 @@ describe('starting a case', () => {
 			expect.objectContaining({ definitionId: 'def-claim', roles: { 'role.claimant': ['alex'] } })
 		);
 		expect(result).toMatchObject({ status: 403, data: { code: 'access-denied' } });
+	});
+});
+
+describe('a guest', () => {
+	const guest = {
+		user: {
+			id: 'insurer',
+			displayName: 'Example Health Insurance',
+			roles: ['role.insurer on personal/example-user/family', 'role.claimant on case "Mira Example"']
+		}
+	};
+
+	it('sees their roles by name only, never where in the host they are bound', async () => {
+		vi.mocked(loadRequests).mockResolvedValue([]);
+		vi.mocked(loadGuestTask).mockResolvedValue(taskView());
+		const inbox = await requests({ locals: guest } as never);
+		const form = await guestForm({
+			params: { attachment: 'run-claim', item: 'step.assess-claim' },
+			locals: guest
+		} as never);
+		for (const data of [inbox, form]) {
+			expect(data!.user).toEqual({
+				id: 'insurer',
+				displayName: 'Example Health Insurance',
+				roles: ['role.insurer', 'role.claimant']
+			});
+		}
 	});
 });
 

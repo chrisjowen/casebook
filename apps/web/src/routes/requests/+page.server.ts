@@ -1,6 +1,6 @@
 import { loadRequests } from '@casebook/store';
 import { getDb } from '$lib/server/db';
-import { actorOf } from '$lib/server/runner';
+import { actorOf, guestOf } from '$lib/server/runner';
 import type { PageServerLoad } from './$types';
 
 /** A guest's inbox: the forms addressed to them, across every casebook that asked. */
@@ -10,5 +10,5 @@ export const load: PageServerLoad = async ({ locals }) => {
 		from,
 		requests: requests.filter((r) => r.from === from)
 	}));
-	return { user: locals.user!, groups };
+	return { user: guestOf(locals), groups };
 };

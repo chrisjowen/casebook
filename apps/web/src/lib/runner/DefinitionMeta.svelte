@@ -1,6 +1,7 @@
 <script lang="ts">
 	// A definition's status, version and change policy in plain words, and whether draft changes
-	// are waiting to be published (the full diff stays in the editor).
+	// are waiting to be published (the full diff stays in the editor). Compact rows name the policy
+	// in a word.
 	import type { ProcessRow } from '@casebook/store';
 
 	let { process, compact = false }: { process: ProcessRow; compact?: boolean } = $props();
@@ -16,15 +17,17 @@
 			>Draft · not published</span
 		>
 	{/if}
-	{#if !compact}
-		<span>
-			{process.policy === 'governed'
-				? process.requiresApproval
-					? 'Governed · publishing needs approval'
+	<span>
+		{process.policy === 'governed'
+			? process.requiresApproval
+				? 'Governed · publishing needs approval'
+				: compact
+					? 'Governed'
 					: 'Governed · publish when ready'
+			: compact
+				? 'Living'
 				: 'Living · every edit publishes'}
-		</span>
-	{/if}
+	</span>
 	{#if process.draftPending}
 		<span
 			class="text-amber-800"

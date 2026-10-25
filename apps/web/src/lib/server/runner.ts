@@ -9,13 +9,24 @@ import {
 	type Actor,
 	type FileStore,
 	type ReadRefusal,
-	type RuntimeRefusal
+	type RuntimeRefusal,
+	type UserSummary
 } from '@casebook/store';
 
 /** The signed-in user, whom every read and write acts as. */
 export function actorOf(locals: App.Locals): Actor {
 	if (!locals.user) error(401, 'Sign in first');
 	return { id: locals.user.id };
+}
+
+/**
+ * The signed-in guest as their own pages see them: their roles by name alone, without the
+ * account, namespace path or case each is bound on, which belong to the host.
+ */
+export function guestOf(locals: App.Locals): UserSummary {
+	if (!locals.user) error(401, 'Sign in first');
+	const { id, displayName, roles } = locals.user;
+	return { id, displayName, roles: [...new Set(roles.map((r) => r.split(' ')[0]!))] };
 }
 
 let files: FileStore | undefined;

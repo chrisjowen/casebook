@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'svelte/server';
 import WorkPage from './+page.svelte';
+import ProcessesPage from './processes/+page.svelte';
 import CasePage from './c/[case]/+page.svelte';
 import TaskPage from './c/[case]/t/[attachment]/[item]/+page.svelte';
-import type { CaseView } from '@casebook/store';
+import type { CaseView, ProcessRow } from '@casebook/store';
 import {
 	acme,
 	alex,
@@ -110,6 +111,54 @@ describe('My work', () => {
 		expect(html).toContain('href="/i/example-family/processes"');
 		expect(html).toContain('href="/i/example-family/cases"');
 		expect(html).toMatch(/aria-current="page"[^>]*>Work</);
+	});
+});
+
+describe('Processes', () => {
+	const row = (overrides: Partial<ProcessRow>): ProcessRow => ({
+		id: 'def-incident',
+		slug: 'incident-management',
+		title: 'Incident management',
+		namespace: 'acme/eng/sre',
+		status: 'published',
+		version: 3,
+		policy: 'governed',
+		requiresApproval: false,
+		draftPending: false,
+		liveCases: 2,
+		updatedAt: '2026-10-20T09:00:00Z',
+		updatedBy: 'Olive Example',
+		can: { edit: { allowed: true, reason: '' }, start: { allowed: true, reason: '' } },
+		document: {} as never,
+		...overrides
+	});
+
+	it('lists each definition with its status, version, change policy and live cases', () => {
+		const html = text(
+			render(ProcessesPage, {
+				props: {
+					data: {
+						...frame,
+						groups: [
+							{
+								namespace: 'acme/eng/sre',
+								label: 'SRE',
+								canCreate: { allowed: true, reason: '' },
+								definitions: [
+									row({}),
+									row({ id: 'd2', slug: 'b', title: 'Change approval', requiresApproval: true }),
+									row({ id: 'd3', slug: 'c', title: 'On-call notes', policy: 'living' })
+								]
+							}
+						]
+					},
+					params: {}
+				} as never
+			}).body
+		);
+		expect(html).toMatch(/Incident management Published · v3 Governed 2 live cases/);
+		expect(html).toMatch(/Change approval Published · v3 Governed · publishing needs approval/);
+		expect(html).toMatch(/On-call notes Published · v3 Living 2 live cases/);
 	});
 });
 
