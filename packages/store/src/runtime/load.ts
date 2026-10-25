@@ -104,7 +104,7 @@ export interface LoadedAttachment {
 	holders: Map<string, string[]>;
 	/** Its work-item events, oldest first. */
 	events: EventRecord[];
-	/** Its items' saved drafts and questions (ADR 0025). */
+	/** Its items' saved drafts and questions (ADR 0026). */
 	conversation: Conversation;
 }
 

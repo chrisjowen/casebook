@@ -897,7 +897,7 @@ export function decideApproval(
 	});
 }
 
-// Drafts and questions (ADR 0025): they never change an item's status.
+// Drafts and questions (ADR 0026): they never change an item's status.
 
 /** Notes that the actor has started on an item, once, unless they already have. */
 async function markStarted(

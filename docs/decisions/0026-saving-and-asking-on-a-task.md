@@ -1,4 +1,4 @@
-# 0025. Saving a task for later and asking for information on it
+# 0026. Saving a task for later and asking for information on it
 
 Status: Accepted. Amends 0022.
 

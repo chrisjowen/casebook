@@ -99,7 +99,7 @@ export interface TaskSummary {
 	due?: string;
 	overdue?: boolean;
 	lastDone?: Mark;
-	/** Open questions about it: how many wait on an answer, and how many have one (ADR 0025). */
+	/** Open questions about it: how many wait on an answer, and how many have one (ADR 0026). */
 	questions?: { waiting: number; answered: number };
 }
 
@@ -839,7 +839,7 @@ export interface TaskView {
 	reviews?: { title: string; doneBy?: PersonView };
 	/** For a guest: who asked, and one line of context. */
 	requester?: PersonView;
-	/** The form as someone last saved it, which it reopens with (ADR 0025). */
+	/** The form as someone last saved it, which it reopens with (ADR 0026). */
 	draft?: { values: Record<string, string[]>; by: PersonView; at: string };
 	/** Questions asked about the task, oldest first, each with its thread. */
 	questions: QuestionView[];

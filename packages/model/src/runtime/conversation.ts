@@ -1,7 +1,7 @@
 import type { Mark } from './progress.js';
 
 /**
- * Events about a work item that never change its status (ADR 0025): a saved draft of its form,
+ * Events about a work item that never change its status (ADR 0026): a saved draft of its form,
  * and questions asking someone for missing information, with their replies.
  */
 export const CONVERSATION_EVENTS = [
