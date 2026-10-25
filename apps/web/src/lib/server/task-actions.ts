@@ -28,8 +28,8 @@ import { actorOf, fileStore, refused } from './runner';
 /** Where a task page sends the user once the task is done, and which task it is. */
 export interface TaskRoute {
 	ref: (event: RequestEvent) => ItemRef;
-	/** Where to go after completing it, given its title. */
-	after: (event: RequestEvent, title: string) => string;
+	/** Where to go after completing or deciding it, given its title and whether it was sent back. */
+	after: (event: RequestEvent, title: string, outcome: 'done' | 'sent-back') => string;
 }
 
 const LOCAL_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
@@ -84,7 +84,7 @@ export function taskActions(route: TaskRoute): Actions {
 				{ files: fileStore() }
 			);
 			if (!result.ok) return refused(result);
-			redirect(303, route.after(event, String(form.get('title') ?? 'the task')));
+			redirect(303, route.after(event, String(form.get('title') ?? 'the task'), 'done'));
 		},
 		decide: async (event) => {
 			const form = await event.request.formData();
@@ -103,7 +103,14 @@ export function taskActions(route: TaskRoute): Actions {
 				note: String(form.get('note') ?? '')
 			});
 			if (!result.ok) return refused(result);
-			redirect(303, route.after(event, String(form.get('title') ?? 'the review')));
+			redirect(
+				303,
+				route.after(
+					event,
+					String(form.get('title') ?? 'the review'),
+					verdict === 'approve' ? 'done' : 'sent-back'
+				)
+			);
 		},
 		save: async (event) => {
 			const { values } = await readForm(await event.request.formData());

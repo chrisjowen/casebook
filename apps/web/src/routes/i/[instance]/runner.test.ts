@@ -391,6 +391,44 @@ describe('a task', () => {
 		expect(other).not.toContain('Submit review');
 	});
 
+	it('hands over to what comes next after completing, sending back or posting an update', async () => {
+		const { page: state } = await import('$app/state');
+		const done = (outcome: string, view = taskView()) => {
+			state.url = new URL(`http://localhost/i/example-family/c/case-mira/t/a/i?done=${outcome}`);
+			try {
+				return text(
+					render(TaskPage, {
+						props: {
+							data: {
+								...frame,
+								case: { id: 'case-mira', title: 'Mira Example' },
+								task: view,
+								next: [task({ title: 'Book the appointment', item: 'step.book' })],
+								demoFiles: true
+							},
+							form: null,
+							params: {}
+						} as never
+					}).body
+				);
+			} finally {
+				state.url = new URL('http://localhost/i/example-family');
+			}
+		};
+		expect(done('done', taskView({ task: task({ status: 'done' }) }))).toContain(
+			'Done. Thank you.'
+		);
+		const posted = done('done', taskView({ task: task({ status: 'ready', repeating: true }) }));
+		expect(posted).toContain('Update posted. Thank you.');
+		expect(posted).toContain('Next: Book the appointment');
+		const sentBack = done(
+			'sent-back',
+			taskView({ task: task({ kind: 'approval', status: 'waiting' }), fields: [] })
+		);
+		expect(sentBack).toContain('Sent back for changes.');
+		expect(sentBack).toContain('Next: Book the appointment');
+	});
+
 	it('lets the role skip work whose condition is prose only', () => {
 		const html = page(
 			taskView({ canSkip: true, guard: { text: 'Always for SEV1 and SEV2', state: 'open' } })

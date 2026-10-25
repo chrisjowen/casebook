@@ -25,8 +25,15 @@
 	const process = $derived(view.process!);
 	const task = $derived(view.task);
 	const me = $derived(data.user.id);
-	const justDone = $derived(
-		page.url.searchParams.has('done') && (task.status === 'done' || task.status === 'skipped')
+	const justDone = $derived(page.url.searchParams.get('done'));
+	const doneLine = $derived(
+		justDone === 'sent-back'
+			? 'Sent back for changes.'
+			: task.status === 'skipped'
+				? 'Marked as not needed.'
+				: task.repeating && task.status !== 'done'
+					? 'Update posted. Thank you.'
+					: 'Done. Thank you.'
 	);
 	const next = $derived(data.next ?? []);
 	const nextHere = $derived(next.filter((t) => t.caseId === c.id).length);
@@ -101,7 +108,7 @@
 								{forMe.length > 1
 									? `${forMe.length} questions for you, the first from`
 									: 'A question for you from'}
-								{forMe[0]!.by.name}{forMe.length > 1 ? '' : ''}:
+								{forMe[0]!.by.name}:
 							</p>
 							<p class="mt-0.5 line-clamp-2 text-foreground/85">“{forMe[0]!.text}”</p>
 						</div>
@@ -129,7 +136,7 @@
 					<div class="mb-8 rounded-xl border bg-card px-5 py-5" role="status">
 						<p class="flex items-center gap-2 text-[15px] font-semibold">
 							<CircleCheck class="size-5 text-emerald-600" />
-							{task.status === 'skipped' ? 'Marked as not needed.' : 'Done. Thank you.'}
+							{doneLine}
 						</p>
 						{#if view.others && !/^(Nobody else|Nothing is)/.test(view.others)}
 							<p class="mt-1.5 ml-7 text-[13px] text-muted-foreground">{view.others}</p>

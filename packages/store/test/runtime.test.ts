@@ -478,6 +478,22 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 			expect(saved.task.status).toBe('ready');
 			expect(saved.task.started).toHaveLength(1);
 			expectRefused(await saveDraft(db, users.rae, { ...item, values: {} }), 'access-denied');
+			const reader = await loadTask(db, users.rae, 'acme', item);
+			if ('ok' in reader) throw new Error(reader.reason);
+			expect(reader.you.canAct).toBe(false);
+			expect(reader.draft).toBeUndefined();
+		});
+
+		it('lists who can be asked only when the task page asks for them', async () => {
+			const { attachmentId } = await newIncident('INC-3033 Askable');
+			const item = ref(attachmentId, 'step.report-incident');
+			expect(await loadTask(db, users.devon, 'acme', item)).toMatchObject({ askable: [] });
+			const page = await loadTask(db, users.devon, 'acme', item, { askable: true });
+			if ('ok' in page) throw new Error(page.reason);
+			const names = page.askable.map((p) => p.name);
+			expect(names).toContain('Rae Reader');
+			expect(names).not.toContain('Devon Developer');
+			expect(page.askable.map((p) => p.id)).not.toContain(users.dana.id);
 		});
 
 		it('asks someone for information as a thread on the task, which they answer from My work', async () => {

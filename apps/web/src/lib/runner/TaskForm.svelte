@@ -5,7 +5,7 @@
 	// guest's view holds only their own form's data. There is no claim button: whoever finishes
 	// first completes it, and starting to fill it in tells the others who is on it.
 	import { tick } from 'svelte';
-	import { enhance } from '$app/forms';
+	import { deserialize, enhance } from '$app/forms';
 	import { beforeNavigate } from '$app/navigation';
 	import {
 		ChevronRight,
@@ -99,6 +99,7 @@
 	let dirty = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let savedAt = $state<string>();
+	let saveFailed = $state<string>();
 	let savedNote = $state('');
 	const canSave = $derived(canAct && task.kind !== 'approval');
 	function draftBody() {
@@ -115,7 +116,16 @@
 			body: draftBody(),
 			headers: { 'x-sveltekit-action': 'true' }
 		});
-		if (response.ok) savedAt = new Date().toISOString();
+		const result = deserialize(await response.text());
+		if (result.type === 'success') {
+			savedAt = new Date().toISOString();
+			saveFailed = undefined;
+		} else {
+			dirty = true;
+			saveFailed =
+				(result.type === 'failure' && (result.data as Failure | undefined)?.reason) ||
+				'Something went wrong.';
+		}
 	}
 	function touched() {
 		started();
@@ -455,7 +465,10 @@
 					dirty = false;
 				}
 				return async ({ result, update }) => {
-					if (result.type === 'success') savedAt = new Date().toISOString();
+					if (result.type === 'success') {
+						savedAt = new Date().toISOString();
+						saveFailed = undefined;
+					}
 					await update({ reset: false });
 				};
 			}}
@@ -536,8 +549,13 @@
 							>{task.repeating ? 'Stop repeating' : 'This doesn’t apply'}</button
 						>
 					{/if}
-					<span class="ml-auto hidden text-[12px] text-muted-foreground sm:inline" role="status">
-						{#if lastSave}
+					<span
+						class="ml-auto text-[12px] text-muted-foreground sm:inline {saveFailed ? '' : 'hidden'}"
+						role="status"
+					>
+						{#if saveFailed}
+							<span class="text-destructive">Not saved: {saveFailed}</span>
+						{:else if lastSave}
 							Saved{lastSave.by === 'you' ? '' : ` by ${lastSave.by}`}
 							{relative(lastSave.at)}{hasFiles ? '. Files attach when you complete it.' : '.'}
 						{:else if canSave}

@@ -886,7 +886,7 @@ export async function loadTask(
 	actor: Actor,
 	instanceSlug: string,
 	ref: { attachmentId: string; item: string },
-	now = new Date()
+	{ askable = false, now = new Date() }: { askable?: boolean; now?: Date } = {}
 ): Promise<TaskView | ReadRefusal> {
 	const found = await instanceFor(db, actor, instanceSlug);
 	if ('ok' in found) return found;
@@ -894,7 +894,7 @@ export async function loadTask(
 	if (!located || located.c.accountId !== found.accountId) return notFound();
 	const read = await can(db, actor, 'case.read', { type: 'case', caseId: located.c.id });
 	if (!read.allowed) return denied(read.reason);
-	const view = await taskView(db, actor, located, located.people);
+	const view = await taskView(db, actor, located, located.people, askable);
 	return { ...view, instance: found.instance, process: summarizeAttachment(located.a) };
 }
 
@@ -918,7 +918,8 @@ async function taskView(
 	db: Db,
 	actor: Actor,
 	{ c, a, state }: { c: LoadedCase; a: LoadedAttachment; state: ItemState },
-	people: ReadonlyMap<string, Person>
+	people: ReadonlyMap<string, Person>,
+	withAskable = false
 ): Promise<TaskView> {
 	const { item } = state;
 	const me = subjectOf(actor);
@@ -933,7 +934,8 @@ async function taskView(
 	const roleTitle = a.process.roles.get(item.role)?.title ?? item.role;
 	const fields = await formFields(db, c, a, collectedBy(item), record);
 	const reviewed = item.reviews ? a.state.items.find((s) => s.item.id === item.reviews) : undefined;
-	const draft = isOpen(state.status) ? a.conversation.drafts[item.id] : undefined;
+	const draft =
+		decision.allowed && isOpen(state.status) ? a.conversation.drafts[item.id] : undefined;
 	const inThread = (q: Question) => q.by === me || q.to === me || decision.allowed;
 	return {
 		questions: a.conversation.questions
@@ -949,7 +951,8 @@ async function taskView(
 				canReply: inThread(q),
 				...(q.resolved ? { resolved: { by: p(q.resolved.by), at: q.resolved.at } } : {})
 			})),
-		askable: decision.allowed && isOpen(state.status) ? await askablePeople(db, c, me) : [],
+		askable:
+			withAskable && decision.allowed && isOpen(state.status) ? await askablePeople(db, c, me) : [],
 		outline: outline(a, me, people),
 		others: othersLine(a, me, people),
 		...(draft ? { draft: { values: draft.values, by: p(draft.by), at: draft.at } } : {}),
@@ -1014,13 +1017,11 @@ async function askablePeople(db: Db, c: LoadedCase, me: string): Promise<PersonV
 		.innerJoin(principals, eq(principals.id, roleBindings.principalId))
 		.where(and(eq(roleBindings.accountId, c.accountId), eq(principals.kind, 'user')))
 		.orderBy(asc(principals.displayName));
-	const result: PersonView[] = [];
-	for (const row of rows) {
-		if (row.id === me) continue;
-		const read = await can(db, { id: row.id }, 'case.read', { type: 'case', caseId: c.id });
-		if (read.allowed) result.push(row);
-	}
-	return result;
+	const others = rows.filter((row) => row.id !== me);
+	const reads = await Promise.all(
+		others.map((row) => can(db, { id: row.id }, 'case.read', { type: 'case', caseId: c.id }))
+	);
+	return others.filter((_, i) => reads[i]!.allowed);
 }
 
 /** A process's stages with their work items, each marked when the actor holds its role. */

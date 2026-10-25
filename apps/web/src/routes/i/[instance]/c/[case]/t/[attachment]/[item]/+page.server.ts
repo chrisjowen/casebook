@@ -9,10 +9,13 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ params, locals, url }) => {
 	const actor = actorOf(locals);
 	const task = orError(
-		await loadTask(getDb(), actor, params.instance, {
-			attachmentId: params.attachment,
-			item: params.item
-		})
+		await loadTask(
+			getDb(),
+			actor,
+			params.instance,
+			{ attachmentId: params.attachment, item: params.item },
+			{ askable: true }
+		)
 	);
 	// Just finished: hand over to what comes next, on this case first, then anywhere.
 	let next: TaskSummary[] | undefined;
@@ -31,6 +34,6 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 
 export const actions: Actions = taskActions({
 	ref: ({ params }) => ({ attachmentId: params.attachment!, item: params.item! }),
-	after: ({ params }) =>
-		`${links.task(params.instance!, params.case!, params.attachment!, params.item!)}?done=1`
+	after: ({ params }, _, outcome) =>
+		`${links.task(params.instance!, params.case!, params.attachment!, params.item!)}?done=${outcome}`
 });

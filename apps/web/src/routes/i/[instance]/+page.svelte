@@ -6,7 +6,6 @@
 	import { ChevronRight, Hourglass, Inbox, MessageCircleQuestion } from '@lucide/svelte';
 	import Frame from '$lib/runner/Frame.svelte';
 	import FilterChips from '$lib/runner/FilterChips.svelte';
-	import Notice from '$lib/runner/Notice.svelte';
 	import Section from '$lib/runner/Section.svelte';
 	import TaskRow from '$lib/runner/TaskRow.svelte';
 	import { day, lowerFirst, names, relative } from '$lib/runner/format';
@@ -19,7 +18,6 @@
 	const slug = $derived(data.instance.slug);
 	const me = $derived(data.user.id);
 	const filter = $derived(page.url.searchParams.get('process') ?? '');
-	const justDone = $derived(page.url.searchParams.get('done'));
 	const keep = (t: { definitionSlug: string }) => !filter || t.definitionSlug === filter;
 	const heldNote = (task: (typeof work.held)[number]) =>
 		task.held
@@ -61,10 +59,6 @@
 				{/if}
 			</p>
 		</header>
-
-		{#if justDone}
-			<Notice><span class="font-medium">Done:</span> {justDone}.</Notice>
-		{/if}
 
 		<div class="mb-6 px-1"><FilterChips {options} /></div>
 
