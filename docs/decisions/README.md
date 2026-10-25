@@ -18,3 +18,5 @@ Architecture decisions for casebook, one file per decision.
 | 0012 | [Technology stack](0012-stack.md) | Accepted |
 | 0013 | [Graph default view and wizard layout](0013-graph-view-and-wizard-layout.md) | Open (pending prototype) |
 | 0014 | [Synthetic sample data only](0014-synthetic-sample-data.md) | Accepted |
+| 0015 | [Accounts, account roles and namespace permissions](0015-accounts-and-access.md) | Accepted |
+| 0016 | [Governed and living definitions, pinned and following cases](0016-change-policies.md) | Accepted |

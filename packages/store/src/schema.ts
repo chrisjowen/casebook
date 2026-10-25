@@ -1,10 +1,12 @@
 // Drizzle table definitions for definition storage (ADR 0002), namespaces (ADR 0007),
 // principals and role bindings (ADR 0008) and agent delegation (ADR 0009).
-// Rules that a column or check cannot express (namespace path consistency, version
-// immutability and case pinning) live in triggers in the hand-written migration under drizzle/.
+// The database holds declarative constraints only: keys, foreign keys, NOT NULL and checks on
+// kind and status columns. Every other rule (namespace paths, version immutability, case
+// pinning, formats) lives in `repository.ts`, the only write path for these tables.
 import { sql } from 'drizzle-orm';
 import {
 	type AnyPgColumn,
+	boolean,
 	check,
 	foreignKey,
 	index,
@@ -28,33 +30,66 @@ const updatedAt = () =>
 		.$onUpdate(() => new Date());
 
 export const principalKind = pgEnum('principal_kind', ['user', 'group', 'agent', 'service']);
+export const changePolicy = pgEnum('change_policy', ['governed', 'living']);
+export const caseBinding = pgEnum('case_binding', ['pinned', 'follow_latest']);
 export const definitionVersionStatus = pgEnum('definition_version_status', [
 	'published',
 	'retired'
 ]);
 
 /**
- * Hierarchical namespaces such as `acme/eng/sre`.
+ * The top-level tenant (ADR 0015). Every namespace belongs to exactly one account, and principals
+ * become members of an account through account-scoped role bindings.
+ */
+export const accounts = pgTable(
+	'accounts',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		slug: text('slug').notNull(),
+		displayName: text('display_name').notNull(),
+		createdById: uuid('created_by_id')
+			.notNull()
+			.references((): AnyPgColumn => principals.id),
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+	},
+	(t) => [unique('accounts_slug_key').on(t.slug)]
+);
+
+/**
+ * Hierarchical namespaces such as `acme/eng/sre`, unique per account. A child namespace sits in
+ * its parent's account, which a composite foreign key to `(id, account_id)` enforces.
  *
  * `path` is a materialized path rather than ltree: segments come from user-facing names
  * (for example `personal/<user>/family`) that ltree's label alphabet would reject, no extension
  * is needed, and ancestors resolve with an equality lookup on the unique path index for every
- * prefix of the path (see `namespaces.ts`). A trigger keeps `path` consistent with `parent_id`
- * and refuses moves, which would need a rewrite of every descendant path.
+ * prefix of the path. The repository derives `parent_id` from the path and offers no move or
+ * rename, which would need a rewrite of every descendant path.
  */
 export const namespaces = pgTable(
 	'namespaces',
 	{
 		id: uuid('id').primaryKey().defaultRandom(),
-		parentId: uuid('parent_id').references((): AnyPgColumn => namespaces.id),
+		accountId: uuid('account_id')
+			.notNull()
+			.references(() => accounts.id),
+		parentId: uuid('parent_id'),
 		path: text('path').notNull(),
+		createdById: uuid('created_by_id')
+			.notNull()
+			.references((): AnyPgColumn => principals.id),
 		createdAt: createdAt(),
 		updatedAt: updatedAt()
 	},
 	(t) => [
-		uniqueIndex('namespaces_path_key').on(t.path),
+		uniqueIndex('namespaces_account_path_key').on(t.accountId, t.path),
+		unique('namespaces_id_account_key').on(t.id, t.accountId),
 		index('namespaces_parent_id_idx').on(t.parentId),
-		check('namespaces_path_format', sql`${t.path} ~ '^[^/[:space:]]+(/[^/[:space:]]+)*$'`)
+		foreignKey({
+			name: 'namespaces_parent_fk',
+			columns: [t.parentId, t.accountId],
+			foreignColumns: [t.id, t.accountId]
+		})
 	]
 );
 
@@ -111,8 +146,7 @@ export const groupMembers = pgTable(
 			columns: [t.groupId, t.groupKind],
 			foreignColumns: [principals.id, principals.kind]
 		}).onDelete('cascade'),
-		check('group_members_group_kind_group', sql`${t.groupKind} = 'group'`),
-		check('group_members_not_self', sql`${t.groupId} <> ${t.memberId}`)
+		check('group_members_group_kind_group', sql`${t.groupKind} = 'group'`)
 	]
 );
 
@@ -128,21 +162,28 @@ export const processDefinitions = pgTable(
 		ownerId: uuid('owner_id')
 			.notNull()
 			.references(() => principals.id),
+		createdById: uuid('created_by_id')
+			.notNull()
+			.references(() => principals.id),
+		/**
+		 * Governed: edits go to draft revisions and an explicit publish creates a version.
+		 * Living: every accepted edit is published as a new version (ADR 0016).
+		 */
+		changePolicy: changePolicy('change_policy').notNull().default('governed'),
+		/** Policy flag only: a governed publish needs an approval. The approval flow comes later. */
+		publishRequiresApproval: boolean('publish_requires_approval').notNull().default(false),
 		createdAt: createdAt(),
 		updatedAt: updatedAt()
 	},
-	(t) => [
-		unique('process_definitions_namespace_slug_key').on(t.namespaceId, t.slug),
-		check('process_definitions_slug_format', sql`${t.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`)
-	]
+	(t) => [unique('process_definitions_namespace_slug_key').on(t.namespaceId, t.slug)]
 );
 
 /**
  * A published, numbered version of a definition, created at publish time. Drafts live only in
  * `draft_revisions`. The body is validated by the model layer, not here.
  *
- * A row is immutable: a trigger refuses any change except retiring a published version, and
- * refuses deletes (ADR 0002).
+ * A row is immutable (ADR 0002): the repository's only change is retiring a published
+ * version, and it offers no delete.
  */
 export const definitionVersions = pgTable(
 	'definition_versions',
@@ -163,13 +204,12 @@ export const definitionVersions = pgTable(
 			.notNull()
 			.references(() => principals.id),
 		publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+		/** The draft revision this version was published from, when there is one. */
+		sourceRevisionId: uuid('source_revision_id').references((): AnyPgColumn => draftRevisions.id),
 		createdAt: createdAt(),
 		updatedAt: updatedAt()
 	},
-	(t) => [
-		unique('definition_versions_definition_version_key').on(t.definitionId, t.version),
-		check('definition_versions_version_positive', sql`${t.version} > 0`)
-	]
+	(t) => [unique('definition_versions_definition_version_key').on(t.definitionId, t.version)]
 );
 
 /**
@@ -206,7 +246,6 @@ export const draftRevisions = pgTable(
 			columns: [t.onBehalfOfId, t.onBehalfOfKind],
 			foreignColumns: [principals.id, principals.kind]
 		}),
-		check('draft_revisions_revision_positive', sql`${t.revision} > 0`),
 		check(
 			'draft_revisions_on_behalf_of_kind',
 			sql`(${t.onBehalfOfId} IS NULL) = (${t.onBehalfOfKind} IS NULL)
@@ -222,8 +261,8 @@ export const draftRevisions = pgTable(
 
 /**
  * Stub of the case runtime table: only what case-scoped role bindings and delegations need.
- * The rest of the case runtime (facts, evidence, events) is deferred. A case pins a published
- * definition version; a trigger refuses pinning a retired one.
+ * The rest of the case runtime (facts, evidence, events) is deferred. A case binds a published
+ * definition version; the repository refuses binding a retired one.
  */
 export const cases = pgTable(
 	'cases',
@@ -232,23 +271,54 @@ export const cases = pgTable(
 		namespaceId: uuid('namespace_id')
 			.notNull()
 			.references(() => namespaces.id),
+		/** The currently bound version. */
 		definitionVersionId: uuid('definition_version_id')
 			.notNull()
 			.references(() => definitionVersions.id),
+		/** Pinned cases move only by an explicit, recorded move; following cases track new versions. */
+		binding: caseBinding('binding').notNull(),
 		title: text('title').notNull(),
 		createdAt: createdAt(),
 		updatedAt: updatedAt()
 	},
-	(t) => [unique('cases_id_namespace_key').on(t.id, t.namespaceId)]
+	(t) => [
+		unique('cases_id_namespace_key').on(t.id, t.namespaceId),
+		index('cases_definition_version_id_idx').on(t.definitionVersionId)
+	]
+);
+
+/** Audit of explicit moves of a pinned case to another version (ADR 0016). */
+export const caseVersionMoves = pgTable(
+	'case_version_moves',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		caseId: uuid('case_id')
+			.notNull()
+			.references(() => cases.id, { onDelete: 'cascade' }),
+		fromVersionId: uuid('from_version_id')
+			.notNull()
+			.references(() => definitionVersions.id),
+		toVersionId: uuid('to_version_id')
+			.notNull()
+			.references(() => definitionVersions.id),
+		movedById: uuid('moved_by_id')
+			.notNull()
+			.references(() => principals.id),
+		movedAt: timestamp('moved_at', { withTimezone: true }).notNull().defaultNow()
+	},
+	(t) => [index('case_version_moves_case_id_idx').on(t.caseId)]
 );
 
 /**
- * Zanzibar-style `(principal, role, scope)` tuples (ADR 0008).
+ * Zanzibar-style `(principal, role, scope)` tuples (ADR 0008, ADR 0015).
  *
- * Every binding carries its namespace (ADR 0007). A case-scoped binding also sets `case_id`,
- * and a composite foreign key ties it to that case's namespace. `scope_type` and `scope_id`
- * are derived so the tuple shape stays explicit. The partial indexes serve resolution in the
- * order case, then namespace, then parent namespaces.
+ * The scope is an account, a namespace in it, or a case in that namespace. Every binding carries
+ * its account, a namespace binding its namespace (ADR 0007), and a case binding both, with
+ * composite foreign keys keeping case, namespace and account consistent. `scope_type` and
+ * `scope_id` are derived so the tuple shape stays explicit. Account scope holds the built-in
+ * account roles; namespace scope holds the built-in namespace permissions and standing process
+ * roles; case scope holds process roles. The partial indexes serve resolution in the order case,
+ * then namespace lineage, then account.
  */
 export const roleBindings = pgTable(
 	'role_bindings',
@@ -258,19 +328,27 @@ export const roleBindings = pgTable(
 			.notNull()
 			.references(() => principals.id, { onDelete: 'cascade' }),
 		role: text('role').notNull(),
-		namespaceId: uuid('namespace_id')
+		accountId: uuid('account_id')
 			.notNull()
-			.references(() => namespaces.id),
+			.references(() => accounts.id),
+		namespaceId: uuid('namespace_id'),
 		caseId: uuid('case_id'),
 		scopeType: text('scope_type')
 			.notNull()
-			.generatedAlwaysAs(sql`CASE WHEN case_id IS NULL THEN 'namespace' ELSE 'case' END`),
+			.generatedAlwaysAs(
+				sql`CASE WHEN case_id IS NOT NULL THEN 'case' WHEN namespace_id IS NOT NULL THEN 'namespace' ELSE 'account' END`
+			),
 		scopeId: uuid('scope_id')
 			.notNull()
-			.generatedAlwaysAs(sql`COALESCE(case_id, namespace_id)`),
+			.generatedAlwaysAs(sql`COALESCE(case_id, namespace_id, account_id)`),
 		createdAt: createdAt()
 	},
 	(t) => [
+		foreignKey({
+			name: 'role_bindings_namespace_fk',
+			columns: [t.namespaceId, t.accountId],
+			foreignColumns: [namespaces.id, namespaces.accountId]
+		}),
 		foreignKey({
 			name: 'role_bindings_case_fk',
 			columns: [t.caseId, t.namespaceId],
@@ -278,15 +356,21 @@ export const roleBindings = pgTable(
 		})
 			.onDelete('cascade')
 			.onUpdate('cascade'),
+		check(
+			'role_bindings_case_has_namespace',
+			sql`${t.caseId} IS NULL OR ${t.namespaceId} IS NOT NULL`
+		),
 		uniqueIndex('role_bindings_tuple_key').on(t.principalId, t.role, t.scopeType, t.scopeId),
 		index('role_bindings_case_role_idx')
 			.on(t.caseId, t.role)
 			.where(sql`${t.caseId} IS NOT NULL`),
 		index('role_bindings_namespace_role_idx')
 			.on(t.namespaceId, t.role)
-			.where(sql`${t.caseId} IS NULL`),
-		index('role_bindings_principal_id_idx').on(t.principalId),
-		check('role_bindings_role_not_blank', sql`btrim(${t.role}) <> ''`)
+			.where(sql`${t.caseId} IS NULL AND ${t.namespaceId} IS NOT NULL`),
+		index('role_bindings_account_role_idx')
+			.on(t.accountId, t.role)
+			.where(sql`${t.namespaceId} IS NULL`),
+		index('role_bindings_principal_id_idx').on(t.principalId)
 	]
 );
 
@@ -336,8 +420,6 @@ export const delegationGrants = pgTable(
 		check(
 			'delegation_grants_case_has_namespace',
 			sql`${t.caseId} IS NULL OR ${t.namespaceId} IS NOT NULL`
-		),
-		check('delegation_grants_role_not_blank', sql`${t.role} IS NULL OR btrim(${t.role}) <> ''`),
-		check('delegation_grants_expires_after_created', sql`${t.expiresAt} > ${t.createdAt}`)
+		)
 	]
 );

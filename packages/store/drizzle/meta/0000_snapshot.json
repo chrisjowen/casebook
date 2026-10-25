@@ -1,9 +1,203 @@
 {
-  "id": "8fbae542-f9fe-44e0-9259-f8f84ae48ba5",
+  "id": "973682e0-d0ad-408a-99e3-943a8c79e02b",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
+    "public.accounts": {
+      "name": "accounts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by_id": {
+          "name": "created_by_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "accounts_created_by_id_principals_id_fk": {
+          "name": "accounts_created_by_id_principals_id_fk",
+          "tableFrom": "accounts",
+          "tableTo": "principals",
+          "columnsFrom": [
+            "created_by_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "accounts_slug_key": {
+          "name": "accounts_slug_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.case_version_moves": {
+      "name": "case_version_moves",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "case_id": {
+          "name": "case_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_version_id": {
+          "name": "from_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_version_id": {
+          "name": "to_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "moved_by_id": {
+          "name": "moved_by_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "moved_at": {
+          "name": "moved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "case_version_moves_case_id_idx": {
+          "name": "case_version_moves_case_id_idx",
+          "columns": [
+            {
+              "expression": "case_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "case_version_moves_case_id_cases_id_fk": {
+          "name": "case_version_moves_case_id_cases_id_fk",
+          "tableFrom": "case_version_moves",
+          "tableTo": "cases",
+          "columnsFrom": [
+            "case_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "case_version_moves_from_version_id_definition_versions_id_fk": {
+          "name": "case_version_moves_from_version_id_definition_versions_id_fk",
+          "tableFrom": "case_version_moves",
+          "tableTo": "definition_versions",
+          "columnsFrom": [
+            "from_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "case_version_moves_to_version_id_definition_versions_id_fk": {
+          "name": "case_version_moves_to_version_id_definition_versions_id_fk",
+          "tableFrom": "case_version_moves",
+          "tableTo": "definition_versions",
+          "columnsFrom": [
+            "to_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "case_version_moves_moved_by_id_principals_id_fk": {
+          "name": "case_version_moves_moved_by_id_principals_id_fk",
+          "tableFrom": "case_version_moves",
+          "tableTo": "principals",
+          "columnsFrom": [
+            "moved_by_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.cases": {
       "name": "cases",
       "schema": "",
@@ -24,6 +218,13 @@
         "definition_version_id": {
           "name": "definition_version_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "binding": {
+          "name": "binding",
+          "type": "case_binding",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": true
         },
@@ -48,7 +249,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "cases_definition_version_id_idx": {
+          "name": "cases_definition_version_id_idx",
+          "columns": [
+            {
+              "expression": "definition_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "cases_namespace_id_namespaces_id_fk": {
           "name": "cases_namespace_id_namespaces_id_fk",
@@ -160,6 +377,12 @@
           "notNull": true,
           "default": "now()"
         },
+        "source_revision_id": {
+          "name": "source_revision_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -215,6 +438,19 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "definition_versions_source_revision_id_draft_revisions_id_fk": {
+          "name": "definition_versions_source_revision_id_draft_revisions_id_fk",
+          "tableFrom": "definition_versions",
+          "tableTo": "draft_revisions",
+          "columnsFrom": [
+            "source_revision_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -229,12 +465,7 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "definition_versions_version_positive": {
-          "name": "definition_versions_version_positive",
-          "value": "\"definition_versions\".\"version\" > 0"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.delegation_grants": {
@@ -422,14 +653,6 @@
         "delegation_grants_case_has_namespace": {
           "name": "delegation_grants_case_has_namespace",
           "value": "\"delegation_grants\".\"case_id\" IS NULL OR \"delegation_grants\".\"namespace_id\" IS NOT NULL"
-        },
-        "delegation_grants_role_not_blank": {
-          "name": "delegation_grants_role_not_blank",
-          "value": "\"delegation_grants\".\"role\" IS NULL OR btrim(\"delegation_grants\".\"role\") <> ''"
-        },
-        "delegation_grants_expires_after_created": {
-          "name": "delegation_grants_expires_after_created",
-          "value": "\"delegation_grants\".\"expires_at\" > \"delegation_grants\".\"created_at\""
         }
       },
       "isRLSEnabled": false
@@ -556,10 +779,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "draft_revisions_revision_positive": {
-          "name": "draft_revisions_revision_positive",
-          "value": "\"draft_revisions\".\"revision\" > 0"
-        },
         "draft_revisions_on_behalf_of_kind": {
           "name": "draft_revisions_on_behalf_of_kind",
           "value": "(\"draft_revisions\".\"on_behalf_of_id\" IS NULL) = (\"draft_revisions\".\"on_behalf_of_kind\" IS NULL)\n\t\t\t\tAND \"draft_revisions\".\"on_behalf_of_kind\" IS DISTINCT FROM 'agent'"
@@ -665,10 +884,6 @@
         "group_members_group_kind_group": {
           "name": "group_members_group_kind_group",
           "value": "\"group_members\".\"group_kind\" = 'group'"
-        },
-        "group_members_not_self": {
-          "name": "group_members_not_self",
-          "value": "\"group_members\".\"group_id\" <> \"group_members\".\"member_id\""
         }
       },
       "isRLSEnabled": false
@@ -684,6 +899,12 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "account_id": {
+          "name": "account_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "parent_id": {
           "name": "parent_id",
           "type": "uuid",
@@ -693,6 +914,12 @@
         "path": {
           "name": "path",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by_id": {
+          "name": "created_by_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -712,9 +939,15 @@
         }
       },
       "indexes": {
-        "namespaces_path_key": {
-          "name": "namespaces_path_key",
+        "namespaces_account_path_key": {
+          "name": "namespaces_account_path_key",
           "columns": [
+            {
+              "expression": "account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "path",
               "isExpression": false,
@@ -744,29 +977,61 @@
         }
       },
       "foreignKeys": {
-        "namespaces_parent_id_namespaces_id_fk": {
-          "name": "namespaces_parent_id_namespaces_id_fk",
+        "namespaces_account_id_accounts_id_fk": {
+          "name": "namespaces_account_id_accounts_id_fk",
           "tableFrom": "namespaces",
-          "tableTo": "namespaces",
+          "tableTo": "accounts",
           "columnsFrom": [
-            "parent_id"
+            "account_id"
           ],
           "columnsTo": [
             "id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "namespaces_created_by_id_principals_id_fk": {
+          "name": "namespaces_created_by_id_principals_id_fk",
+          "tableFrom": "namespaces",
+          "tableTo": "principals",
+          "columnsFrom": [
+            "created_by_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "namespaces_parent_fk": {
+          "name": "namespaces_parent_fk",
+          "tableFrom": "namespaces",
+          "tableTo": "namespaces",
+          "columnsFrom": [
+            "parent_id",
+            "account_id"
+          ],
+          "columnsTo": [
+            "id",
+            "account_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "namespaces_path_format": {
-          "name": "namespaces_path_format",
-          "value": "\"namespaces\".\"path\" ~ '^[^/[:space:]]+(/[^/[:space:]]+)*$'"
+      "uniqueConstraints": {
+        "namespaces_id_account_key": {
+          "name": "namespaces_id_account_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "account_id"
+          ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.principals": {
@@ -913,6 +1178,27 @@
           "primaryKey": false,
           "notNull": true
         },
+        "created_by_id": {
+          "name": "created_by_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "change_policy": {
+          "name": "change_policy",
+          "type": "change_policy",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'governed'"
+        },
+        "publish_requires_approval": {
+          "name": "publish_requires_approval",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -955,6 +1241,19 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "process_definitions_created_by_id_principals_id_fk": {
+          "name": "process_definitions_created_by_id_principals_id_fk",
+          "tableFrom": "process_definitions",
+          "tableTo": "principals",
+          "columnsFrom": [
+            "created_by_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -969,12 +1268,7 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "process_definitions_slug_format": {
-          "name": "process_definitions_slug_format",
-          "value": "\"process_definitions\".\"slug\" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.role_bindings": {
@@ -1000,11 +1294,17 @@
           "primaryKey": false,
           "notNull": true
         },
+        "account_id": {
+          "name": "account_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "namespace_id": {
           "name": "namespace_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "case_id": {
           "name": "case_id",
@@ -1018,7 +1318,7 @@
           "primaryKey": false,
           "notNull": true,
           "generated": {
-            "as": "CASE WHEN case_id IS NULL THEN 'namespace' ELSE 'case' END",
+            "as": "CASE WHEN case_id IS NOT NULL THEN 'case' WHEN namespace_id IS NOT NULL THEN 'namespace' ELSE 'account' END",
             "type": "stored"
           }
         },
@@ -1028,7 +1328,7 @@
           "primaryKey": false,
           "notNull": true,
           "generated": {
-            "as": "COALESCE(case_id, namespace_id)",
+            "as": "COALESCE(case_id, namespace_id, account_id)",
             "type": "stored"
           }
         },
@@ -1113,7 +1413,29 @@
             }
           ],
           "isUnique": false,
-          "where": "\"role_bindings\".\"case_id\" IS NULL",
+          "where": "\"role_bindings\".\"case_id\" IS NULL AND \"role_bindings\".\"namespace_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "role_bindings_account_role_idx": {
+          "name": "role_bindings_account_role_idx",
+          "columns": [
+            {
+              "expression": "account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "role",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"role_bindings\".\"namespace_id\" IS NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1148,15 +1470,30 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "role_bindings_namespace_id_namespaces_id_fk": {
-          "name": "role_bindings_namespace_id_namespaces_id_fk",
+        "role_bindings_account_id_accounts_id_fk": {
+          "name": "role_bindings_account_id_accounts_id_fk",
           "tableFrom": "role_bindings",
-          "tableTo": "namespaces",
+          "tableTo": "accounts",
           "columnsFrom": [
-            "namespace_id"
+            "account_id"
           ],
           "columnsTo": [
             "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "role_bindings_namespace_fk": {
+          "name": "role_bindings_namespace_fk",
+          "tableFrom": "role_bindings",
+          "tableTo": "namespaces",
+          "columnsFrom": [
+            "namespace_id",
+            "account_id"
+          ],
+          "columnsTo": [
+            "id",
+            "account_id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -1181,15 +1518,31 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "role_bindings_role_not_blank": {
-          "name": "role_bindings_role_not_blank",
-          "value": "btrim(\"role_bindings\".\"role\") <> ''"
+        "role_bindings_case_has_namespace": {
+          "name": "role_bindings_case_has_namespace",
+          "value": "\"role_bindings\".\"case_id\" IS NULL OR \"role_bindings\".\"namespace_id\" IS NOT NULL"
         }
       },
       "isRLSEnabled": false
     }
   },
   "enums": {
+    "public.case_binding": {
+      "name": "case_binding",
+      "schema": "public",
+      "values": [
+        "pinned",
+        "follow_latest"
+      ]
+    },
+    "public.change_policy": {
+      "name": "change_policy",
+      "schema": "public",
+      "values": [
+        "governed",
+        "living"
+      ]
+    },
     "public.definition_version_status": {
       "name": "definition_version_status",
       "schema": "public",
