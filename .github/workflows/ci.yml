@@ -13,6 +13,23 @@ concurrency:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # The store tests create a throwaway database on this server and migrate it.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: casebook
+          POSTGRES_PASSWORD: casebook
+          POSTGRES_DB: casebook
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U casebook -d casebook"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgres://casebook:casebook@127.0.0.1:5432/casebook
     steps:
       # moon's affected checks diff against the base branch, which needs full history.
       - uses: actions/checkout@v7

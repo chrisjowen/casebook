@@ -57,6 +57,7 @@ pnpm format              # Prettier (pnpm format:check to verify only)
 ```
 
 Run a single project's task with moon directly, for example `moon run model:test`.
+The `store` tests need Postgres (`pnpm db:up` and a `.env`): they migrate a throwaway database next to the one `DATABASE_URL` names, and are skipped when it is unset outside CI.
 
 ## Database migrations
 
