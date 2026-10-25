@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { createDb, type Db } from '../src/client.js';
 import { findNamespaceLineage, namespacePathPrefixes } from '../src/namespaces.js';
@@ -296,17 +296,63 @@ describe.skipIf(!url)('store schema (Postgres)', () => {
 			);
 		});
 
-		it('has indexes for case-first then namespace-lineage resolution', async () => {
-			const rows = await db.execute<{ indexname: string; indexdef: string }>(
-				sql`SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'role_bindings' ORDER BY indexname`
+		it('resolves bindings for a case, then its namespace lineage', async () => {
+			const tree = await namespaceTree('eng', 'eng/sre', 'ops');
+			const incident = await caseIn(tree.id('eng/sre'));
+			const other = await caseIn(tree.id('eng/sre'));
+			const [commander, rootResponder, engResponder, opsResponder, otherCommander] =
+				await Promise.all([1, 2, 3, 4, 5].map(() => principal('user')));
+			await db.insert(roleBindings).values([
+				{
+					principalId: commander!.id,
+					role: 'commander',
+					namespaceId: tree.id('eng/sre'),
+					caseId: incident.id
+				},
+				{
+					principalId: otherCommander!.id,
+					role: 'commander',
+					namespaceId: tree.id('eng/sre'),
+					caseId: other.id
+				},
+				{
+					principalId: commander!.id,
+					role: 'responder',
+					namespaceId: tree.id('eng/sre'),
+					caseId: incident.id
+				},
+				{ principalId: rootResponder!.id, role: 'responder', namespaceId: tree.id() },
+				{ principalId: engResponder!.id, role: 'responder', namespaceId: tree.id('eng') },
+				{ principalId: opsResponder!.id, role: 'responder', namespaceId: tree.id('ops') }
+			]);
+
+			const caseHolders = await db
+				.select({ principalId: roleBindings.principalId })
+				.from(roleBindings)
+				.where(and(eq(roleBindings.caseId, incident.id), eq(roleBindings.role, 'commander')));
+			expect(caseHolders.map((r) => r.principalId)).toEqual([commander!.id]);
+
+			const lineage = await findNamespaceLineage(db, `${tree.root}/eng/sre`);
+			const namespaceHolders = await db
+				.select({ principalId: roleBindings.principalId, namespaceId: roleBindings.namespaceId })
+				.from(roleBindings)
+				.where(
+					and(
+						inArray(
+							roleBindings.namespaceId,
+							lineage.map((n) => n.id)
+						),
+						eq(roleBindings.role, 'responder'),
+						isNull(roleBindings.caseId)
+					)
+				);
+			expect(namespaceHolders).toEqual(
+				expect.arrayContaining([
+					{ principalId: engResponder!.id, namespaceId: tree.id('eng') },
+					{ principalId: rootResponder!.id, namespaceId: tree.id() }
+				])
 			);
-			const defs = Object.fromEntries(rows.map((r) => [r.indexname, r.indexdef]));
-			expect(defs['role_bindings_case_role_idx']).toMatch(
-				/\(case_id, role\) WHERE \(case_id IS NOT NULL\)/
-			);
-			expect(defs['role_bindings_namespace_role_idx']).toMatch(
-				/\(namespace_id, role\) WHERE \(case_id IS NULL\)/
-			);
+			expect(namespaceHolders).toHaveLength(2);
 		});
 	});
 
@@ -606,16 +652,13 @@ describe.skipIf(!url)('store schema (Postgres)', () => {
 				PG.check,
 				'draft_revisions_author_on_behalf_of'
 			);
-			await expectPgError(
-				revise({
-					authorId: service.id,
-					authorKind: 'service',
-					onBehalfOfId: service.id,
-					onBehalfOfKind: 'service'
-				}),
-				PG.check,
-				'draft_revisions_on_behalf_of_other'
-			);
+			const [self] = await revise({
+				authorId: service.id,
+				authorKind: 'service',
+				onBehalfOfId: service.id,
+				onBehalfOfKind: 'service'
+			});
+			expect(self).toMatchObject({ authorId: service.id, onBehalfOfId: service.id });
 		});
 
 		it('checks author and on_behalf_of kinds against the principals', async () => {

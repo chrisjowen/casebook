@@ -1,6 +1,6 @@
 {
-  "id": "638125d7-eba2-4462-8421-88ef5fb191bd",
-  "prevId": "72b1c2a9-c53d-47a3-9601-8f2f1055af55",
+  "id": "6bb74b2a-31a4-45d3-8062-bd45cbc26ff4",
+  "prevId": "8fbae542-f9fe-44e0-9259-f8f84ae48ba5",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -567,10 +567,6 @@
         "draft_revisions_author_on_behalf_of": {
           "name": "draft_revisions_author_on_behalf_of",
           "value": "(\"draft_revisions\".\"author_kind\" = 'user' AND \"draft_revisions\".\"on_behalf_of_id\" IS NULL)\n\t\t\t\tOR (\"draft_revisions\".\"author_kind\" IN ('agent', 'service') AND \"draft_revisions\".\"on_behalf_of_id\" IS NOT NULL)"
-        },
-        "draft_revisions_on_behalf_of_other": {
-          "name": "draft_revisions_on_behalf_of_other",
-          "value": "\"draft_revisions\".\"on_behalf_of_id\" <> \"draft_revisions\".\"author_id\""
         }
       },
       "isRLSEnabled": false

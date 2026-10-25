@@ -61,8 +61,7 @@ CREATE TABLE "draft_revisions" (
 	CONSTRAINT "draft_revisions_on_behalf_of_kind" CHECK (("draft_revisions"."on_behalf_of_id" IS NULL) = ("draft_revisions"."on_behalf_of_kind" IS NULL)
 				AND "draft_revisions"."on_behalf_of_kind" IS DISTINCT FROM 'agent'),
 	CONSTRAINT "draft_revisions_author_on_behalf_of" CHECK (("draft_revisions"."author_kind" = 'user' AND "draft_revisions"."on_behalf_of_id" IS NULL)
-				OR ("draft_revisions"."author_kind" IN ('agent', 'service') AND "draft_revisions"."on_behalf_of_id" IS NOT NULL)),
-	CONSTRAINT "draft_revisions_on_behalf_of_other" CHECK ("draft_revisions"."on_behalf_of_id" <> "draft_revisions"."author_id")
+				OR ("draft_revisions"."author_kind" IN ('agent', 'service') AND "draft_revisions"."on_behalf_of_id" IS NOT NULL))
 );
 --> statement-breakpoint
 CREATE TABLE "group_members" (

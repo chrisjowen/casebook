@@ -216,8 +216,7 @@ export const draftRevisions = pgTable(
 			'draft_revisions_author_on_behalf_of',
 			sql`(${t.authorKind} = 'user' AND ${t.onBehalfOfId} IS NULL)
 				OR (${t.authorKind} IN ('agent', 'service') AND ${t.onBehalfOfId} IS NOT NULL)`
-		),
-		check('draft_revisions_on_behalf_of_other', sql`${t.onBehalfOfId} <> ${t.authorId}`)
+		)
 	]
 );
 
