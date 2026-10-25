@@ -36,7 +36,7 @@ Delegation (0009):
 - An agent must name the principal it acts for, and its own role bindings never count.
 - To act for a user, the agent needs an active grant from that user: not revoked, and not expired at the time of the check. The grant's namespace, case and role limits must cover the resource. A role limit caps the agent at what that role alone would allow there. The agent may then do only what both the grant and the user allow.
 - An unattended agent acting for its owning service gets that service's authority.
-- Groups cannot grant delegations yet, so an agent cannot act for a group.
+- An agent never acts for a group. Agents sign in as a user via OAuth through MCP and always act as that user, with authority resolved from that user's roles. Acting for a group is not a supported case.
 - A service acts on its own bindings. When it acts for another principal, it also needs that principal's authority.
 - A user acts only for themselves, and a group never acts.
 

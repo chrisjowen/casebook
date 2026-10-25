@@ -329,7 +329,7 @@ async function agentDecision(
 ): Promise<Decision> {
 	if (!represented) {
 		return refuse(
-			`${nameOf(agent)} must act on behalf of a user, group or service, and none was given`
+			`${nameOf(agent)} must act on behalf of a user or its owning service, and none was given`
 		);
 	}
 	switch (represented.kind) {
@@ -337,7 +337,7 @@ async function agentDecision(
 			return refuse(nobodyActsForAgents(agent, represented));
 		case 'group':
 			return refuse(
-				`${nameOf(agent)} cannot act for ${nameOf(represented)}: delegation grants come only from users, so a group cannot delegate to an agent yet`
+				`${nameOf(agent)} cannot act for ${nameOf(represented)}: agents sign in as a user and act for that user, so acting for a group is not supported`
 			);
 		case 'service': {
 			if (agent.ownerId !== represented.id) {

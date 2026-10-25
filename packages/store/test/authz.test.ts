@@ -572,7 +572,7 @@ describe.skipIf(!url)('permission resolution (Postgres)', () => {
 			);
 			await expectRefused(
 				check({ id: agent.id, onBehalfOfId: group.id }, 'definition.edit', def),
-				/a group cannot delegate/
+				/acting for a group is not supported/
 			);
 		});
 
