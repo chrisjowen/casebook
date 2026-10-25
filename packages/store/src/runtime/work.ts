@@ -843,7 +843,7 @@ export interface TaskView {
 	draft?: { values: Record<string, string[]>; by: PersonView; at: string };
 	/** Questions asked about the task, oldest first, each with its thread. */
 	questions: QuestionView[];
-	/** Who the actor can ask for information: people who can open the case. */
+	/** Who the actor can ask for information: people who can open the case; none on an approval, which is decided rather than paused. */
 	askable: PersonView[];
 	/** Every stage of the task's process with its work items, for finding the way around. */
 	outline: OutlineStage[];
