@@ -133,16 +133,30 @@
 	const INTERVALS = ['PT15M', 'PT30M', 'PT1H', 'PT4H', 'P1D', 'P7D'];
 	let branchName = $state('');
 
+	/** "New role…" asks for the role's name in place before adding it. */
+	let namingRole = $state(false);
+	let roleName = $state('');
 	async function setRole(value: string) {
-		if (value !== '__new')
-			return save(
-				set({ role: value as RoleId }, `${labelOf(ix, id)} is now done by ${labelOf(ix, value)}`)
-			);
-		const role = addRole(ix.document);
-		return save({
+		if (value === '__new') {
+			namingRole = true;
+			return false;
+		}
+		return save(
+			set({ role: value as RoleId }, `${labelOf(ix, id)} is now done by ${labelOf(ix, value)}`)
+		);
+	}
+	async function addNamedRole() {
+		const name = roleName.trim();
+		if (!name) return;
+		const role = addRole(ix.document, name);
+		const ok = await save({
 			ops: [...role.ops, { op: 'update_core', id, changes: { role: role.id } }],
-			label: `Added a role for ${labelOf(ix, id)}; rename it under the process details`
+			label: `${labelOf(ix, id)} is now done by ${name}, a new role`
 		});
+		if (ok) {
+			namingRole = false;
+			roleName = '';
+		}
 	}
 	async function addBranch(choice: string) {
 		if (!decision || !branchName.trim()) return;
@@ -199,6 +213,29 @@
 				>
 			</EditSelect>
 		</div>
+		{#if edit && namingRole}
+			<label class="-mt-1.5 flex flex-col gap-1.5">
+				<span class="text-[12px] text-muted-foreground">Name the new role</span>
+				<input
+					type="text"
+					class="h-9 rounded-lg border bg-background px-2.5 text-[13px] outline-none focus:ring-2 focus:ring-brand-ring"
+					placeholder="Such as Manager, then Enter"
+					bind:value={roleName}
+					use:focus
+					onkeydown={(e) => {
+						e.stopPropagation();
+						if (e.key === 'Enter') addNamedRole();
+						if (e.key === 'Escape') {
+							namingRole = false;
+							roleName = '';
+						}
+					}}
+					onblur={() => {
+						if (!roleName.trim()) namingRole = false;
+					}}
+				/>
+			</label>
+		{/if}
 		<div class="flex flex-col gap-1.5">
 			<div class="text-[12px] text-muted-foreground">Who can complete it</div>
 			<div

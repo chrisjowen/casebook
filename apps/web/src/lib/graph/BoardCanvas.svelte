@@ -619,6 +619,8 @@
 		void tick().then(() => flow.setViewport({ x, y, zoom }));
 	});
 	let tips = $state(true);
+	/** Tips opened by hand on a board too narrow to show them unasked. */
+	let peek = $state(false);
 	$effect(() => {
 		try {
 			if (localStorage.getItem('casebook-board-tips') === 'off') tips = false;
@@ -638,7 +640,10 @@
 
 <svelte:window onkeydown={onkey} />
 
-<div class={['h-full w-full bg-canvas', ui.connecting && 'cb-connecting']} bind:this={wrap}>
+<div
+	class={['@container h-full w-full bg-canvas', ui.connecting && 'cb-connecting']}
+	bind:this={wrap}
+>
 	<SvelteFlow
 		bind:nodes
 		bind:edges
@@ -679,46 +684,69 @@
 		<Controls showLock={false} position="bottom-right" />
 		{#if editable}
 			<Panel position="bottom-center">
-				<div class="mb-2 flex items-center gap-1 rounded-2xl border bg-background p-1 shadow-md">
+				<div
+					class="mb-2 flex items-center gap-1 rounded-2xl border bg-background p-1 whitespace-nowrap shadow-md"
+				>
 					<button
 						class="flex h-9 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-[12.5px] hover:bg-muted"
 						title="Add a step (N)"
+						aria-label="Step"
 						onmousedown={releaseFocus}
-						onclick={() => addNext('step')}><SquareStack class="size-4" />Step</button
+						onclick={() => addNext('step')}
+						><SquareStack class="size-4" /><span class="hidden @min-[36rem]:inline">Step</span
+						></button
 					>
 					<button
 						class="flex h-9 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-[12.5px] hover:bg-muted"
 						title="Add a decision (D)"
+						aria-label="Decision"
 						onmousedown={releaseFocus}
-						onclick={() => addNext('decision')}><Signpost class="size-4" />Decision</button
+						onclick={() => addNext('decision')}
+						><Signpost class="size-4" /><span class="hidden @min-[36rem]:inline">Decision</span
+						></button
 					>
 					<button
 						class="flex h-9 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-[12.5px] hover:bg-muted"
 						title="Add a stage"
+						aria-label="Stage"
 						onmousedown={releaseFocus}
-						onclick={() => (ui.addingStage = true)}><Columns3 class="size-4" />Stage</button
+						onclick={() => (ui.addingStage = true)}
+						><Columns3 class="size-4" /><span class="hidden @min-[36rem]:inline">Stage</span
+						></button
 					>
 					<span class="mx-1 h-5 w-px bg-border"></span>
 					<button
 						class="flex h-9 cursor-pointer items-center gap-2 rounded-xl px-3 text-[12.5px] text-muted-foreground hover:bg-muted hover:text-foreground"
 						onmousedown={releaseFocus}
+						aria-label="Add or find"
 						onclick={() => (ui.palette = true)}
-						><Search class="size-4" />Add or find<kbd
-							class="rounded-md border bg-background px-1.5 text-[10.5px]">/</kbd
+						><Search class="size-4" /><span class="hidden @min-[36rem]:inline">Add or find</span
+						><kbd
+							class="hidden rounded-md border bg-background px-1.5 text-[10.5px] @min-[36rem]:inline"
+							>/</kbd
 						></button
 					>
 				</div>
 			</Panel>
 			<Panel position="bottom-left">
+				<!-- On a narrow board (an inspector open) the tips fold to their button, clear of the toolbar. -->
 				{#if tips}
-					<div class="mb-2 w-64 rounded-2xl border bg-background p-3.5 text-[12px] shadow-md">
+					<div
+						class={[
+							'mb-2 w-64 rounded-2xl border bg-background p-3.5 text-[12px] shadow-md',
+							!peek && 'hidden @min-[60rem]:block'
+						]}
+					>
 						<div class="mb-2 flex items-center gap-2">
 							<Info class="size-3.5 text-brand" />
 							<span class="flex-1 font-medium">Build right here</span>
 							<button
 								class="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
 								aria-label="Hide tips"
-								onclick={() => setTips(false)}><X class="size-3.5" /></button
+								onclick={() => {
+									peek = false;
+									setTips(false);
+								}}><X class="size-3.5" /></button
 							>
 						</div>
 						<ul class="flex flex-col gap-1.5 text-muted-foreground">
@@ -738,13 +766,18 @@
 							</li>
 						</ul>
 					</div>
-				{:else}
-					<button
-						class="mb-2 flex size-8 cursor-pointer items-center justify-center rounded-lg border bg-background text-muted-foreground shadow-xs hover:text-foreground"
-						aria-label="Show tips"
-						onclick={() => setTips(true)}><Info class="size-4" /></button
-					>
 				{/if}
+				<button
+					class={[
+						'mb-2 flex size-8 cursor-pointer items-center justify-center rounded-lg border bg-background text-muted-foreground shadow-xs hover:text-foreground',
+						tips && (peek ? 'hidden' : '@min-[60rem]:hidden')
+					]}
+					aria-label="Show tips"
+					onclick={() => {
+						if (tips) peek = true;
+						else setTips(true);
+					}}><Info class="size-4" /></button
+				>
 			</Panel>
 		{:else if legend}
 			<Panel position="bottom-left">{@render legend()}</Panel>

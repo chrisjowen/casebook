@@ -27,6 +27,7 @@
 	const writable = $derived(spaces.filter((s) => s.canCreate.allowed));
 	let space = $state('');
 	let uploading = $state(false);
+	let chosen = $state(false);
 	let problem = $state<string | undefined>();
 	$effect(() => {
 		if (open) {
@@ -116,11 +117,12 @@
 							name="file"
 							accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 							required
+							onchange={(e) => (chosen = !!e.currentTarget.files?.length)}
 							class="min-w-0 flex-1 text-[13px] file:mr-2 file:cursor-pointer file:rounded-md file:border file:bg-background file:px-2.5 file:py-1.5"
 						/>
 						<button
 							class="h-9 cursor-pointer rounded-lg bg-foreground px-4 text-[13px] font-medium text-background hover:bg-foreground/90 disabled:opacity-50"
-							disabled={uploading}>Import</button
+							disabled={uploading || !chosen}>Import</button
 						>
 					</form>
 					<div class="flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2.5 text-[13px]">

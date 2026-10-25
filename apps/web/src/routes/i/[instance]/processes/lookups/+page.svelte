@@ -126,7 +126,7 @@
 	instances={data.instances}
 	crumbs={[{ label: 'Lookups' }]}
 >
-	<div class="flex min-h-[calc(100dvh-3.5rem)] flex-col md:flex-row">
+	<div class="flex min-h-[calc(100dvh-3rem-1px)] flex-col md:flex-row">
 		<aside
 			class="shrink-0 border-b bg-background md:w-80 md:border-r md:border-b-0"
 			aria-label="Shared lookups"

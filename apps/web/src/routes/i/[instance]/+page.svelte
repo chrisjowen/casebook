@@ -6,6 +6,7 @@
 	import { ChevronRight, Hourglass, Inbox, MessageCircleQuestion } from '@lucide/svelte';
 	import Frame from '$lib/runner/Frame.svelte';
 	import FilterChips from '$lib/runner/FilterChips.svelte';
+	import Notice from '$lib/runner/Notice.svelte';
 	import Section from '$lib/runner/Section.svelte';
 	import TaskRow from '$lib/runner/TaskRow.svelte';
 	import { day, lowerFirst, names, relative } from '$lib/runner/format';
@@ -18,6 +19,7 @@
 	const slug = $derived(data.instance.slug);
 	const me = $derived(data.user.id);
 	const filter = $derived(page.url.searchParams.get('process') ?? '');
+	const savedTask = $derived(page.url.searchParams.get('saved'));
 	const keep = (t: { definitionSlug: string }) => !filter || t.definitionSlug === filter;
 	const heldNote = (task: (typeof work.held)[number]) =>
 		task.held
@@ -30,7 +32,12 @@
 	const asked = $derived(work.asked.filter(keep));
 	const ready = $derived(answeredFirst(work.ready.filter(keep)));
 	const held = $derived(answeredFirst(work.held.filter(keep)));
-	const waiting = $derived(work.waiting.filter(keep));
+	// A process whose question is waiting on the user shows once, under Questions for you.
+	const waiting = $derived(
+		work.waiting.filter(
+			(w) => keep(w) && !work.asked.some((q) => q.attachmentId === w.attachmentId)
+		)
+	);
 	const recurring = $derived(work.recurring.filter(keep));
 	const total = $derived(work.asked.length + work.ready.length + work.held.length);
 	// One chip per process, named without the label that tells two runs on one case apart.
@@ -59,6 +66,15 @@
 				{/if}
 			</p>
 		</header>
+
+		{#if savedTask}
+			<Notice
+				><span class="font-medium">Saved “{savedTask}” for later.</span>
+				<span class="text-muted-foreground"
+					>It is still on your list, filled in as you left it.</span
+				></Notice
+			>
+		{/if}
 
 		<div class="mb-6 px-1"><FilterChips {options} /></div>
 
@@ -168,7 +184,9 @@
 							<p class="mt-1.5 text-[13px] text-muted-foreground">
 								{wait.mine
 									? `“${wait.mine.title}” starts once that’s in.`
-									: 'Your part is done for now.'}
+									: wait.myPartDone
+										? 'Your part is done for now.'
+										: 'Nothing for you to do here yet.'}
 							</p>
 						</div>
 					</a>

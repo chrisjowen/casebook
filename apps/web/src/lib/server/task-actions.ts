@@ -30,6 +30,8 @@ export interface TaskRoute {
 	ref: (event: RequestEvent) => ItemRef;
 	/** Where to go after completing or deciding it, given its title and whether it was sent back. */
 	after: (event: RequestEvent, title: string, outcome: 'done' | 'sent-back') => string;
+	/** Where Save for later leaves to, given the task's title. */
+	saved: (event: RequestEvent, title: string) => string;
 }
 
 const LOCAL_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
@@ -113,12 +115,16 @@ export function taskActions(route: TaskRoute): Actions {
 			);
 		},
 		save: async (event) => {
-			const { values } = await readForm(await event.request.formData());
-			return (
-				ok(await saveDraft(getDb(), actorOf(event.locals), { ...route.ref(event), values })) ?? {
-					saved: true
-				}
+			const form = await event.request.formData();
+			const { values } = await readForm(form);
+			const refusal = ok(
+				await saveDraft(getDb(), actorOf(event.locals), { ...route.ref(event), values })
 			);
+			if (refusal) return refusal;
+			// Save for later leaves the task; saving as people type stays.
+			if (form.get('leave') === 'yes')
+				redirect(303, route.saved(event, String(form.get('title') ?? 'the task')));
+			return { saved: true };
 		},
 		reply: async (event) => {
 			const form = await event.request.formData();

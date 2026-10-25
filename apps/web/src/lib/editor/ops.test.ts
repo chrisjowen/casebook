@@ -72,7 +72,7 @@ describe('adding on the board', () => {
 		expect(decision.core.kind).toBe('decision');
 		const outcome = node(after, collectsOf(decision)[0].fact) as FactNode;
 		expect(outcome.core).toMatchObject({
-			title: 'Escalate? outcome',
+			title: 'Escalate?',
 			schema: { enum: ['Yes', 'No'] }
 		});
 	});
@@ -226,7 +226,7 @@ describe('a step’s Records and Needs first', () => {
 			edits.renameNode(indexDocument(withDecision), added.id, 'Escalate')
 		);
 		const outcome = collectsOf(work(after, added.id))[0].fact;
-		expect(node(after, outcome)?.core.title).toBe('Escalate outcome');
+		expect(node(after, outcome)?.core.title).toBe('Escalate');
 	});
 
 	it('changes a fact’s kind in place', () => {
@@ -427,7 +427,7 @@ describe('lookups', () => {
 
 	it('deletes a lookup only when no fact is chosen from it', () => {
 		expect(edits.removeLookup(ix, 'lookup.severity-levels')).toBe(
-			'Severity levels is still used by Severity; choose other values for it first'
+			'The fact “Severity” still chooses from Severity levels; change its kind first'
 		);
 		const made = edits.newLookup(ix, 'Spare');
 		const next = apply(doc, made);

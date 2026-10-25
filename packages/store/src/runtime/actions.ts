@@ -208,8 +208,8 @@ export interface StartCase {
 	label?: string;
 	binding?: CaseBinding;
 	/**
-	 * Who fills each case-scoped role, by role id. Without it, the starter takes the case-scoped
-	 * role of the process's first work item.
+	 * Who fills each case role, by role id: the case-scoped ones, and any nobody holds yet. Without
+	 * it, the starter takes the first work item's role when it is either.
 	 */
 	roles?: Record<string, string[]>;
 }
@@ -332,14 +332,19 @@ export async function startCase(
 	);
 }
 
-/** The starter takes the case-scoped role of the process's first work item. */
+/**
+ * The starter takes the role of the process's first work item when it is case-scoped, or when
+ * nobody holds it yet, so a new case never starts out waiting on nobody.
+ */
 function defaultRoles(a: LoadedAttachment, starter: string): Record<string, string[]> {
 	const first = a.process.items[0];
-	if (!first || a.process.roles.get(first.role)?.scope !== 'case') return {};
+	if (!first) return {};
+	const perCase = a.process.roles.get(first.role)?.scope === 'case';
+	if (!perCase && (a.holders.get(first.role) ?? []).length > 0) return {};
 	return { [first.role]: [starter] };
 }
 
-/** Binds people to case-scoped roles, refusing roles the process lacks and people from outside. */
+/** Binds people to roles on the case, refusing roles the process lacks and people from outside. */
 async function assignRoles(
 	tx: Tx,
 	who: Acting,

@@ -7,7 +7,7 @@
 	import type { ItemBrief } from '@casebook/store';
 	import ItemIcon from './ItemIcon.svelte';
 	import StatusTag from './StatusTag.svelte';
-	import { lowerFirst } from './format';
+	import { lowerFirst, onlyWhen } from './format';
 
 	let {
 		document,
@@ -89,7 +89,7 @@
 								<p class="mt-1 text-muted-foreground">Not needed on this case</p>
 							{/if}
 							{#if item.when?.text}
-								<p class="mt-1 text-muted-foreground">When: {lowerFirst(item.when.text)}</p>
+								<p class="mt-1 text-muted-foreground">{onlyWhen(item.when.text)}</p>
 							{/if}
 							{#if item.repeat}
 								<p class="mt-1 text-muted-foreground">

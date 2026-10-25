@@ -1,5 +1,12 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { casebookPeople, listProcesses, loadCase, loadWork, startCase } from '@casebook/store';
+import {
+	casebookPeople,
+	listProcesses,
+	loadCase,
+	loadWork,
+	rolesWithoutHolders,
+	startCase
+} from '@casebook/store';
 import { getDb } from '$lib/server/db';
 import { actorOf, orError, refused } from '$lib/server/runner';
 import { links } from '$lib/runner/links';
@@ -22,12 +29,23 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 		.filter((d) => d.status === 'published' && d.can.start.allowed);
 	const cases = orError(work).cases;
 	const fixed = url.searchParams.get('case');
+	// Roles nobody holds yet are named on the case, like case-scoped ones, or its work waits on nobody.
+	const unheld = await Promise.all(
+		startable.map((d) =>
+			rolesWithoutHolders(
+				getDb(),
+				d.id,
+				d.document.nodes.filter((n) => n.core.kind === 'role').map((n) => n.core.id)
+			)
+		)
+	);
 	return {
-		processes: startable.map((d) => ({
+		processes: startable.map((d, i) => ({
 			id: d.id,
 			slug: d.slug,
 			title: d.title,
-			document: d.document
+			document: d.document,
+			unheld: unheld[i]!
 		})),
 		cases: cases.map((c) => ({
 			id: c.id,

@@ -39,21 +39,33 @@
 	let subject = $state('');
 	let label = $state('');
 	let nameProblem = $state('');
+	/** Roles nobody holds that were left empty, which would leave their work waiting on nobody. */
+	let roleProblem = $state('');
 	/** Who fills each case role, by role id. */
 	let people = $state<Record<string, string[]>>({});
 
 	const selected = $derived(data.processes.find((p) => p.id === chosen));
 	const process = $derived(selected ? runnableProcess(selected.document) : undefined);
 	const first = $derived(process?.items[0]);
-	// Roles that belong to this case; those a step fills from what it records are left to it.
+	// Roles named on this case: the case-scoped ones, and any role its work needs that nobody
+	// holds yet. Those a step fills from what it records are left to it.
 	const caseRoles = $derived(
 		process
-			? [...process.roles.values()].filter(
-					(r) =>
-						r.scope === 'case' && !process.items.some((i) => i.assigns.some((a) => a.role === r.id))
-				)
+			? [...process.roles.values()]
+					.filter(
+						(r) =>
+							(r.scope === 'case' ||
+								(selected!.unheld.includes(r.id) && process.items.some((i) => i.role === r.id))) &&
+							!process.items.some((i) => i.assigns.some((a) => a.role === r.id))
+					)
+					.sort((a, b) => firstUse(a.id) - firstUse(b.id))
 			: []
 	);
+	/** Where a role's work first comes in the process, to list roles in the order they are needed. */
+	const firstUse = (role: string) => {
+		const at = process?.items.findIndex((i) => i.role === role) ?? -1;
+		return at < 0 ? Infinity : at;
+	};
 	// The starter takes the first task's role unless they say otherwise.
 	$effect(() => {
 		const role = first?.role;
@@ -99,6 +111,12 @@
 			return;
 		}
 		nameProblem = '';
+		const empty = caseRoles.filter((r) => r.scope !== 'case' && !people[r.id]?.length);
+		if (step === 1 && empty.length) {
+			roleProblem = `Choose who does ${empty.map((r) => r.title ?? r.id).join(' and ')}: nobody else has ${empty.length === 1 ? 'that role' : 'those roles'}, so ${empty.length === 1 ? 'its' : 'their'} work would wait on nobody`;
+			return;
+		}
+		roleProblem = '';
 		step = Math.min(step + 1, 2);
 	}
 
@@ -350,6 +368,11 @@
 						{#if caseRoles.length}
 							<fieldset class="grid gap-4">
 								<legend class="mb-1 text-[15px] font-semibold">Who’s who on this case</legend>
+								{#if caseRoles.some((r) => r.scope !== 'case')}
+									<p class="-mt-2 text-[13px] text-muted-foreground">
+										Nobody has some of these roles yet, so choose who does them on this case.
+									</p>
+								{/if}
 								{#each caseRoles as role (role.id)}
 									<input type="hidden" name="roles" value={role.id} />
 									<div class="grid gap-1.5">
@@ -378,7 +401,9 @@
 										</div>
 									</div>
 								{/each}
-								{#if failure.problems && Object.keys(failure.problems).some( (k) => k.startsWith('role:') )}
+								{#if roleProblem}
+									<p class="text-[12px] font-medium text-destructive" role="alert">{roleProblem}</p>
+								{:else if failure.problems && Object.keys(failure.problems).some( (k) => k.startsWith('role:') )}
 									<p class="text-[12px] font-medium text-destructive">{failure.reason}</p>
 								{/if}
 							</fieldset>
@@ -432,7 +457,7 @@
 											? people[role.id]!.map((id) =>
 													id === data.user.id ? 'You' : nameOf(id)
 												).join(', ')
-											: 'Nobody yet'}
+											: 'Nobody yet — its work waits until someone is named'}
 									</dd>
 									<button
 										type="button"

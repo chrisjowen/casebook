@@ -64,9 +64,10 @@ export interface RunnableProcess {
 }
 
 /**
- * Reads a definition into the shape the runtime works with. Work items keep document order, with
- * each approval placed right after the step it reviews. An approval no step refers to has no
- * stage, so it is left out.
+ * Reads a definition into the shape the runtime works with. Work items come in run order: by
+ * stage, each after the items whose facts it needs, and otherwise in document order, with each
+ * approval placed right after the step it reviews. An approval no step refers to has no stage, so
+ * it is left out.
  */
 export function runnableProcess(document: DefinitionDocument): RunnableProcess {
 	let title = document.slug;
@@ -150,7 +151,7 @@ export function runnableProcess(document: DefinitionDocument): RunnableProcess {
 	}
 
 	const ordered: WorkItem[] = [];
-	for (const item of items) {
+	for (const item of runOrder(items, stages)) {
 		ordered.push(item);
 		const approval = item.approval && approvals.get(item.approval);
 		if (approval && approval.reviews === undefined) {
@@ -160,6 +161,36 @@ export function runnableProcess(document: DefinitionDocument): RunnableProcess {
 		}
 	}
 	return { title, ...(summary ? { summary } : {}), stages, items: ordered, facts, roles };
+}
+
+/**
+ * Orders work items by stage, and within that so that an item comes after those recording the
+ * facts it needs; ties, and any items caught in a cycle, keep document order.
+ */
+function runOrder(items: WorkItem[], stages: StageInfo[]): WorkItem[] {
+	const stageAt = new Map(stages.map((s, i) => [s.id, i]));
+	const rank = (i: number) => stageAt.get(items[i]!.stage) ?? stages.length;
+	const recorders = new Map<string, number[]>();
+	items.forEach((item, i) => {
+		for (const c of item.collects) recorders.set(c.fact, [...(recorders.get(c.fact) ?? []), i]);
+	});
+	const before = items.map((item, i) => [
+		...new Set(item.requires.flatMap((f) => (recorders.get(f) ?? []).filter((r) => r !== i)))
+	]);
+	const placed = new Set<number>();
+	const order: WorkItem[] = [];
+	while (placed.size < items.length) {
+		let next = -1;
+		for (let i = 0; i < items.length; i++) {
+			if (placed.has(i) || !before[i]!.every((b) => placed.has(b))) continue;
+			if (next < 0 || rank(i) < rank(next)) next = i;
+		}
+		// A cycle: take the earliest item left, as the document has it.
+		if (next < 0) next = items.findIndex((_, i) => !placed.has(i));
+		placed.add(next);
+		order.push(items[next]!);
+	}
+	return order;
 }
 
 /** The facts a work item records that the given role records, by default the item's own role. */

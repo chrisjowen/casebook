@@ -49,7 +49,8 @@ vi.mock('$app/state', () => {
 				canCreate: allow
 			}
 		],
-		imports: []
+		imports: [],
+		canStart: allow
 	};
 	return { page: { url: new URL('http://localhost/i/example-family'), data: { shell } } };
 });
@@ -437,5 +438,18 @@ describe('a task', () => {
 		);
 		expect(html).toContain('When: always for SEV1 and SEV2.');
 		expect(html).toContain('This doesn’t apply');
+	});
+
+	it('reads a condition built from rules once, and offers no saving with nothing to record', () => {
+		const html = page(
+			taskView({
+				fields: [],
+				guard: { text: 'Only when Estimated cost is more than 2000', state: 'applies' }
+			})
+		);
+		expect(html).toContain('Only when Estimated cost is more than 2000.');
+		expect(html).not.toContain('When: only when');
+		expect(html).toContain('Nothing to record: just mark it done.');
+		expect(html).not.toContain('Save for later');
 	});
 });

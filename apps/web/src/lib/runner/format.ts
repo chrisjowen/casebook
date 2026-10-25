@@ -54,6 +54,14 @@ export function names(people: { name: string }[], nobody = 'nobody yet'): string
 
 export const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 
+/**
+ * A condition as one line. One built from rules already reads "Only when Estimated cost is more
+ * than 2000"; prose, such as "Always for SEV1 and SEV2", follows "When:".
+ */
+export function onlyWhen(text: string): string {
+	return /^only when\s/i.test(text) ? `Only when ${text.slice(10)}` : `When: ${lowerFirst(text)}`;
+}
+
 /** "1.2 MB", "96 KB". */
 export function size(bytes: number): string {
 	if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;

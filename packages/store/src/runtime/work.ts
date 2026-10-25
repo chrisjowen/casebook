@@ -113,7 +113,10 @@ export interface WaitingEntry {
 	stage: StageLine;
 	/** What the others are doing, with any pause and its note: pausing notifies only them. */
 	on: { title: string; holders: PersonView[]; held?: Mark & { note: string } }[];
-	/** True when the user has nothing open in this process; false when their own task waits. */
+	/**
+	 * True when the user has done something in this process and has nothing open in it; false when
+	 * their own task waits, or they have not done anything here yet.
+	 */
 	myPartDone: boolean;
 	/** The user's own task that is waiting, if any. */
 	mine?: TaskSummary;
@@ -511,7 +514,8 @@ export async function loadWork(
 							}
 						: {})
 				})),
-				myPartDone: !myWaiting,
+				// Starting the case, or holding a role with nothing done yet, is not a part done.
+				myPartDone: !myWaiting && a.events.some((e) => e.by === me || e.onBehalfOf === me),
 				...(myWaiting ? { mine: summarizeTask(c, a, myWaiting.state, loaded.people) } : {})
 			});
 		}
@@ -669,8 +673,15 @@ function othersLine(a: LoadedAttachment, me: string, people: ReadonlyMap<string,
 	);
 	const mine = active.filter((s) => holdersOf(a, s.item.role).includes(me));
 	const others = active.filter((s) => !holdersOf(a, s.item.role).includes(me));
-	if (others.length === 0)
+	if (others.length === 0) {
+		// A question still out is what the case waits on, even with nothing else to do.
+		const askedOf = [
+			...new Set(a.conversation.questions.filter((q) => awaitingAnswer(q)).map((q) => q.to))
+		].filter((id) => id !== me);
+		if (askedOf.length)
+			return `Waiting on ${names(askedOf.map((id) => person(people, id).name))} to answer a question.`;
 		return mine.length ? 'Nobody else has anything to do right now.' : 'Nothing is in progress.';
+	}
 	const parts = others.map((s) => {
 		const who = names(
 			holdersOf(a, s.item.role).map((id) => person(people, id).name),
@@ -679,8 +690,17 @@ function othersLine(a: LoadedAttachment, me: string, people: ReadonlyMap<string,
 		const doing = lowerFirst(s.item.title);
 		return s.status === 'held' ? `${who} — ${doing} (paused)` : `${who} — ${doing}`;
 	});
-	const lead = mine.length === 0 ? 'Your part is done for now. Waiting on ' : 'Also in progress: ';
-	return `${lead}${parts.join('; ')}.`;
+	// Only someone who has done something here has a part that is done.
+	const acted = a.events.some((e) => e.by === me || e.onBehalfOf === me);
+	const lead =
+		mine.length > 0
+			? 'Also in progress: '
+			: acted
+				? 'Your part is done for now. Waiting on '
+				: 'Waiting on ';
+	const line = `${lead}${parts.join('; ')}`;
+	// A title such as "Big spend?" already ends the sentence.
+	return /[.?!]$/.test(line) ? line : `${line}.`;
 }
 
 function names(list: string[], role?: string): string {

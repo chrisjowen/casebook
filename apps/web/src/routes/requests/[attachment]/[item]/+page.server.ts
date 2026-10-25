@@ -20,5 +20,6 @@ export const load: PageServerLoad = async ({ params, locals }) => ({
 
 export const actions: Actions = taskActions({
 	ref: ({ params }) => ({ attachmentId: params.attachment!, item: params.item! }),
-	after: (_, title) => `${links.requests()}?done=${encodeURIComponent(title)}`
+	after: (_, title) => `${links.requests()}?done=${encodeURIComponent(title)}`,
+	saved: (_, title) => `${links.requests()}?saved=${encodeURIComponent(title)}`
 });

@@ -36,6 +36,66 @@ describe('runnableProcess', () => {
 		expect(approval).toMatchObject({ stage: 'stage.review', reviews: 'step.write-rca' });
 	});
 
+	it('lists work in run order: by stage, each item after what it needs', () => {
+		// The document keeps steps before decisions; a step that needs a decision's outcome still
+		// comes after the decision.
+		const { items } = runnableProcess({
+			schemaVersion: 1,
+			namespace: 'acme/eng/sre',
+			slug: 'laptop-request',
+			version: 1,
+			nodes: [
+				{ core: { id: 'process.laptop-request', kind: 'process', title: 'Laptop request' } },
+				{ core: { id: 'stage.start', kind: 'stage', title: 'Start' } },
+				{ core: { id: 'stage.approval', kind: 'stage', title: 'Approval' } },
+				{ core: { id: 'role.owner', kind: 'role', title: 'Owner' } },
+				{
+					core: {
+						id: 'step.sign-off',
+						kind: 'step',
+						title: 'Director signs off',
+						stage: 'stage.approval',
+						role: 'role.owner',
+						actor: 'human',
+						requires: ['fact.big-spend']
+					}
+				},
+				{
+					core: {
+						id: 'step.request',
+						kind: 'step',
+						title: 'Submit the request',
+						stage: 'stage.start',
+						role: 'role.owner',
+						actor: 'human',
+						collects: [{ fact: 'fact.cost' }]
+					}
+				},
+				{ core: { id: 'fact.cost', kind: 'fact', schema: { type: 'number' } } },
+				{
+					core: {
+						id: 'fact.big-spend',
+						kind: 'fact',
+						schema: { type: 'string', enum: ['Yes', 'No'] }
+					}
+				},
+				{
+					core: {
+						id: 'decision.big-spend',
+						kind: 'decision',
+						title: 'Big spend?',
+						stage: 'stage.approval',
+						role: 'role.owner',
+						actor: 'human',
+						requires: ['fact.cost'],
+						outcome: 'fact.big-spend'
+					}
+				}
+			]
+		} as never);
+		expect(items.map((i) => i.id)).toEqual(['step.request', 'decision.big-spend', 'step.sign-off']);
+	});
+
 	it('records a decision’s outcome as what it collects', () => {
 		const decision = runnableProcess(incidentManagement).items.find(
 			(i) => i.id === 'decision.classify-severity'
