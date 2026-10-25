@@ -8,6 +8,42 @@ A case is the shared subject several processes attach to, sharing one fact store
 People and agents act on cases as principals within hierarchical namespaces.
 v1 focuses on defining processes, viewing them as a graph, and an agent-assisted wizard that imports spreadsheets; running cases has begun (ADR 0022).
 
+## What it looks like
+
+These screenshots come from `pnpm db:seed`: the synthetic sample processes and their made-up people, signed in as Alex Example.
+
+**My work**: what waits on you across every case, from ready tasks to ones paused for information.
+
+![My work, listing a ready task, a paused task and two waiting on someone else](docs/screenshots/my-work.webp)
+
+**A case workspace**: your tasks, then one stage strip per process attached to the case.
+
+![The Mira Example case with Register a birth abroad and Claim a medical bill attached](docs/screenshots/case.webp)
+
+**A task form**: what the task uses from the case, with where each value came from, and what to record.
+
+![The Complete the application form task in Register a birth abroad](docs/screenshots/task.webp)
+
+**The case record**: every value and file on the case, once, with who recorded it, when and in which task.
+
+![The case record for Mira Example, with documents and values](docs/screenshots/record.webp)
+
+**Processes**: the instance's definitions with status, version, change policy and live cases.
+
+![The Example family process list](docs/screenshots/processes.webp)
+
+**The board editor**: a process's stages are columns of step and decision cards, and lines show what each step needs from an earlier one.
+
+![The Spouse citizenship process on the board](docs/screenshots/board.webp)
+
+**A step's Records and Needs first**: the facts a step records and the ones it needs first, edited in place.
+
+![The Upload the marriage certificate step open in the inspector](docs/screenshots/step.webp)
+
+**Draft and publishing**: what the draft changes since the latest published version, with the publish checks, Publish and Undo.
+
+![The Spouse citizenship details showing one change since version 1 and Publish version 2](docs/screenshots/publish.webp)
+
 ## Docs
 
 - [Decision log](docs/decisions/README.md)
