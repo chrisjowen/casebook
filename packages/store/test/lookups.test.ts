@@ -17,7 +17,7 @@ import {
 	undoSharedLookupEdit,
 	type SharedLookup
 } from '../src/lookups.js';
-import type { Refusal } from '../src/definitions.js';
+import { editDefinition, publishDefinition, readDraft, type Refusal } from '../src/definitions.js';
 import {
 	completeItem,
 	listProcesses,
@@ -135,7 +135,8 @@ describe.skipIf(!url)('shared lookups (Postgres)', () => {
 				title: 'Incident management',
 				namespace: 'acme/eng/sre',
 				facts: [{ id: 'fact.affected-services', title: 'Affected services' }],
-				draftOnly: false
+				draftOnly: false,
+				cases: expect.any(Number)
 			}
 		]);
 	});
@@ -245,6 +246,62 @@ describe.skipIf(!url)('shared lookups (Postgres)', () => {
 			)
 		).toEqual([]);
 		expect(await deleteSharedLookup(db, users.olive, near.id)).toMatchObject({ ok: false });
+	});
+
+	it('refuses deleting a shared lookup that only an older version and its cases still use', async () => {
+		const processes = await listProcesses(db, users.devon, 'acme');
+		if ('ok' in processes) throw new Error(processes.reason);
+		const definitionId = processes.groups
+			.flatMap((g) => g.definitions)
+			.find((d) => d.slug === 'incident-management')!.id;
+		const started = await startCase(db, users.devon, { definitionId, title: 'INC-4000 Old' });
+		if (!started.ok) throw new Error(started.reason);
+
+		const other = await createSharedLookup(db, users.olive, {
+			namespaceId: ns.get('acme/eng')!,
+			title: 'Other services',
+			values: [{ value: 'pager' }]
+		});
+		if (!other.ok) throw new Error(other.reason);
+		const draft = await readDraft(db, users.olive, definitionId);
+		if (!draft.ok) throw new Error(draft.reason);
+		const edited = await editDefinition(db, users.olive, {
+			definitionId,
+			baseRevision: draft.revision,
+			ops: [
+				{
+					op: 'update_core',
+					id: 'fact.affected-services',
+					changes: {
+						schema: { 'x-lookup': { kind: 'dataset', dataset: other.name, version: null } }
+					}
+				}
+			]
+		});
+		if (!edited.ok) throw new Error(edited.reason);
+		const published = await publishDefinition(db, users.olive, {
+			definitionId,
+			baseRevision: edited.revision
+		});
+		if (!published.ok) throw new Error(published.reason);
+
+		const seen = (await listSharedLookups(db, users.olive, 'acme'))
+			.flatMap((n) => n.lookups)
+			.filter((l) => l.name === 'service-catalog')
+			.sort((a, b) => b.namespace.path.length - a.namespace.path.length)[0]!;
+		expect(await sharedLookupUses(db, seen)).toEqual([
+			expect.objectContaining({
+				slug: 'incident-management',
+				facts: [{ id: 'fact.affected-services', title: 'Affected services' }],
+				draftOnly: false,
+				cases: expect.any(Number)
+			})
+		]);
+		refused(
+			await deleteSharedLookup(db, users.olive, seen.id),
+			'referenced',
+			/Incident management, and \d+ cases? still uses? it\. Turn its values off instead/
+		);
 	});
 });
 

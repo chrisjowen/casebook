@@ -375,7 +375,9 @@
 												{#each u.facts as f, i (f.id)}{i ? ', ' : ''}<a
 														class="underline-offset-2 hover:text-foreground hover:underline"
 														href={links.editor(slug, u.namespace, u.slug, { select: f.id })}>{f.title}</a
-													>{/each}{u.draftOnly ? ' · in its draft only' : ''}
+													>{/each}{u.draftOnly ? ' · in its draft only' : ''}{u.cases
+													? ` · ${u.cases} ${u.cases === 1 ? 'case' : 'cases'}`
+													: ''}
 											</p>
 										</li>
 									{:else}

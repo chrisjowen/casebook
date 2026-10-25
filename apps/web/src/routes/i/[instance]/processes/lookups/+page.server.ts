@@ -126,6 +126,12 @@ export const actions: Actions = {
 		} catch {
 			return fail(400, { code: 'invalid-operation', reason: 'The change was not valid JSON' });
 		}
+		if (typeof changes !== 'object' || changes === null || Array.isArray(changes)) {
+			return fail(400, {
+				code: 'invalid-operation',
+				reason: 'The change did not say what to change'
+			});
+		}
 		const result = await editSharedLookup(getDb(), actorOf(locals), {
 			lookupId: String(form.get('lookupId')),
 			baseVersion: Number(form.get('baseVersion')),

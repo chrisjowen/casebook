@@ -2,7 +2,7 @@
 // processes and of its descendants' processes, such as countries or insurers. Each saved change
 // is a new version, so processes always choose from the latest. `@casebook/model` decides what a
 // valid list is and describes changes; this file stores them and checks the actor with `can`.
-import { and, asc, desc, eq, inArray, max } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, max } from 'drizzle-orm';
 import {
 	describeValueChanges,
 	factsUsingShared,
@@ -17,6 +17,7 @@ import type { Db, Queryable } from './client.js';
 import type { NamespaceRef, Refusal } from './definitions.js';
 import {
 	accounts,
+	caseAttachments,
 	definitionVersions,
 	draftRevisions,
 	namespaces,
@@ -51,8 +52,10 @@ export interface LookupUse {
 	title: string;
 	namespace: string;
 	facts: { id: string; title: string }[];
-	/** True when only its draft uses the lookup so far, not its latest published version. */
+	/** True when only its draft uses the lookup so far, not any published version. */
 	draftOnly: boolean;
+	/** How many of its cases run on a version that chooses from the lookup. */
+	cases: number;
 }
 
 /** One saved version of a shared lookup, with what it changed. */
@@ -171,7 +174,8 @@ export async function readSharedLookup(
 
 /**
  * The processes that choose from a shared lookup: those in its namespace or below whose draft or
- * latest published version names it, and do not see a nearer list of the same name.
+ * any published version names it, and do not see a nearer list of the same name, with how many
+ * of their cases run on a version that does.
  */
 export async function sharedLookupUses(db: Db, lookup: SharedLookup): Promise<LookupUse[]> {
 	const inside = (
@@ -209,34 +213,53 @@ export async function sharedLookupUses(db: Db, lookup: SharedLookup): Promise<Lo
 			.where(eq(draftRevisions.definitionId, d.id))
 			.orderBy(desc(draftRevisions.revision))
 			.limit(1);
-		const [published] = await db
-			.select({ body: definitionVersions.body })
-			.from(definitionVersions)
-			.where(
-				and(eq(definitionVersions.definitionId, d.id), eq(definitionVersions.status, 'published'))
-			)
-			.orderBy(desc(definitionVersions.version))
-			.limit(1);
-		const document = (draft?.body ?? published?.body) as DefinitionDocument | undefined;
-		if (!document) continue;
-		const facts = factsUsingShared(document, lookup.name);
-		const live = published
-			? factsUsingShared(published.body as DefinitionDocument, lookup.name)
+		const versions = (
+			await db
+				.select({
+					id: definitionVersions.id,
+					status: definitionVersions.status,
+					body: definitionVersions.body
+				})
+				.from(definitionVersions)
+				.where(eq(definitionVersions.definitionId, d.id))
+				.orderBy(desc(definitionVersions.version))
+		).filter((v) => factsUsingShared(v.body as DefinitionDocument, lookup.name).length > 0);
+		const [bound] = versions.length
+			? await db
+					.select({ n: count() })
+					.from(caseAttachments)
+					.where(
+						inArray(
+							caseAttachments.definitionVersionId,
+							versions.map((v) => v.id)
+						)
+					)
 			: [];
-		if (facts.length === 0 && live.length === 0) continue;
-		const titled = (ids: string[]) =>
-			ids.map((id) => {
-				const node = document.nodes.find((n) => n.core.id === id) as FactNode | undefined;
-				return { id, title: node?.core.title ?? id };
-			});
-		const process = document.nodes.find((n) => n.core.kind === 'process');
+		const published = versions.filter((v) => v.status === 'published');
+		const documents = [
+			...(draft ? [draft.body] : []),
+			...versions.map((v) => v.body)
+		] as DefinitionDocument[];
+		const inDraft = draft ? factsUsingShared(draft.body as DefinitionDocument, lookup.name) : [];
+		const cases = bound?.n ?? 0;
+		if (inDraft.length === 0 && published.length === 0 && cases === 0) continue;
+		const facts = [...new Set(documents.flatMap((doc) => factsUsingShared(doc, lookup.name)))];
+		const titleOf = (id: string) => {
+			for (const doc of documents) {
+				const node = doc.nodes.find((n) => n.core.id === id) as FactNode | undefined;
+				if (node) return node.core.title ?? id;
+			}
+			return id;
+		};
+		const process = documents[0]!.nodes.find((n) => n.core.kind === 'process');
 		uses.push({
 			definitionId: d.id,
 			slug: d.slug,
 			title: process?.core.title ?? d.slug,
 			namespace: path,
-			facts: titled(facts.length ? facts : live),
-			draftOnly: live.length === 0
+			facts: facts.map((id) => ({ id, title: titleOf(id) })),
+			draftOnly: published.length === 0 && cases === 0,
+			cases
 		});
 	}
 	return uses;
@@ -303,22 +326,30 @@ export async function createSharedLookup(
 		).map((r) => r.name)
 	);
 	const base = nameOf(body.title);
-	let name = base;
-	for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
-	return db.transaction(async (tx) => {
-		const [row] = await tx
-			.insert(sharedLookups)
-			.values({ namespaceId: input.namespaceId, name, createdById: actor.id })
-			.returning({ id: sharedLookups.id });
-		await tx.insert(sharedLookupVersions).values({
-			lookupId: row!.id,
-			version: 1,
-			body,
-			authorId: actor.id,
-			...(actor.onBehalfOfId === undefined ? {} : { onBehalfOfId: actor.onBehalfOfId })
-		});
-		return { ok: true as const, id: row!.id, name, version: 1 };
-	});
+	for (let n = 1; ; n++) {
+		const name = n === 1 ? base : `${base}-${n}`;
+		if (taken.has(name)) continue;
+		try {
+			return await db.transaction(async (tx) => {
+				const [row] = await tx
+					.insert(sharedLookups)
+					.values({ namespaceId: input.namespaceId, name, createdById: actor.id })
+					.returning({ id: sharedLookups.id });
+				await tx.insert(sharedLookupVersions).values({
+					lookupId: row!.id,
+					version: 1,
+					body,
+					authorId: actor.id,
+					...(actor.onBehalfOfId === undefined ? {} : { onBehalfOfId: actor.onBehalfOfId })
+				});
+				return { ok: true as const, id: row!.id, name, version: 1 };
+			});
+		} catch (error) {
+			if (String((error as { cause?: { code?: string } }).cause?.code ?? '') !== '23505') {
+				throw error;
+			}
+		}
+	}
 }
 
 export interface SharedLookupEdit {
@@ -384,7 +415,10 @@ export async function undoSharedLookupEdit(
 	return save(db, actor, found, head.version + 1, earlier!.body as LookupList, target);
 }
 
-/** Deletes a shared lookup no process chooses from. */
+/**
+ * Deletes a shared lookup no process's draft or published version chooses from and no case runs
+ * on. One still in use is retired by turning its values off instead.
+ */
 export async function deleteSharedLookup(
 	db: Db,
 	actor: Actor,
@@ -395,9 +429,14 @@ export async function deleteSharedLookup(
 	if (!read.can.edit.allowed) return refuse('access-denied', read.can.edit.reason);
 	const uses = await sharedLookupUses(db, read.lookup);
 	if (uses.length) {
+		const cases = uses.reduce((n, u) => n + u.cases, 0);
 		return refuse(
 			'referenced',
-			`${read.lookup.title} is still used by ${uses.map((u) => u.title).join(', ')}; choose another list for those facts first`
+			`${read.lookup.title} is still used by ${uses.map((u) => u.title).join(', ')}` +
+				(cases
+					? `, and ${cases === 1 ? '1 case still uses' : `${cases} cases still use`} it`
+					: '') +
+				'. Turn its values off instead: new choices will not offer them, and cases that hold them still read them'
 		);
 	}
 	await db.delete(sharedLookups).where(eq(sharedLookups.id, lookupId));

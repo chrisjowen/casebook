@@ -167,8 +167,18 @@
 			);
 			return;
 		}
-		const name = String((result.data as { name?: string } | undefined)?.name);
-		if (await change(shareLookup(active, lookup.core.id, name))) nav({ sel: 'lookups' });
+		const made = result.data as { id: string; name: string };
+		if (await change(shareLookup(active, lookup.core.id, made.name))) {
+			nav({ sel: 'lookups' });
+			return;
+		}
+		const undo = new FormData();
+		undo.set('lookupId', made.id);
+		await fetch(`${manageLookups()}?/delete`, {
+			method: 'POST',
+			body: undo,
+			headers: { 'x-sveltekit-action': 'true' }
+		});
 	}
 
 	let query = $state('');

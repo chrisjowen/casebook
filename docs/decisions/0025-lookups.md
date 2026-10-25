@@ -25,7 +25,7 @@ Lists such as severities, countries, insurers and document types need to be defi
   - It follows the living change policy: processes always choose from its latest version, and undo adds a version restoring the one before. The `version` on a dataset reference is kept for reference only.
   - A process sees the shared lookups of its namespace and every ancestor; the nearest one wins when two have the same name.
   - Changing them needs the new `lookup.edit` permission, which is `write` on the namespace. Reading them needs `definition.read`.
-  - A shared lookup cannot be deleted while a process's draft or latest version chooses from it.
+  - A shared lookup cannot be deleted while a process's draft, any of its published versions, or a live case chooses from it. To retire a list that is still in use, turn its values off: new choices stop offering them, and cases that hold them still read them.
 - Inline `enum` options stay as they are. The editor turns them into a lookup in one edit.
 - Publish checks:
   - a value stored twice in one lookup is an error;
