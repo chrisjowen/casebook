@@ -1,6 +1,7 @@
 import type { DefinitionDocument, Node, NodeKind } from './node.js';
 import { formatField, toPointer, type Segments } from './pointer.js';
-import { nodeReferences, type NodeReference } from './references.js';
+import { nodeGuards, nodeReferences, type NodeReference } from './references.js';
+import { GuardSyntaxError, parseGuard } from './runtime/expression.js';
 import { validate, type ValidationError } from './validate.js';
 
 export const ISSUE_SEVERITIES = ['error', 'warning'] as const;
@@ -17,6 +18,7 @@ export const INVARIANT_CODES = [
 	'unknown-approval',
 	'undeclared-role',
 	'unknown-guard-fact',
+	'unparsed-guard',
 	'uncollected-fact',
 	'dependency-cycle',
 	'uncollected-read-fact',
@@ -121,6 +123,25 @@ export function checkInvariants(document: DefinitionDocument): InvariantIssue[] 
 			message: `${where} ${ref.target}, which is not declared`
 		});
 	}
+
+	// An expression that does not parse leaves its guard to people, as if it were prose only.
+	nodes.forEach((node, i) => {
+		for (const { at: field, guard } of nodeGuards(node)) {
+			if (guard.expr === undefined) continue;
+			try {
+				parseGuard(guard.expr);
+			} catch (error) {
+				if (!(error instanceof GuardSyntaxError)) throw error;
+				issues.push({
+					code: 'unparsed-guard',
+					severity: 'warning',
+					path: at(i, [...field, 'expr']),
+					nodeId: idOf(i),
+					message: `${idOf(i)} has a condition (${formatField(field.slice(1))}) whose code does not work: ${error.message}. People will decide it by hand until it is fixed`
+				});
+			}
+		}
+	});
 
 	// Facts collected by a step or decided by a decision, with who produces each.
 	const producers = new Map<string, number[]>();

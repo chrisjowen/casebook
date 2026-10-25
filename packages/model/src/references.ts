@@ -81,3 +81,18 @@ export function nodeReferences(node: Node): NodeReference[] {
 	}
 	return refs;
 }
+
+/** The guards a node's core holds, with where each sits, such as `core.repeat.until`. */
+export function nodeGuards(node: Node): { at: Segments; guard: Guard }[] {
+	const { core } = node;
+	const fields: [Segments, Guard | undefined][] =
+		core.kind === 'step'
+			? [
+					[['when'], core.when],
+					[['repeat', 'until'], core.repeat?.until]
+				]
+			: core.kind === 'decision' || core.kind === 'approval'
+				? [[['when'], core.when]]
+				: [];
+	return fields.flatMap(([at, guard]) => (guard ? [{ at: ['core', ...at], guard }] : []));
+}

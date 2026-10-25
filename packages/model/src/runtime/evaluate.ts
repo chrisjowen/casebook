@@ -68,12 +68,12 @@ const OPEN: ReadonlySet<ItemStatus> = new Set(['ready', 'held', 'waiting', 'bloc
 /** True for an item someone still has to do or unblock: ready, held, waiting or blocked. */
 export const isOpen = (status: ItemStatus) => OPEN.has(status);
 
-function readGuard(guard: Guard | undefined, facts: GuardFacts): GuardState {
+function readGuard(guard: Guard | undefined, facts: GuardFacts, now: Date): GuardState {
 	if (guard === undefined) return 'none';
 	if (guard.expr === undefined) return 'open';
 	let value: GuardValue;
 	try {
-		value = evaluateGuard(guard.expr, facts);
+		value = evaluateGuard(guard.expr, facts, { now });
 	} catch (error) {
 		if (error instanceof GuardSyntaxError) return 'open';
 		throw error;
@@ -108,11 +108,11 @@ export function evaluateProcess(
 	const guards = new Map<string, GuardState>();
 	for (const item of process.items) {
 		const p = progressOf(item.id);
-		const guard = readGuard(item.when, facts);
+		const guard = readGuard(item.when, facts, now);
 		guards.set(item.id, guard);
 		if (p.skipped) settled.set(item.id, 'skipped');
 		else if (item.repeat) {
-			if (readGuard(item.repeat.until, facts) === 'applies') settled.set(item.id, 'done');
+			if (readGuard(item.repeat.until, facts, now) === 'applies') settled.set(item.id, 'done');
 		} else if (p.done) settled.set(item.id, 'done');
 		else if (guard === 'does-not-apply') settled.set(item.id, 'skipped');
 		else if (item.reviews && settled.get(item.reviews) === 'skipped') {
