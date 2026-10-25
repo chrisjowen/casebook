@@ -21,6 +21,7 @@ A definition is a list of nodes. Every node has a core with an id, which starts 
 - step: a piece of work. core needs stage, role and actor ("human", "agent" or "either"). collects lists the facts it records, as [{"fact": "fact.x"}]; requires lists the facts it needs first, which is how steps are ordered: a step that requires a fact waits for the step that collects it. when is a condition {"text": "prose", "expr": "optional expression"}.
 - decision: a choice someone makes, with stage, role, actor and outcome, a fact whose schema is an enum of the choices.
 - approval: a sign-off a step needs, with role and actor.
+- lookup: a named list of allowed values, for a list the sheet keeps (a dropdown, a tab of codes) or one several facts share. core needs values, as [{"value": "SEV1", "label": "optional wording", "code": "optional code"}]. A fact chosen from it has schema {"type": "string", "x-lookup": {"kind": "lookup", "lookup": "lookup.x"}} instead of an enum; add the lookup before the fact.
 
 For example, one apply_operations call that adds a stage, a role, a fact and the step that records it:
 
