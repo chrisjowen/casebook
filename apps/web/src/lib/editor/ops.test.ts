@@ -15,6 +15,7 @@ import {
 	requiresOf,
 	type WorkItem
 } from '$lib/graph/derive';
+import { branchChoices } from '$lib/conditions/conditions';
 import * as edits from './ops';
 
 /** Applies one gesture's edit through the model, as the store does, and returns the new draft. */
@@ -137,7 +138,10 @@ describe('linking is handing over facts', () => {
 		const notify = work(after, 'step.notify-downstream');
 		expect(requiresOf(notify)).toContain('fact.severity');
 		expect(notify.core.when?.text).toBe('Only when Classify severity is SEV1');
-		expect(edits.branchOf(notify, 'fact.severity')).toBe('SEV1');
+		const branched = indexDocument(after);
+		expect(branchChoices(branched, work(after, 'decision.classify-severity'), notify)).toEqual([
+			'SEV1'
+		]);
 		expect(links(after)).toContain('decision.classify-severity->step.notify-downstream');
 	});
 

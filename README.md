@@ -119,6 +119,14 @@ On the board, everything is added and linked in place:
 - dragging a card onto another column moves it to that stage, and double-clicking a name renames it;
 - a step's **Records** and **Needs first** add, rename, re-kind and remove its facts in place.
 
+A step’s or decision’s **Rules** hold its conditions: "Only when" and, for a repeating step, "Stops repeating when" (ADR 0004).
+Each reads as one plain line, such as "Severity is SEV1 or SEV2".
+**Edit** builds it from rows of fact, operator and value, joined by all or any, with operators and values that fit the fact (a choice's options, dates before or after today, more than so many days ago).
+The **Code** tab is the same condition as an expression, with suggestions of facts, operators, choices and helpers as you type, and a live check that points at what is wrong.
+**Test** fills in sample values, or the values on a case running the process, and shows whether the condition holds and which part decided it; a decision's **Test the branches** shows which of the steps that depend on its outcome would run.
+The expression language and its helpers (`today()`, `days_since`, `days_between`, `add_days`, `contains`, `count`, `is_set`, `is_empty`) are in `packages/model/src/runtime/expression.ts`; a condition whose code does not parse is a publish warning, and people decide it by hand until it is fixed.
+Conditions count calendar days in one time zone, `CASEBOOK_TIMEZONE` (an IANA name such as `Asia/Singapore`, UTC when unset): `today()`, the day helpers and the day a date-time falls on read it on cases and in **Test** alike, and a date-time compared with a date is compared by its day.
+
 Definitions are read from and saved to Postgres through `packages/store` (`apps/web/src/lib/server/definitions.ts` and the form actions in `apps/web/src/routes/i/[instance]/processes/edit/+page.server.ts`).
 Each workspace is a namespace the signed-in user can read.
 Every gesture changes the draft through the model's node operations and is saved as one draft revision, with a notice that offers Undo (`⌘Z` too).

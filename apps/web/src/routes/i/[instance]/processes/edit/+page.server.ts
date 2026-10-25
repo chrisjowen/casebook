@@ -1,6 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import {
+	conditionTimeZone,
 	createDefinition,
 	editDefinition,
 	publishDefinition,
@@ -39,6 +40,8 @@ export const load: PageServerLoad = async ({ url, locals, params, depends }) => 
 		namespace: workspace?.namespace,
 		slug,
 		view,
+		// The time zone conditions count days in, so testing one in the editor agrees with cases.
+		timeZone: conditionTimeZone(),
 		selected: url.searchParams.get('sel') ?? undefined,
 		// A spreadsheet import in progress, shown with its assistant; the shell lists the others.
 		wizard: wizard && wizard.namespaceId === workspace?.id ? wizard : undefined

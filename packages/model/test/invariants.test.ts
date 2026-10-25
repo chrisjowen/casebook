@@ -121,6 +121,11 @@ describe('checkInvariants', () => {
 				'undeclared-role',
 				'/nodes/4/core/when/expr',
 				'step.assign-reviewer has a guard (core.when.expr) that refers to role.auditor, which is not declared'
+			],
+			[
+				'unparsed-guard',
+				'/nodes/4/core/when/expr',
+				'step.assign-reviewer has a condition (when) whose code does not work: "case" is not a fact, helper or word a condition can use. People will decide it by hand until it is fixed'
 			]
 		]);
 	});
@@ -172,6 +177,21 @@ describe('checkInvariants', () => {
 	it('requires exactly one process node', () => {
 		expect(codesOf(missingProcess)).toEqual([['missing-process', 'error', undefined]]);
 		expect(codesOf(multipleProcesses)).toEqual([['multiple-processes', 'error', 'process.second']]);
+	});
+
+	it('warns about condition code that does not work, which people then decide by hand', () => {
+		const document = structuredClone(incidentManagement);
+		const step = document.nodes.find((n) => n.core.id === 'step.form-working-group');
+		if (step?.core.kind !== 'step' || !step.core.when) throw new Error('fixture changed');
+		step.core.when.expr = "fact.severity in ['SEV1'";
+		expect(checkInvariants(document)).toEqual([
+			expect.objectContaining({
+				code: 'unparsed-guard',
+				severity: 'warning',
+				nodeId: 'step.form-working-group',
+				message: expect.stringContaining('People will decide it by hand')
+			})
+		]);
 	});
 
 	it('warns about unused facts, empty stages and guards on uncollected facts', () => {

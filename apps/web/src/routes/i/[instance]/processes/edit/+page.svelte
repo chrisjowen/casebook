@@ -25,6 +25,7 @@
 	import ProcessInspector from '$lib/inspector/ProcessInspector.svelte';
 	import SharedFactsInspector from '$lib/inspector/SharedFactsInspector.svelte';
 	import Assistant from '$lib/wizard/Assistant.svelte';
+	import { inspector } from '$lib/conditions/layout.svelte';
 	import * as Select from '$lib/components/ui/select';
 	import {
 		indexDocument,
@@ -490,7 +491,10 @@
 
 			{#if inspectorOpen && active}
 				<aside
-					class="flex w-[372px] shrink-0 flex-col border-l bg-background"
+					class={[
+						'flex shrink-0 flex-col border-l bg-background',
+						inspector.wide ? 'w-[min(560px,48vw)]' : 'w-[372px]'
+					]}
 					aria-label="Inspector"
 				>
 					<div class="flex h-12 shrink-0 items-center gap-2 border-b px-5">
@@ -538,6 +542,7 @@
 									item={selectedItem}
 									onselect={(id) => nav({ sel: id })}
 									edit={change}
+									publishes={loaded?.policy === 'living'}
 								/>
 							{/key}
 						{:else if selectedStage}

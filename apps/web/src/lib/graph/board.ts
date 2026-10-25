@@ -9,7 +9,7 @@
  */
 import type { Edge, Node } from '@xyflow/svelte';
 import type { FactNode } from '@casebook/model';
-import { branchOf } from '$lib/editor/ops';
+import { branchChoices } from '$lib/conditions/conditions';
 import {
 	collectorsByFact,
 	collectsOf,
@@ -93,7 +93,7 @@ export interface BoardRoute {
 export interface BoardEdgeData extends Record<string, unknown> {
 	handoff: HandOff;
 	facts: string[];
-	/** The decision choice the target runs for, when it is a branch. */
+	/** The decision choices the target runs for, such as "SEV1 or SEV2", when it is a branch. */
 	branch?: string;
 	route?: BoardRoute;
 }
@@ -174,13 +174,14 @@ export function boardCardHeight(d: BoardCardData): number {
 	return BOARD_HEAD + ROWS_PAD * 2 + rows * BOARD_ROW + chips + 12;
 }
 
-/** The handle a hand-off leaves from: the choice or fact row it carries, else the card. */
-function sourceHandle(ix: ProcessIndex, h: HandOff, rows: BoardRow[]): string {
-	const from = ix.byId.get(h.from) as WorkItem;
-	const to = ix.byId.get(h.to) as WorkItem;
+/**
+ * The handle a hand-off leaves from: from a decision, the row of the first choice it is a branch
+ * for; from a step, the fact row it carries; else the card.
+ */
+function sourceHandle(from: WorkItem, h: HandOff, branch: string[], rows: BoardRow[]): string {
 	if (from.core.kind === 'decision') {
-		const choice = branchOf(to, from.core.outcome);
-		return choice && rows.some((r) => r.handle === `b:${choice}`) ? `b:${choice}` : 'out';
+		const handle = `b:${branch[0]}`;
+		return branch.length && rows.some((r) => r.handle === handle) ? handle : 'out';
 	}
 	const row = rows.find((r) => h.facts.includes(r.fact as never));
 	return row ? row.handle : 'out';
@@ -190,19 +191,19 @@ function edgesFor(ix: ProcessIndex, list: HandOff[], data: Map<string, BoardCard
 	return list.map((h) => {
 		const from = ix.byId.get(h.from) as WorkItem;
 		const to = ix.byId.get(h.to) as WorkItem;
-		const branch = from.core.kind === 'decision' ? branchOf(to, from.core.outcome) : undefined;
+		const branch = branchChoices(ix, from, to);
 		return {
 			id: h.id,
 			source: h.from,
 			target: h.to,
-			sourceHandle: sourceHandle(ix, h, data.get(h.from)?.rows ?? []),
+			sourceHandle: sourceHandle(from, h, branch, data.get(h.from)?.rows ?? []),
 			targetHandle: 'in',
 			type: 'board',
 			zIndex: 1,
 			data: {
 				handoff: h,
 				facts: h.facts.map((f) => labelOf(ix, f)),
-				...(branch ? { branch } : {})
+				...(branch.length ? { branch: branch.join(' or ') } : {})
 			} satisfies BoardEdgeData
 		};
 	});

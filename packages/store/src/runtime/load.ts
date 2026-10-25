@@ -142,11 +142,26 @@ export async function caseIdsInAccount(db: Queryable, accountId: string): Promis
 }
 
 /**
+ * The IANA time zone `CASEBOOK_TIMEZONE` names, such as `Asia/Singapore`, which conditions count
+ * calendar days in; UTC when it is unset.
+ */
+export function conditionTimeZone(env: NodeJS.ProcessEnv = process.env): string {
+	const zone = env.CASEBOOK_TIMEZONE?.trim() || 'UTC';
+	try {
+		new Intl.DateTimeFormat('en', { timeZone: zone });
+	} catch {
+		throw new Error(`CASEBOOK_TIMEZONE is not a time zone: ${zone}`);
+	}
+	return zone;
+}
+
+/**
  * Loads the cases with these ids, in the order given, and evaluates every process attached to
- * them at `now`. Ids that name no case are left out.
+ * them at `now`, counting days in the `conditionTimeZone`. Ids that name no case are left out.
  */
 export async function loadCases(db: Queryable, caseIds: string[], now: Date): Promise<Loaded> {
 	if (caseIds.length === 0) return { cases: [], people: new Map() };
+	const timeZone = conditionTimeZone();
 	const caseRows = await db
 		.select({
 			id: cases.id,
@@ -293,7 +308,13 @@ export async function loadCases(db: Queryable, caseIds: string[], now: Date): Pr
 					at: e.at.toISOString(),
 					data: e.data as ItemEvent['data'] & object
 				}));
-				const state = evaluateProcess(process, values, foldProgress(process, itemEvents), now);
+				const state = evaluateProcess(
+					process,
+					values,
+					foldProgress(process, itemEvents),
+					now,
+					timeZone
+				);
 				const roles = new Map<string, string[]>();
 				for (const role of process.roles.keys()) {
 					roles.set(role, holders.of(c, role));

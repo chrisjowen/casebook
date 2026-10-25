@@ -22,6 +22,7 @@ import {
 	listProcesses,
 	loadCase,
 	loadGuestTask,
+	loadCaseFacts,
 	loadProcess,
 	loadRequests,
 	loadTask,
@@ -665,6 +666,20 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 			expect(process.cases.map((c) => [c.title, c.attachment.binding])).toEqual([
 				['Sam Example', 'pinned']
 			]);
+		});
+
+		it('gives the facts on each case running a process, for testing its conditions', async () => {
+			const found = await loadCaseFacts(db, users.alex, 'example-family', 'medical-bill-claim');
+			if (!found.ok) throw new Error(found.reason);
+			expect(found.cases).toHaveLength(2);
+			for (const c of found.cases) {
+				expect(c.title).toEqual(expect.any(String));
+				expect(Object.keys(c.facts).every((f) => f.startsWith('fact.'))).toBe(true);
+			}
+			expect(found.cases.some((c) => Object.keys(c.facts).length > 0)).toBe(true);
+			expect(
+				await loadCaseFacts(db, users.alex, 'example-family', 'no-such-process')
+			).toMatchObject({ ok: false, code: 'not-found' });
 		});
 
 		it('moves a pinned case to a newer version only by an explicit move, for writers', async () => {
