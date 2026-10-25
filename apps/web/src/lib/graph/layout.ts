@@ -1,6 +1,7 @@
 /**
- * Turns a definition into positioned Svelte Flow nodes and edges for each view. ELK lays out
- * the step cards, fact flow and workspace map; role lanes use the rank grid from `derive.ts`.
+ * Turns a definition into positioned Svelte Flow nodes and edges for the read-only views. ELK lays
+ * out the fact flow and workspace map; role lanes use the rank grid from `derive.ts`. The board,
+ * where processes are built, lays itself out in `board.ts`.
  */
 import type { Edge, Node } from '@xyflow/svelte';
 import type { DefinitionDocument, FactNode } from '@casebook/model';
@@ -21,11 +22,9 @@ import {
 	type WorkItem
 } from './derive';
 
-export type ViewId = 'cards' | 'lanes' | 'facts';
+/** The board is where a process is built; role lanes and fact flow are read-only lenses on it. */
+export type ViewId = 'board' | 'lanes' | 'facts';
 
-export const CARD_W = 276;
-export const CARD_HEAD = 58;
-export const ROW_H = 28;
 export const MAX_ROWS = 4;
 export const COMPACT_W = 216;
 export const COMPACT_H = 76;
@@ -135,33 +134,14 @@ export function cardData(ix: ProcessIndex, item: WorkItem, compact: boolean): Ca
 	};
 }
 
-/** Full card height: header, inset fact rows, optional footer chips. */
-export function cardHeight(d: CardData): number {
-	const rows = Math.max(1, d.rows.length) + (d.moreRows ? 1 : 0);
-	const footer = d.guard || d.repeat || d.approval || d.inferred || d.assigns ? 34 : 0;
-	return CARD_HEAD + rows * ROW_H + 10 + footer + 12;
-}
-
-export const rowPortY = (i: number) => CARD_HEAD + 5 + i * ROW_H + ROW_H / 2;
-
-function handOffEdges(ix: ProcessIndex, ported: boolean): Edge[] {
-	return reduceTransitive(handOffs(ix)).map((e) => {
-		const from = ix.byId.get(e.from) as WorkItem | undefined;
-		const visible = from
-			? collectsOf(from)
-					.slice(0, MAX_ROWS)
-					.map((c) => c.fact)
-			: [];
-		const row = e.facts.find((f) => visible.includes(f));
-		return {
-			id: e.id,
-			source: e.from,
-			target: e.to,
-			type: 'handoff',
-			...(ported ? { sourceHandle: row ? `f:${row}` : 'out', targetHandle: 'in' } : {}),
-			data: { facts: e.facts.map((f) => labelOf(ix, f)) } satisfies HandOffData
-		};
-	});
+function handOffEdges(ix: ProcessIndex): Edge[] {
+	return reduceTransitive(handOffs(ix)).map((e) => ({
+		id: e.id,
+		source: e.from,
+		target: e.to,
+		type: 'handoff',
+		data: { facts: e.facts.map((f) => labelOf(ix, f)) } satisfies HandOffData
+	}));
 }
 
 // ---------------------------------------------------------------------------
@@ -210,122 +190,6 @@ function attachRoutes(out: ElkOutNode, edges: Edge[]) {
 		);
 		target.data = { ...(target.data ?? {}), points };
 	}
-}
-
-// ---------------------------------------------------------------------------
-// A: step cards inside stage containers, edges leave from the fact row they hand over
-// ---------------------------------------------------------------------------
-
-async function buildCards(ix: ProcessIndex): Promise<Built> {
-	const edges = handOffEdges(ix, true);
-	const data = new Map<string, CardData>(ix.work.map((w) => [w.core.id, cardData(ix, w, false)]));
-	const first = ix.stages[0]?.core.id;
-	for (const [id, d] of data)
-		if (
-			!d.badge &&
-			(ix.byId.get(id) as WorkItem).core.stage === first &&
-			!edges.some((e) => e.target === id)
-		)
-			d.badge = 'Start';
-
-	const ports = (id: string, d: CardData) => [
-		{
-			id: `${id}::in`,
-			width: 1,
-			height: 1,
-			x: 0,
-			y: CARD_HEAD / 2,
-			layoutOptions: { 'elk.port.side': 'WEST' }
-		},
-		{
-			id: `${id}::out`,
-			width: 1,
-			height: 1,
-			x: CARD_W,
-			y: CARD_HEAD / 2,
-			layoutOptions: { 'elk.port.side': 'EAST' }
-		},
-		...d.rows.map((r, i) => ({
-			id: `${id}::f:${r.id}`,
-			width: 1,
-			height: 1,
-			x: CARD_W,
-			y: rowPortY(i),
-			layoutOptions: { 'elk.port.side': 'EAST' }
-		}))
-	];
-	const stages = ix.stages.filter((s) => ix.work.some((w) => w.core.stage === s.core.id));
-	const out = (await elk.layout({
-		id: 'root',
-		layoutOptions: {
-			'elk.algorithm': 'layered',
-			'elk.direction': 'RIGHT',
-			'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
-			'elk.edgeRouting': 'ORTHOGONAL',
-			'elk.layered.spacing.nodeNodeBetweenLayers': '44',
-			'elk.spacing.nodeNode': '28',
-			'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
-			'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES'
-		},
-		children: stages.map((st) => ({
-			id: st.core.id,
-			layoutOptions: { 'elk.padding': '[top=50,left=20,bottom=20,right=20]' },
-			children: ix.work
-				.filter((w) => w.core.stage === st.core.id)
-				.map((w) => {
-					const d = data.get(w.core.id)!;
-					return {
-						id: w.core.id,
-						width: CARD_W,
-						height: cardHeight(d),
-						ports: ports(w.core.id, d),
-						layoutOptions: { 'elk.portConstraints': 'FIXED_POS' }
-					};
-				})
-		})),
-		edges: [
-			...edges.map((e) => ({
-				id: e.id,
-				sources: [`${e.source}::${e.sourceHandle}`],
-				targets: [`${e.target}::in`]
-			})),
-			// invisible ordering edges keep stages left to right even when no fact links them
-			...stages
-				.slice(1)
-				.map((st, i) => ({ id: `order:${i}`, sources: [stages[i].core.id], targets: [st.core.id] }))
-		]
-	})) as ElkOutNode;
-	attachRoutes(out, edges);
-
-	const nodes: Node[] = [];
-	for (const st of out.children ?? []) {
-		const index = stages.findIndex((s) => s.core.id === st.id);
-		nodes.push({
-			id: st.id,
-			type: 'stage',
-			position: { x: st.x ?? 0, y: st.y ?? 0 },
-			data: { title: labelOf(ix, st.id), index: index + 1, count: st.children?.length ?? 0 },
-			width: st.width,
-			height: st.height,
-			draggable: false,
-			selectable: false,
-			zIndex: -1
-		});
-		for (const child of st.children ?? []) {
-			const d = data.get(child.id)!;
-			nodes.push({
-				id: child.id,
-				type: 'card',
-				parentId: st.id,
-				position: { x: child.x ?? 0, y: child.y ?? 0 },
-				data: d,
-				width: CARD_W,
-				height: cardHeight(d),
-				draggable: false
-			});
-		}
-	}
-	return { nodes, edges };
 }
 
 // ---------------------------------------------------------------------------
@@ -379,7 +243,7 @@ function buildLanes(ix: ProcessIndex): Built {
 		}
 		y += height + 10;
 	}
-	const edges = handOffEdges(ix, false).map((e) => ({ ...e, data: { ...e.data, lane: true } }));
+	const edges = handOffEdges(ix).map((e) => ({ ...e, data: { ...e.data, lane: true } }));
 	return { nodes, edges };
 }
 
@@ -537,8 +401,6 @@ export async function buildMap(indexes: ProcessIndex[]): Promise<Built> {
 	return { nodes, edges };
 }
 
-export function build(view: ViewId, ix: ProcessIndex): Promise<Built> {
-	if (view === 'lanes') return Promise.resolve(buildLanes(ix));
-	if (view === 'facts') return buildFacts(ix);
-	return buildCards(ix);
+export function build(view: Exclude<ViewId, 'board'>, ix: ProcessIndex): Promise<Built> {
+	return view === 'lanes' ? Promise.resolve(buildLanes(ix)) : buildFacts(ix);
 }

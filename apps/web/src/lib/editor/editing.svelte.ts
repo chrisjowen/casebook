@@ -10,10 +10,13 @@ import type { Operation } from '@casebook/model';
 import type { LoadedDefinition } from '$lib/definitions/types';
 
 export interface Notice {
-	tone: 'error' | 'info';
+	/** `warn`: the edit was saved, but it leaves something that blocks publishing. */
+	tone: 'error' | 'warn' | 'info';
 	text: string;
 	/** Extra lines, such as the publish checks that failed. */
 	details?: string[];
+	/** The notice is about an edit that Undo takes back. */
+	undo?: boolean;
 }
 
 interface Failure {
@@ -52,9 +55,22 @@ export class Editor {
 		return undefined;
 	}
 
-	/** Saves `ops` as one edit of the open draft. Resolves true when it was saved. */
-	async apply(ops: Operation[]): Promise<boolean> {
+	/** Whether the open draft has an edit Undo can take back. */
+	get undoable(): boolean {
+		return !this.blocked && !!this.definition?.undoable;
+	}
+
+	/**
+	 * Saves `ops` as one edit of the open draft. Resolves true when it was saved. With a `label`,
+	 * a notice says what was done and offers Undo, and warns when the edit, though saved, leaves
+	 * something that blocks publishing, such as steps that wait for each other.
+	 */
+	async apply(ops: Operation[], label?: string): Promise<boolean> {
+		const blocking = (d: LoadedDefinition | undefined) =>
+			(d?.issues ?? []).filter((i) => i.severity === 'error').map((i) => i.message);
+		let before: string[] = [];
 		const result = await this.#submit('edit', () => {
+			before = blocking(this.definition);
 			const definition = this.definition;
 			if (!definition || this.blocked) return undefined;
 			return {
@@ -63,8 +79,30 @@ export class Editor {
 				ops: JSON.stringify(ops)
 			};
 		});
-		if (result?.version !== undefined) this.#say('info', `Published as version ${result.version}`);
-		return result !== undefined;
+		if (result === undefined) return false;
+		const added = (this.definition?.issues ?? []).find(
+			(i) => i.severity === 'error' && !before.includes(i.message)
+		);
+		const published =
+			result.version !== undefined ? ` Published as version ${result.version}.` : '';
+		if (added) {
+			this.#say(
+				'warn',
+				`${label ?? 'Saved'}, but publishing is now blocked`,
+				[added.message],
+				true
+			);
+		} else if (label) {
+			this.#say('info', `${label}.${published}`, undefined, true);
+		} else if (published) {
+			this.#say('info', published.trim());
+		}
+		return true;
+	}
+
+	/** Shows why a gesture cannot be done, without sending anything. */
+	refuse(reason: string) {
+		this.#say('error', reason);
 	}
 
 	async undo(): Promise<void> {
@@ -151,10 +189,16 @@ export class Editor {
 		}
 	}
 
-	#say(tone: Notice['tone'], text: string, details?: string[]) {
+	#say(tone: Notice['tone'], text: string, details?: string[], undo = false) {
 		clearTimeout(this.#timer);
-		this.notice = { tone, text, ...(details?.length ? { details } : {}) };
-		if (tone === 'info') this.#timer = setTimeout(() => (this.notice = undefined), 3500);
+		this.notice = {
+			tone,
+			text,
+			...(details?.length ? { details } : {}),
+			...(undo ? { undo } : {})
+		};
+		if (tone === 'info')
+			this.#timer = setTimeout(() => (this.notice = undefined), undo ? 6000 : 3500);
 	}
 }
 

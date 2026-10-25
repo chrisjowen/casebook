@@ -4,9 +4,7 @@
 	import { SvelteFlow, Background, Controls, Panel, type Node, type Edge } from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
 	import { untrack, type Snippet } from 'svelte';
-	import CardNode from './nodes/CardNode.svelte';
 	import CompactNode from './nodes/CompactNode.svelte';
-	import StageNode from './nodes/StageNode.svelte';
 	import LaneNode from './nodes/LaneNode.svelte';
 	import FactNode from './nodes/FactNode.svelte';
 	import ProcessNode from './nodes/ProcessNode.svelte';
@@ -15,14 +13,12 @@
 	import FlowEdge from './edges/FlowEdge.svelte';
 	import FocusNode from './FocusNode.svelte';
 	import InitialViewport from './InitialViewport.svelte';
-	import { setGraphActions, type GraphActions } from './context';
 	import type { Built } from './layout';
 
 	let {
 		layoutKey,
 		load,
 		onselect,
-		actions,
 		selectedId,
 		query = '',
 		focusId,
@@ -32,7 +28,6 @@
 		layoutKey: string;
 		load: () => Promise<Built>;
 		onselect: (type: string, id: string) => void;
-		actions: GraphActions;
 		selectedId?: string;
 		query?: string;
 		focusId?: string;
@@ -41,20 +36,8 @@
 		legend?: Snippet;
 	} = $props();
 
-	setGraphActions({
-		inspect: (id) => actions.inspect(id),
-		get edits() {
-			return actions.edits;
-		},
-		get blocked() {
-			return actions.blocked;
-		}
-	});
-
 	const nodeTypes = {
-		card: CardNode,
 		compact: CompactNode,
-		stage: StageNode,
 		lane: LaneNode,
 		fact: FactNode,
 		process: ProcessNode,
@@ -74,9 +57,7 @@
 		return [d.title ?? '', ...(d.facts ?? [])];
 	};
 	const matches = (n: Node, q: string) =>
-		n.type !== 'stage' &&
-		n.type !== 'lane' &&
-		namesOf(n).some((name) => name.toLowerCase().includes(q));
+		n.type !== 'lane' && namesOf(n).some((name) => name.toLowerCase().includes(q));
 
 	function restyle(b: Built, q: string, selected: string | undefined) {
 		const needle = q.trim().toLowerCase();
@@ -85,7 +66,7 @@
 			selected: n.id === selected,
 			data: {
 				...n.data,
-				dim: !!needle && n.type !== 'stage' && n.type !== 'lane' && !matches(n, needle)
+				dim: !!needle && n.type !== 'lane' && !matches(n, needle)
 			}
 		}));
 		edges = b.edges.map((e) => ({
@@ -144,8 +125,7 @@
 			nodesDraggable={false}
 			nodesConnectable={false}
 			zoomOnDoubleClick={false}
-			onnodeclick={({ node }) =>
-				node.type !== 'stage' && node.type !== 'lane' && onselect(node.type ?? '', node.id)}
+			onnodeclick={({ node }) => node.type !== 'lane' && onselect(node.type ?? '', node.id)}
 			onpaneclick={() => onselect('pane', '')}
 		>
 			<Background gap={18} size={1.4} bgColor="var(--canvas)" patternColor="var(--canvas-dot)" />

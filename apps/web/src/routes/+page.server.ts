@@ -12,7 +12,7 @@ import { getDb } from '$lib/server/db';
 import { loadWorkspaces } from '$lib/server/definitions';
 import type { ViewId } from '$lib/graph/layout';
 
-const VIEWS: ViewId[] = ['cards', 'lanes', 'facts'];
+const VIEWS: ViewId[] = ['board', 'lanes', 'facts'];
 
 export const load: PageServerLoad = async ({ url, locals }) => {
 	const workspaces = await loadWorkspaces(actorOf(locals));
@@ -26,7 +26,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			? undefined
 			: (workspace?.definitions.find((d) => d.document.slug === p) ?? workspace?.definitions[0])
 					?.document.slug;
-	const view = VIEWS.find((v) => v === url.searchParams.get('view')) ?? 'cards';
+	// "cards" was the board's name before it could be built on; old links still open it
+	const view = VIEWS.find((v) => v === url.searchParams.get('view')) ?? 'board';
 	return {
 		user: locals.user!,
 		workspaces,

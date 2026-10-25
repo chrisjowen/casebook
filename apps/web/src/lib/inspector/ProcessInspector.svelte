@@ -1,11 +1,19 @@
 <script lang="ts">
-	// Process summary: draft and publishing, the model's publish checks in plain language, roles and
-	// stages. With `edit`, names, purpose, stages and roles change the draft.
-	import type { Operation, StageId } from '@casebook/model';
-	import { labelOf, plainText, type ProcessIndex } from '$lib/graph/derive';
+	// Process summary: draft and publishing, the model's publish checks in plain language, roles,
+	// stages and facts. With `edit`, its name, purpose and roles change the draft; stages are built
+	// on the board, and every stage and fact here opens its details.
+	import type { FactNode, Operation } from '@casebook/model';
+	import {
+		collectorsByFact,
+		factType,
+		labelOf,
+		plainText,
+		type ProcessIndex
+	} from '$lib/graph/derive';
+	import { glyphIcon } from '$lib/graph/glyphs';
 	import type { LoadedDefinition } from '$lib/definitions/types';
 	import { toneBar } from '$lib/graph/tones';
-	import { addRole, addStage, addStep, rename, type Edit } from '$lib/editor/ops';
+	import { addRole, rename, type Edit } from '$lib/editor/ops';
 	import { getEditor } from '$lib/editor/editing.svelte';
 	import { draftStatus, publishBlocked } from '$lib/editor/status';
 	import Field from './Field.svelte';
@@ -43,6 +51,7 @@
 		[ix.facts.length, 'Fact types']
 	] as const);
 	const blocked = $derived(publishBlocked(loaded));
+	const collectors = $derived(collectorsByFact(ix));
 	const run = async ({ ops, select }: Edit) => {
 		if (edit && (await edit(ops)) && select) onselect?.(select);
 	};
@@ -209,41 +218,50 @@
 	</Group>
 
 	<Group title="Stages" count={ix.stages.length}>
-		<ol class="flex flex-col gap-1 text-[12.5px]">
+		<ol class="flex flex-col gap-0.5 text-[12.5px]">
 			{#each ix.stages as stage, i (stage.core.id)}
 				{@const n = ix.work.filter((w) => w.core.stage === stage.core.id).length}
-				<li class="flex items-center gap-2">
-					<span
-						class="flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] text-muted-foreground"
-						>{i + 1}</span
+				<li>
+					<button
+						class="flex w-full cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-left hover:bg-muted"
+						onclick={() => onselect?.(stage.core.id)}
 					>
-					{#if edit}
-						<input
-							type="text"
-							class="h-7 min-w-0 flex-1 rounded-md bg-transparent px-1.5 outline-none hover:bg-muted/70 focus:bg-muted/70 focus:ring-2 focus:ring-brand-ring"
-							aria-label="Stage name"
-							value={labelOf(ix, stage.core.id)}
-							onchange={(e) => renameFrom(e.currentTarget, stage.core.id)}
-							onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-						/>
-						<button
-							class="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-							title="Add a step to this stage"
-							aria-label="Add a step to {labelOf(ix, stage.core.id)}"
-							onclick={() => run(addStep(ix.document, stage.core.id as StageId))}
-							><Plus class="size-3.5" /></button
+						<span
+							class="flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] text-muted-foreground"
+							>{i + 1}</span
 						>
-					{:else}{labelOf(ix, stage.core.id)}{/if}
-					<span class="ml-auto shrink-0 text-[11px] text-muted-foreground"
-						>{n} {n === 1 ? 'item' : 'items'}</span
-					>
+						<span class="min-w-0 flex-1 truncate">{labelOf(ix, stage.core.id)}</span>
+						<span class="shrink-0 text-[11px] text-muted-foreground"
+							>{n} {n === 1 ? 'item' : 'items'}</span
+						>
+					</button>
 				</li>
 			{/each}
 		</ol>
-		{#if edit}
-			<button class={small} onclick={() => run(addStage(ix.document))}
-				><Plus class="size-3.5" />Add stage</button
-			>
-		{/if}
+	</Group>
+
+	<Group title="Facts" count={ix.facts.length}>
+		<ul class="flex flex-col gap-0.5 text-[12.5px]">
+			{#each ix.facts as fact (fact.core.id)}
+				{@const kind = factType((fact as FactNode).core.schema)}
+				{@const Glyph = glyphIcon[kind.glyph]}
+				{@const by = collectors.get(fact.core.id) ?? []}
+				<li>
+					<button
+						class="flex w-full cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-left hover:bg-muted"
+						onclick={() => onselect?.(fact.core.id)}
+					>
+						<Glyph class="size-3.5 shrink-0 text-muted-foreground" />
+						<span class="min-w-0 flex-1 truncate">{labelOf(ix, fact.core.id)}</span>
+						<span
+							class={[
+								'max-w-[45%] shrink-0 truncate text-[11px]',
+								by.length ? 'text-muted-foreground' : 'text-amber-700'
+							]}>{by.length ? labelOf(ix, by[0]) : 'Not recorded yet'}</span
+						>
+					</button>
+				</li>
+			{/each}
+		</ul>
 	</Group>
 </div>

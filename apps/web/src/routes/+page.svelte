@@ -1,24 +1,26 @@
 <script lang="ts">
-	// Definition editor: view, inspect and edit process definitions stored in Postgres, as the
-	// signed-in user. Edits are draft revisions; governed processes publish explicitly, living ones
-	// publish every edit. No cases or instances.
+	// Definition editor: build, view and publish process definitions stored in Postgres, as the
+	// signed-in user. A process is built on the board; role lanes and fact flow are read-only
+	// lenses on it, and the process map shows a workspace's processes. Edits are draft revisions;
+	// governed processes publish explicitly, living ones publish every edit. No cases or instances.
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
-	import type { FactNode, Operation } from '@casebook/model';
+	import type { FactNode, Operation, StageId } from '@casebook/model';
 	import { Editor, setEditor } from '$lib/editor/editing.svelte';
-	import * as edits from '$lib/editor/ops';
+	import type { Edit } from '$lib/editor/ops';
 	import { draftStatus, publishBlocked } from '$lib/editor/status';
 	import TopBar from '$lib/editor/TopBar.svelte';
-	import IconRail, { type RailItem } from '$lib/editor/IconRail.svelte';
-	import Outline from '$lib/editor/Outline.svelte';
 	import Segmented from '$lib/editor/Segmented.svelte';
 	import Legend from '$lib/editor/Legend.svelte';
 	import GraphCanvas from '$lib/graph/GraphCanvas.svelte';
+	import Board from '$lib/graph/Board.svelte';
 	import StepInspector from '$lib/inspector/StepInspector.svelte';
+	import StageInspector from '$lib/inspector/StageInspector.svelte';
 	import FactInspector from '$lib/inspector/FactInspector.svelte';
 	import ProcessInspector from '$lib/inspector/ProcessInspector.svelte';
 	import SharedFactsInspector from '$lib/inspector/SharedFactsInspector.svelte';
+	import * as Select from '$lib/components/ui/select';
 	import {
 		indexDocument,
 		labelOf,
@@ -27,9 +29,9 @@
 		sharedFactTypes,
 		type WorkItem
 	} from '$lib/graph/derive';
-	import { build, buildMap, type ViewId } from '$lib/graph/layout';
+	import { build, buildMap } from '$lib/graph/layout';
 	import {
-		LayoutGrid,
+		Columns3,
 		Rows3,
 		Workflow,
 		Network,
@@ -38,9 +40,12 @@
 		Eye,
 		CircleCheck,
 		CircleAlert,
+		TriangleAlert,
 		SquarePen,
 		Upload,
-		LoaderCircle
+		LoaderCircle,
+		Plus,
+		Undo2
 	} from '@lucide/svelte';
 	import type { PageProps } from './$types';
 
@@ -70,24 +75,44 @@
 	const selectedFact = $derived(
 		selectedNode?.core.kind === 'fact' ? (selectedNode as FactNode) : undefined
 	);
+	const selectedStage = $derived(
+		selectedNode?.core.kind === 'stage' ? (selectedNode.core.id as StageId) : undefined
+	);
 
 	const editor = new Editor(() => loaded);
 	setEditor(editor);
-	/** Saves an edit of the open draft, or is absent when the user cannot edit it. */
+	/** Saves operations as an edit of the open draft, or is absent when the user cannot edit it. */
 	const edit = $derived(
 		editor.blocked === undefined ? (ops: Operation[]) => editor.apply(ops) : undefined
 	);
-	async function run({ ops, select }: edits.Edit) {
-		if ((await editor.apply(ops)) && select) nav({ sel: select });
-	}
+	/** Saves one gesture's edit with its notice and selects what it made, or shows why not. */
+	const change = $derived(
+		editor.blocked === undefined
+			? async (e: Edit | string) => {
+					if (typeof e === 'string') {
+						editor.refuse(e);
+						return false;
+					}
+					const ok = await editor.apply(e.ops, e.label);
+					if (ok && e.select) nav({ sel: e.select });
+					return ok;
+				}
+			: undefined
+	);
 	const publishProblem = $derived(loaded && publishBlocked(loaded));
 
 	let query = $state('');
-	let outline = $state(true);
 	let details = $state(false);
-	let focusId = $state<string | undefined>();
+	let creating = $state(false);
+	let createAt = $state(0);
+	let newTitle = $state('');
+	let newPolicy = $state<'governed' | 'living'>('governed');
 	const inspectorOpen = $derived(
-		!!selectedItem || !!selectedFact || selected === 'shared' || (details && !isMap)
+		!!selectedItem ||
+			!!selectedFact ||
+			!!selectedStage ||
+			selected === 'shared' ||
+			(details && !isMap)
 	);
 
 	function nav(next: Record<string, string | undefined>) {
@@ -108,46 +133,23 @@
 		else nav({ sel: id });
 	}
 
-	const actions = {
-		inspect: (id: string) => nav({ sel: id }),
-		get blocked() {
-			return editor.blocked;
-		},
-		edits: {
-			addStep: (id: string) => run(edits.addStepAfter(active!.document, id)),
-			addFact: (id: string) => run(edits.addFact(active!.document, id)),
-			addCondition: (id: string) => run(edits.addCondition(active!.document, id)),
-			duplicate: (id: string) => run(edits.duplicate(active!.document, id)),
-			remove: async (id: string) => {
-				if ((await editor.apply(edits.remove(id).ops)) && selected === id) nav({ sel: undefined });
-			}
-		}
-	};
-
-	async function create(title: string, changePolicy: 'governed' | 'living') {
-		if (!workspace) return;
-		const slug = await editor.create(workspace.id, title, changePolicy);
+	async function create(e: SubmitEvent) {
+		e.preventDefault();
+		if (!workspace || !newTitle.trim()) return;
+		const slug = await editor.create(workspace.id, newTitle.trim(), newPolicy);
 		if (slug) {
-			details = true;
-			nav({ ws: workspace.namespace, p: slug, sel: undefined });
-		}
-	}
-
-	function onrail(item: RailItem) {
-		const slug = data.slug ?? indexes[0]?.document.slug;
-		if (item === 'map') nav({ p: 'map', sel: undefined });
-		else if (item === 'facts') nav({ sel: 'shared' });
-		else {
-			details = item === 'roles';
-			nav({ p: slug, sel: undefined });
+			creating = false;
+			newTitle = '';
+			nav({ ws: workspace.namespace, p: slug, sel: undefined, view: undefined });
 		}
 	}
 
 	const views = [
-		{ value: 'cards' as const, label: 'Step cards', icon: LayoutGrid },
+		{ value: 'board' as const, label: 'Board', icon: Columns3 },
 		{ value: 'lanes' as const, label: 'Role lanes', icon: Rows3 },
 		{ value: 'facts' as const, label: 'Fact flow', icon: Workflow }
 	];
+	const onBoard = $derived(!isMap && data.view === 'board');
 	const canvasSelection = $derived(
 		selected === 'shared'
 			? 'shared'
@@ -160,10 +162,15 @@
 			? `map:${workspace?.namespace}:${workspace?.definitions.map((d) => d.revision).join(',')}`
 			: `${active?.document.slug}:${data.view}:${loaded?.revision}`
 	);
-	const load = () => (isMap ? buildMap(indexes) : build(data.view as ViewId, active!));
+	const load = () =>
+		isMap || data.view === 'board'
+			? buildMap(indexes)
+			: build(data.view as 'lanes' | 'facts', active!);
 	const failing = $derived(
 		loaded ? loaded.errors.length + loaded.issues.filter((i) => i.severity === 'error').length : 0
 	);
+	const tab =
+		'inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px]';
 </script>
 
 <svelte:head
@@ -182,43 +189,38 @@
 		</p>
 	{:else}
 		<div class="flex min-h-0 flex-1">
-			<IconRail
-				active={selected === 'shared' ? 'facts' : isMap ? 'map' : details ? 'roles' : 'graph'}
-				bind:outline
-				onpick={onrail}
-			/>
-			{#if outline}
-				<Outline
-					workspaces={data.workspaces}
-					{workspace}
-					{indexes}
-					{shared}
-					activeSlug={data.slug}
-					selectedId={selected}
-					onworkspace={(namespace) => nav({ ws: namespace, p: undefined, sel: undefined })}
-					onprocess={(slug) => nav({ p: slug, sel: undefined })}
-					onitem={(slug, id) => {
-						focusId = id;
-						nav({ p: slug, sel: id });
-					}}
-					onmap={() => nav({ p: 'map', sel: undefined })}
-					onshared={() => nav({ sel: 'shared' })}
-					oncreate={create}
-				/>
-			{/if}
-
 			<section class="flex min-w-0 flex-1 flex-col">
 				<div class="flex h-12 shrink-0 items-center gap-2 border-b bg-background px-3">
+					<Select.Root
+						type="single"
+						value={workspace.namespace}
+						onValueChange={(namespace) => nav({ ws: namespace, p: undefined, sel: undefined })}
+					>
+						<Select.Trigger
+							class="h-8 w-44 shrink-0 rounded-lg text-[12.5px] font-medium"
+							aria-label="Workspace">{workspace.label}</Select.Trigger
+						>
+						<Select.Content>
+							{#each data.workspaces as w (w.namespace)}<Select.Item
+									value={w.namespace}
+									label={w.label}
+									>{w.label}<span class="ml-auto pl-3 text-[11px] text-muted-foreground"
+										>{w.namespace}</span
+									></Select.Item
+								>{/each}
+						</Select.Content>
+					</Select.Root>
+					<span class="h-5 w-px shrink-0 bg-border"></span>
 					<div
 						class="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
 						role="tablist"
-						aria-label="Open views"
+						aria-label="Processes"
 					>
 						<button
 							role="tab"
 							aria-selected={isMap}
 							class={[
-								'inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px]',
+								tab,
 								isMap
 									? 'bg-background font-medium shadow-xs'
 									: 'border-transparent text-muted-foreground hover:text-foreground'
@@ -231,7 +233,7 @@
 								role="tab"
 								aria-selected={!isMap && ix === active}
 								class={[
-									'inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px]',
+									tab,
 									!isMap && ix === active
 										? 'bg-background font-medium shadow-xs'
 										: 'border-transparent text-muted-foreground hover:text-foreground'
@@ -240,10 +242,25 @@
 								><Workflow class="size-3.5 text-brand" />{labelOf(ix, ix.process?.core.id)}</button
 							>
 						{/each}
+						<div class="relative shrink-0">
+							<button
+								class="flex size-8 items-center justify-center rounded-lg text-muted-foreground enabled:cursor-pointer enabled:hover:bg-muted enabled:hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+								title={workspace.can.create.allowed
+									? 'New process'
+									: `New process: ${workspace.can.create.reason}`}
+								aria-label="New process"
+								aria-expanded={creating}
+								disabled={!workspace.can.create.allowed}
+								onclick={(e) => {
+									createAt = e.currentTarget.getBoundingClientRect().left;
+									creating = !creating;
+								}}><Plus class="size-4" /></button
+							>
+						</div>
 					</div>
 					{#if !isMap && active && loaded}
 						<Segmented
-							label="Graph view"
+							label="View"
 							value={data.view}
 							options={views}
 							onchange={(view) => nav({ view })}
@@ -262,11 +279,11 @@
 						{/if}
 						<button
 							class={[
-								'flex size-8 cursor-pointer items-center justify-center rounded-lg border',
+								'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border',
 								details ? 'bg-muted' : 'hover:bg-muted'
 							]}
-							title="Process details, publishing and checks"
-							aria-label="Process details, publishing and checks"
+							title="Process details, publishing, checks and facts"
+							aria-label="Process details, publishing, checks and facts"
 							aria-pressed={details}
 							onclick={() => {
 								details = !details;
@@ -275,37 +292,88 @@
 						>
 					{/if}
 				</div>
+				{#if creating}
+					<form
+						class="fixed top-[108px] z-40 flex w-72 flex-col gap-1.5 rounded-xl border bg-popover p-2.5 shadow-lg"
+						style:left="{Math.max(8, createAt - 8)}px"
+						onsubmit={create}
+					>
+						<!-- svelte-ignore a11y_autofocus -->
+						<input
+							class="h-8 rounded-md bg-muted/70 px-2 text-[12.5px] outline-none focus:ring-2 focus:ring-brand-ring"
+							placeholder="Process name"
+							aria-label="Process name"
+							bind:value={newTitle}
+							autofocus
+							required
+						/>
+						<select
+							class="h-8 cursor-pointer rounded-md bg-muted/70 px-1.5 text-[12px] outline-none"
+							aria-label="Change policy"
+							bind:value={newPolicy}
+						>
+							<option value="governed">Governed: publish when ready</option>
+							<option value="living">Living: every edit goes live</option>
+						</select>
+						<div class="flex justify-end gap-1.5">
+							<button
+								type="button"
+								class="h-7 cursor-pointer rounded-md px-2 text-[12px] text-muted-foreground hover:bg-muted"
+								onclick={() => (creating = false)}>Cancel</button
+							>
+							<button
+								class="h-7 cursor-pointer rounded-md bg-brand px-2.5 text-[12px] font-medium text-white hover:opacity-90"
+								>Create</button
+							>
+						</div>
+					</form>
+				{/if}
 
 				<main class="relative min-h-0 flex-1">
 					{#if active}
-						<GraphCanvas
-							{layoutKey}
-							{load}
-							{onselect}
-							{actions}
-							{query}
-							{focusId}
-							selectedId={canvasSelection}
-							readableZoom={isMap ? undefined : data.view === 'facts' ? 0.7 : 0.82}
-						>
-							{#snippet legend()}{#if !isMap}<Legend facts={data.view === 'facts'} />{/if}{/snippet}
-						</GraphCanvas>
+						{#if onBoard}
+							<Board
+								ix={active}
+								editable={editor.blocked === undefined}
+								selectedId={selected === 'shared' ? undefined : selected}
+								onselect={(id) => nav({ sel: id })}
+								{query}
+							>
+								{#snippet legend()}<Legend facts={false} />{/snippet}
+							</Board>
+						{:else}
+							<GraphCanvas
+								{layoutKey}
+								{load}
+								{onselect}
+								{query}
+								selectedId={canvasSelection}
+								readableZoom={isMap ? undefined : data.view === 'facts' ? 0.7 : 0.82}
+							>
+								{#snippet legend()}{#if !isMap}<Legend
+											facts={data.view === 'facts'}
+										/>{/if}{/snippet}
+							</GraphCanvas>
+						{/if}
 					{:else}
 						<p class="absolute inset-0 m-auto h-fit text-center text-[13px] text-muted-foreground">
 							No processes in {workspace.namespace} yet.{#if workspace.can.create.allowed}
-								Use + next to Processes to start one.{/if}
+								Use + beside the processes to start one.{/if}
 						</p>
 					{/if}
 					{#if editor.notice}
 						<div
-							role={editor.notice.tone === 'error' ? 'alert' : 'status'}
+							role={editor.notice.tone === 'info' ? 'status' : 'alert'}
 							class={[
-								'absolute top-3 left-1/2 z-10 flex w-[min(560px,calc(100%-24px))] -translate-x-1/2 items-start gap-2 rounded-xl border bg-background px-3.5 py-2.5 text-[12.5px] shadow-md',
-								editor.notice.tone === 'error' && 'border-destructive/40'
+								'absolute top-3 left-1/2 z-40 flex w-[min(600px,calc(100%-24px))] -translate-x-1/2 items-start gap-2 rounded-xl border bg-background px-3.5 py-2.5 text-[12.5px] shadow-md',
+								editor.notice.tone === 'error' && 'border-destructive/40',
+								editor.notice.tone === 'warn' && 'border-amber-300 bg-amber-50'
 							]}
 						>
 							{#if editor.notice.tone === 'error'}<CircleAlert
 									class="mt-0.5 size-3.5 shrink-0 text-destructive"
+								/>{:else if editor.notice.tone === 'warn'}<TriangleAlert
+									class="mt-0.5 size-3.5 shrink-0 text-amber-600"
 								/>{:else}<CircleCheck class="mt-0.5 size-3.5 shrink-0 text-emerald-600" />{/if}
 							<div class="min-w-0 flex-1">
 								<p>{active ? plainText(active, editor.notice.text) : editor.notice.text}</p>
@@ -317,6 +385,12 @@
 									</ul>
 								{/if}
 							</div>
+							{#if editor.notice.undo && editor.undoable}
+								<button
+									class="-my-1 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 py-1 font-medium text-brand hover:bg-brand-soft"
+									onclick={() => editor.undo()}><Undo2 class="size-3.5" />Undo</button
+								>
+							{/if}
 							<button
 								class="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
 								aria-label="Dismiss"
@@ -344,16 +418,24 @@
 					{#if isMap}
 						<span>{indexes.length} {indexes.length === 1 ? 'process' : 'processes'}</span>
 						<span>{processLinks(indexes.map((ix) => ix.document)).length} links</span>
-						<span>{shared.length} shared fact types</span>
+						<button
+							class="cursor-pointer hover:text-foreground"
+							onclick={() => nav({ sel: 'shared' })}>{shared.length} shared fact types</button
+						>
 					{:else if active}
 						<span
 							>{active.work.length} steps and decisions · {active.stages.length} stages · {active
 								.facts.length} fact types · {active.roles.length} roles</span
 						>
-						{#if failing}<span class="inline-flex items-center gap-1 text-destructive"
+						{#if failing}<button
+								class="inline-flex cursor-pointer items-center gap-1 text-destructive"
+								onclick={() => {
+									details = true;
+									nav({ sel: undefined });
+								}}
 								><CircleAlert class="size-3" />{failing} publish {failing === 1
 									? 'problem'
-									: 'problems'}</span
+									: 'problems'}</button
 							>
 						{:else}<span class="inline-flex items-center gap-1 text-emerald-700"
 								><CircleCheck class="size-3" />Publish checks pass</span
@@ -368,7 +450,7 @@
 
 			{#if inspectorOpen && active}
 				<aside
-					class="flex w-[360px] shrink-0 flex-col border-l bg-background"
+					class="flex w-[372px] shrink-0 flex-col border-l bg-background"
 					aria-label="Inspector"
 				>
 					<div class="flex h-12 shrink-0 items-center gap-2 border-b px-5">
@@ -381,9 +463,11 @@
 									: 'Step'
 								: selectedFact
 									? 'Fact type'
-									: selected === 'shared'
-										? 'Workspace'
-										: 'Process'}
+									: selectedStage
+										? 'Stage'
+										: selected === 'shared'
+											? 'Workspace'
+											: 'Process'}
 						</span>
 						<h2 class="truncate text-[13.5px] font-semibold">
 							{selectedNode
@@ -408,11 +492,20 @@
 					{/if}
 					<div class="no-scrollbar min-h-0 flex-1 overflow-y-auto">
 						{#if selectedItem}
-							<StepInspector
+							{#key selectedItem.core.id}
+								<StepInspector
+									ix={active}
+									item={selectedItem}
+									onselect={(id) => nav({ sel: id })}
+									edit={change}
+								/>
+							{/key}
+						{:else if selectedStage}
+							<StageInspector
 								ix={active}
-								item={selectedItem}
-								onfact={(id) => nav({ sel: id })}
-								{edit}
+								stage={selectedStage}
+								onselect={(id) => nav({ sel: id })}
+								edit={change}
 							/>
 						{:else if selectedFact}
 							<FactInspector

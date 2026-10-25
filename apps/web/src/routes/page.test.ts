@@ -120,8 +120,50 @@ describe('editor route', () => {
 	it('makes the inspector fields editable for someone who can edit', async () => {
 		const html = await pageFor('ws=acme/eng/sre&p=incident-management&sel=step.write-rca');
 		expect(html).toContain('<input type="text"');
-		expect(html).toContain('Collect another fact');
-		expect(html).toContain('Need another fact first');
+		expect(html).toContain('aria-label="Add a fact it records"');
+		expect(html).toContain('aria-label="Add something it needs first"');
+	});
+
+	it("edits a step's facts in place: rename, change kind and remove in each row", async () => {
+		const html = await pageFor('ws=acme/eng/sre&p=incident-management&sel=step.write-rca');
+		expect(html).toContain('aria-label="Name of Root cause analysis"');
+		expect(html).toContain('aria-label="Remove Root cause analysis"');
+		expect(html).toContain('aria-label="Kind of Resolution summary"');
+		expect(html).toContain('from Resolve the incident');
+		const readOnly = await pageFor(
+			'ws=acme/eng/sre&p=incident-management&sel=step.write-rca',
+			deny
+		);
+		expect(readOnly).not.toContain('aria-label="Remove Root cause analysis"');
+	});
+
+	it('builds on the board: stage columns with Add step, an Add stage column, and no side tree', async () => {
+		const html = await pageFor('ws=acme/eng/sre&p=incident-management');
+		for (const stage of indexDocument(incidentManagement).stages) {
+			expect(html).toContain(`aria-label="Add to ${stage.core.title}"`);
+		}
+		expect(html).toContain('Add stage');
+		expect(html).toContain('aria-label="Actions for Report the incident"');
+		expect(html).toContain('aria-label="Workspace"');
+		expect(html).toContain('aria-label="New process"');
+		expect(html).not.toContain('aria-label="Outline"');
+		expect(html).not.toContain('aria-label="Editor"');
+	});
+
+	it('shows the same board without its controls to someone who cannot edit', async () => {
+		const html = await pageFor('ws=acme/eng/sre&p=incident-management', deny);
+		expect(html).toContain('Report the incident');
+		expect(html).not.toContain('Add stage');
+		expect(html).not.toContain('aria-label="Actions for Report the incident"');
+		expect(html).not.toContain('Add what comes after');
+	});
+
+	it("opens a stage's details from the board", async () => {
+		const html = await pageFor('ws=acme/eng/sre&p=incident-management&sel=stage.respond');
+		expect(html).toContain('In this stage');
+		expect(html).toContain('Form the working group');
+		expect(html).toContain('Move left');
+		expect(html).toContain('Delete stage');
 	});
 
 	it('offers publishing for a governed process and explains a living one', async () => {
@@ -147,17 +189,17 @@ describe('editor route', () => {
 		const data = await dataFor('');
 		expect(data.namespace).toBe(incidentManagement.namespace);
 		expect(data.slug).toBe(incidentManagement.slug);
-		expect(data.view).toBe('cards');
+		expect(data.view).toBe('board');
 		expect(data.user).toBe(user);
 	});
 
-	it('falls back to the first process for an unknown slug and to cards for an unknown view', async () => {
+	it('falls back to the first process for an unknown slug and to the board for an unknown view', async () => {
 		const data = await dataFor(
 			`ws=${birthRegistrationAbroad.namespace}&p=no-such-process&view=nonsense&sel=step.x`
 		);
 		expect(data.namespace).toBe(birthRegistrationAbroad.namespace);
 		expect(data.slug).toBe(birthRegistrationAbroad.slug);
-		expect(data.view).toBe('cards');
+		expect(data.view).toBe('board');
 		expect(data.selected).toBe('step.x');
 	});
 });
