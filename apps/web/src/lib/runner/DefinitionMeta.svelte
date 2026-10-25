@@ -26,6 +26,10 @@
 		</span>
 	{/if}
 	{#if process.draftPending}
-		<span class="text-amber-800">· Draft changes pending</span>
+		<span
+			class="text-amber-800"
+			title="The draft has changes not yet published; the editor shows what changed."
+			>· Draft changes pending</span
+		>
 	{/if}
 </span>

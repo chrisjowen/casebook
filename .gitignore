@@ -9,6 +9,9 @@ node_modules/
 .DS_Store
 .serena/
 
+# Case files stored on local disk (CASEBOOK_FILES_DIR defaults here)
+.casebook/
+
 # Build outputs and caches
 dist/
 build/

@@ -131,17 +131,17 @@
 								<a
 									href={crumb.href}
 									class="truncate rounded-md px-1.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-									>{#if crumb.hint}<span class="text-muted-foreground/70"
-											>{crumb.hint} ·
-										</span>{/if}{crumb.label}</a
+									>{#if crumb.hint}<span class="mr-1 text-muted-foreground/70"
+											>{`${crumb.hint} ·`}</span
+										>{/if}{crumb.label}</a
 								>
 							{:else}
 								<span
 									class={['truncate px-1.5 py-1', last ? 'font-medium' : 'text-muted-foreground']}
 									aria-current={last ? 'page' : undefined}
-									>{#if crumb.hint}<span class="font-normal text-muted-foreground"
-											>{crumb.hint} ·
-										</span>{/if}{crumb.label}</span
+									>{#if crumb.hint}<span class="mr-1 font-normal text-muted-foreground"
+											>{`${crumb.hint} ·`}</span
+										>{/if}{crumb.label}</span
 								>
 							{/if}
 						</li>

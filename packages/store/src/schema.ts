@@ -3,7 +3,8 @@
 // cases, attached processes, their event log, facts and files (ADR 0001, ADR 0010).
 // The database holds declarative constraints only: keys, foreign keys, NOT NULL and checks on
 // kind and status columns. Every other rule (namespace paths, version immutability, case
-// pinning, formats) lives in `repository.ts`, the only write path for these tables.
+// pinning, formats) lives in `repository.ts` and, for case events, facts, files and assigned case
+// roles, in `runtime/actions.ts`: the only write paths for these tables.
 import { sql } from 'drizzle-orm';
 import {
 	type AnyPgColumn,

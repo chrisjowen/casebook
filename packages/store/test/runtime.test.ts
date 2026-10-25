@@ -5,7 +5,9 @@ import { createDb, type Db } from '../src/client.js';
 import { runMigrations } from '../src/migrate.js';
 import { memoryFileStore } from '../src/files.js';
 import { bindRole } from '../src/repository.js';
+import { publishDefinition } from '../src/definitions.js';
 import {
+	casebookPeople,
 	completeItem,
 	decideApproval,
 	findCaseFile,
@@ -18,6 +20,7 @@ import {
 	loadRequests,
 	loadTask,
 	loadWork,
+	moveToLatest,
 	resumeItem,
 	skipItem,
 	startCase,
@@ -624,6 +627,43 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 			expect(process.cases.map((c) => [c.title, c.attachment.binding])).toEqual([
 				['Sam Example', 'pinned']
 			]);
+		});
+
+		it('moves a pinned case to a newer version only by an explicit move, for writers', async () => {
+			const before = await loadProcess(db, users.alex, 'example-family', 'spouse-citizenship');
+			if ('ok' in before) throw new Error(before.reason);
+			const published = await publishDefinition(db, users.alex, {
+				definitionId: before.process.id,
+				baseRevision: 2
+			});
+			expect(published).toMatchObject({ ok: true });
+			const pinned = await loadProcess(db, users.alex, 'example-family', 'spouse-citizenship');
+			if ('ok' in pinned) throw new Error(pinned.reason);
+			const run = pinned.cases[0]!.attachment;
+			expect(run).toMatchObject({ binding: 'pinned', version: 1, latestVersion: 2 });
+			expect(pinned.process).toMatchObject({ version: 2, draftPending: false });
+
+			expectRefused(
+				await moveToLatest(db, users.sam, run.id),
+				'access-denied',
+				/move the bound version/
+			);
+			expect(await moveToLatest(db, users.alex, run.id)).toEqual({ ok: true, version: 2 });
+			const moved = await loadProcess(db, users.alex, 'example-family', 'spouse-citizenship');
+			if ('ok' in moved) throw new Error(moved.reason);
+			expect(moved.cases[0]!.attachment.version).toBe(2);
+			expectRefused(await moveToLatest(db, users.alex, run.id), 'invalid-input', /newer version/);
+		});
+
+		it('names the people a member can put on a case, guests included, and nobody else', async () => {
+			const people = await casebookPeople(db, users.alex, 'example-family');
+			expect(Array.isArray(people) && people.map((p) => p.name)).toEqual([
+				'Alex Example',
+				'Dana Cole',
+				'Example Health Insurance',
+				'Sam Example'
+			]);
+			expect(await casebookPeople(db, users.dana, 'example-family')).toMatchObject({ ok: false });
 		});
 
 		it('lets read-only members browse and start, but not edit', async () => {

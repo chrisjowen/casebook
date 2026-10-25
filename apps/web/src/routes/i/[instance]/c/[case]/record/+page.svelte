@@ -40,8 +40,7 @@
 
 {#snippet source(r: RecordEntry)}
 	<span class="text-[12px] text-muted-foreground">
-		{r.by.name}{#if r.onBehalfOf}
-			for {r.onBehalfOf.name}{/if} · {when(r.at)}
+		{`${r.by.name}${r.onBehalfOf ? ` for ${r.onBehalfOf.name}` : ''} · ${when(r.at)}`}
 		{#if r.from}
 			<br />in
 			<a

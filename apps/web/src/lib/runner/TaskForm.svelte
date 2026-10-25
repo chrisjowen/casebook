@@ -53,6 +53,16 @@
 			: `For ${names(task.holders, 'nobody yet')} (${lowerFirst(view.you.role)}).`
 	);
 
+	const repeating = $derived(
+		[
+			task.lastDone &&
+				`Last posted by ${task.lastDone.by.id === me ? 'you' : task.lastDone.by.name}, ${when(task.lastDone.at)}.`,
+			task.due && `Next one ${task.overdue ? 'was due' : 'due'} ${relative(task.due)}.`
+		]
+			.filter(Boolean)
+			.join(' ')
+	);
+
 	let pausing = $state(false);
 	let skipping = $state(false);
 	let told = false;
@@ -134,10 +144,15 @@
 	<div class="mt-6 flex gap-3 rounded-xl border bg-muted/60 px-4 py-3 text-[13px]">
 		<Hourglass class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
 		<p>
-			<span class="font-medium">Waiting on {names(task.waitingOn.holders)}</span>
-			<span class="text-muted-foreground">
-				to {lowerFirst(task.waitingOn.title)}. You can start once that’s in.</span
-			>
+			{#if task.waitingOn.holders.some((h) => h.id === me)}
+				<span class="font-medium">Do “{task.waitingOn.title}” first.</span>
+				<span class="text-muted-foreground">This needs what it records.</span>
+			{:else}
+				<span class="font-medium">Waiting on {names(task.waitingOn.holders)}</span>
+				<span class="text-muted-foreground">
+					to {lowerFirst(task.waitingOn.title)}. You can start once that’s in.</span
+				>
+			{/if}
 			{#if task.waitingOn.held}
 				<span class="mt-1 block text-amber-800"
 					>Paused by {task.waitingOn.held.by.name}: “{task.waitingOn.held.note}”</span
@@ -184,15 +199,9 @@
 		<Repeat class="mt-0.5 size-4 shrink-0 text-brand" />
 		<p>
 			<span class="font-medium"
-				>Repeats{#if view.repeat}
-					{lowerFirst(view.repeat.text)}{/if}.</span
+				>{view.repeat ? `Repeats ${lowerFirst(view.repeat.text)}.` : 'Repeats.'}</span
 			>
-			<span class="text-muted-foreground">
-				{#if task.lastDone}Last posted by {task.lastDone.by.id === me
-						? 'you'
-						: task.lastDone.by.name}, {when(task.lastDone.at)}.{/if}
-				{#if task.due}Next one {task.overdue ? 'was due' : 'due'} {relative(task.due)}.{/if}
-			</span>
+			<span class="text-muted-foreground">{repeating}</span>
 		</p>
 	</div>
 {/if}
@@ -221,7 +230,8 @@
 							<span class="block text-[12px] text-muted-foreground">
 								{use.recorded.by.name}, {day(
 									use.recorded.at
-								)}{#if use.recorded.from && taskHref}<span> · </span><a
+								)}{#if use.recorded.from && taskHref}<span class="mx-1" aria-hidden="true">·</span
+									><a
 										class="underline-offset-2 hover:underline"
 										href={taskHref(use.recorded.from.attachmentId, use.recorded.from.item)}
 										>{use.recorded.from.title}</a

@@ -4,6 +4,7 @@
 	// case fills the field, since facts are shared case-wide.
 	import { Paperclip, X } from '@lucide/svelte';
 	import type { FormField } from '@casebook/store';
+	import { lowerFirst } from './format';
 
 	let {
 		field,
@@ -182,9 +183,7 @@
 	{#if field.evidence}
 		<label class="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
 			<span
-				>Attach {field.evidence.description.charAt(0).toLowerCase() +
-					field.evidence.description.slice(1)}{#if field.evidence.formats.length}
-					({field.evidence.formats.join(' or ')}){/if}:</span
+				>{`Attach ${lowerFirst(field.evidence.description)}${field.evidence.formats.length ? ` (${field.evidence.formats.join(' or ')})` : ''}:`}</span
 			>
 			<input type="file" name="file:fact:{field.fact}" class="text-[12px]" />
 		</label>

@@ -1,11 +1,16 @@
 # Glossary
 
 - **Case**: the shared subject of work (a baby, an incident, a new hire). Process instances attach to it and share its facts.
+- **Attached process**: one run of a definition on a case, bound to a published version; a label tells two runs of the same definition apart.
+- **Work item**: a step, decision or approval as it stands on a case: done, skipped, ready, held, waiting, blocked or upcoming.
+- **Case record**: every value and file recorded on a case, each with who recorded it, when, and the work item it came from.
+- **Instance**: an account seen from the runner; the instance switcher moves between the accounts a user belongs to.
+- **Guest**: someone who holds a role in an account without belonging to it, and sees only the forms addressed to them.
 - **Process**: a definition of stages, steps, facts, roles, decisions and approvals for achieving an outcome.
 - **Definition version**: an immutable, published JSONB document of a process. Each case is bound to one.
 - **Change policy**: how a definition changes. Governed definitions publish a version only on an explicit publish; living definitions publish every accepted edit.
 - **Draft revision**: one numbered state of a definition's draft, recording the operations that made it, its author and who the author acted for; the only place drafts live.
-- **Case binding**: how a case follows its definition. A pinned case stays on its version until explicitly moved; a following case moves to each new version.
+- **Case binding**: how a process attached to a case follows its definition. A pinned one stays on its version until explicitly moved; a following one moves to each new version.
 - **Node operation**: a typed, checked edit to a draft, such as `add_node` or `link`; the one way the editor and the wizard change a definition.
 - **Node**: any element of a definition (process, stage, step, fact, role, decision, approval).
 - **Core**: the typed, schema-validated layer of a node: identity, kind, edges, role, actor policy, guards, source, invariants.

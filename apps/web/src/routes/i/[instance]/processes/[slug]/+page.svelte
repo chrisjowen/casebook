@@ -81,14 +81,6 @@
 				>
 			{/if}
 		</div>
-		{#if p.draftPending}
-			<p class="mt-3 px-1 text-[12px] text-amber-800">
-				Draft changes pending: running cases keep their version until it is published{p.policy ===
-				'governed'
-					? ' and they are moved'
-					: ''}. The editor shows what changed.
-			</p>
-		{/if}
 
 		<section class="mt-8">
 			<h2 class="mb-2 px-1 text-[13px] font-semibold">

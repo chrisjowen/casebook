@@ -1,7 +1,8 @@
-// The only write path for the store tables. The database keeps declarative constraints (keys,
-// foreign keys, NOT NULL, kind and status checks); every other rule is enforced here and
-// refused with a StoreRuleError. A write given an `Authorization` also checks its actor with `can`
-// (ADR 0017) inside the same transaction, and refuses with an AccessDeniedError.
+// The write path for the store tables, except case events, facts, files and the case roles a step
+// assigns, which the case runtime (`runtime/actions.ts`) records. The database keeps declarative
+// constraints (keys, foreign keys, NOT NULL, kind and status checks); every other rule is enforced
+// here and refused with a StoreRuleError. A write given an `Authorization` also checks its actor
+// with `can` (ADR 0017) inside the same transaction, and refuses with an AccessDeniedError.
 import { and, desc, eq, inArray, isNull, max, sql } from 'drizzle-orm';
 import {
 	can,

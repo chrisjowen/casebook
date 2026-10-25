@@ -508,7 +508,7 @@ export interface CaseView {
 	/** Every captured value and file, files first, newest first within each. */
 	record: RecordEntry[];
 	/** What the actor may do on the case. */
-	can: { addProcess: boolean; moveVersions: Decision };
+	can: { addProcess: boolean };
 }
 
 /** A case the actor can open, with their tasks on it, its processes and its record. */
@@ -572,10 +572,7 @@ export async function loadCase(
 		mine,
 		processes,
 		record: caseRecord(c, people),
-		can: {
-			addProcess,
-			moveVersions: await can(db, actor, 'case.bind_version', { type: 'case', caseId })
-		},
+		can: { addProcess },
 		...(c.subject ? { subject: c.subject } : {}),
 		...(c.openedBy ? { openedBy: p(c.openedBy) } : {})
 	};

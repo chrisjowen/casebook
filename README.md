@@ -1,12 +1,12 @@
 # casebook
 
-Define, visualize and (later) run human-in-the-loop processes as cases.
+Define, visualize and run human-in-the-loop processes as cases.
 
 casebook is a generic process modeler and runner for business and human-in-the-loop processes, not necessarily automated.
 Processes are stored as versioned definitions of stages, steps, facts, roles and approvals.
 A case is the shared subject several processes attach to, sharing one fact store.
 People and agents act on cases as principals within hierarchical namespaces.
-v1 focuses on defining processes, viewing them as a graph, and an agent-assisted wizard that imports spreadsheets.
+v1 focuses on defining processes, viewing them as a graph, and an agent-assisted wizard that imports spreadsheets; running cases has begun (ADR 0022).
 
 ## Docs
 
@@ -18,13 +18,13 @@ v1 focuses on defining processes, viewing them as a graph, and an agent-assisted
 
 A [moon](https://moonrepo.dev) workspace with pnpm workspaces underneath, all TypeScript.
 
-| Path                    | What it is                                                                                              |
-| ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| `apps/web`              | SvelteKit 2 app (Svelte 5, Tailwind 4, shadcn-svelte): the process definition editor.                   |
-| `packages/model`        | Process-definition types, JSON Schema, validation, publish checks and node operations. Pure TypeScript. |
-| `packages/store`        | Postgres persistence, permission checks, definition editing and the demo seed; Drizzle ORM migrations.  |
-| `packages/sheet-import` | Reads .xlsx workbooks into neutral rows and cells for the wizard.                                       |
-| `packages/wizard-agent` | Placeholder for the deepagents-based authoring agent.                                                   |
+| Path                    | What it is                                                                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web`              | SvelteKit 2 app (Svelte 5, Tailwind 4, shadcn-svelte): the runner and the process definition editor.                                   |
+| `packages/model`        | Process-definition types, JSON Schema, validation, publish checks, node operations and the case runtime's pure logic. Pure TypeScript. |
+| `packages/store`        | Postgres persistence, permission checks, definition editing, the case runtime and the demo seed; Drizzle ORM migrations.               |
+| `packages/sheet-import` | Reads .xlsx workbooks into neutral rows and cells for the wizard.                                                                      |
+| `packages/wizard-agent` | Placeholder for the deepagents-based authoring agent.                                                                                  |
 
 ## Prerequisites
 
@@ -38,17 +38,36 @@ proto install            # moon, Node 22 and pnpm at the pinned versions
 pnpm install
 cp .env.example .env
 pnpm db:up               # Postgres 17 on 127.0.0.1:5433
-pnpm db:seed             # migrate, then load the demo account, users and processes
+pnpm db:seed             # migrate, then load the demo accounts, users, processes and cases
 pnpm dev                 # web app on http://localhost:5173
 ```
 
 If port 5433 is taken, set `CASEBOOK_PG_PORT` in `.env` and update the port in `DATABASE_URL` to match.
 Stop Postgres with `pnpm db:down`; its data stays in the `casebook-pgdata` volume.
 `pnpm db:seed` does nothing once the demo account exists; to start again, run `docker compose down -v`, then `pnpm db:up` and `pnpm db:seed`.
+Files attached to cases are stored on local disk in `CASEBOOK_FILES_DIR`, or `.casebook/files` under the directory the app or seed runs in.
+
+## Running cases
+
+`pnpm dev` opens on **My work** (ADR 0022).
+The instance switcher at the top left moves between the accounts you belong to; inside one, **Work | Processes** switches between running cases and designing processes.
+
+- **My work** lists what waits on you in that instance, in a fixed order: Ready for you, Needs information (paused, with the reason), Waiting on someone else (who, and any pause note), and a quiet Recurring group for repeating steps.
+- **Cases** are workspaces: your tasks on the case, one stage strip per attached process with a line about what others are doing, and **View whole process**, a read-only list of every stage and step.
+  The **Case record** lists every value and file on the case, once, with who recorded it, when and the task it came from.
+- A **task** is one focused form: who it is for, what it uses (values already on the case, with where they came from) and what to record, typed from each fact's schema.
+  There is no claim button: the first to finish completes it, and others see who has started.
+  "I can’t finish this yet" pauses it with a note that whoever is waiting sees; a step whose condition is only prose can be marked as not applying.
+- **Processes** lists the instance's definitions with status, version, change policy and live cases. A process opens on its own page, with **Edit** into the board editor, **Start a case**, the cases running it and a "Draft changes pending" note.
+  A case is started by anyone with write access or a role in the process; **New case** and **Add a process** on a case use the same form.
+- A **guest** holds a role in an account without belonging to it, such as a hospital's billing contact on one case. Guests see only **Requests for you**, and each form shows only the values it needs, one line of context and who asked.
+
+The seed lays out a handful of cases in different stages, so each demo user's work differs.
+"Use a demo document" stands in for an upload in development.
 
 ## Definition editor
 
-`pnpm dev` serves the editor.
+**Processes → Edit** opens the editor, at `/i/<instance>/processes/edit`; older `/?ws=…&p=…` links still open it.
 A process is built on the **board** (ADR 0021): its stages are columns, laid out from the definition, with step and decision cards in them.
 Role lanes and a fact flow (Svelte Flow with an ELK layout) are read-only lenses on it, alongside a per-workspace process map of shared fact types.
 Inspectors cover steps, decisions, stages, fact types and processes, including the publish checks from `packages/model`.
@@ -62,7 +81,7 @@ On the board, everything is added and linked in place:
 - dragging a card onto another column moves it to that stage, and double-clicking a name renames it;
 - a step's **Records** and **Needs first** add, rename, re-kind and remove its facts in place.
 
-Definitions are read from and saved to Postgres through `packages/store` (`apps/web/src/lib/server/definitions.ts` and the form actions in `apps/web/src/routes/+page.server.ts`).
+Definitions are read from and saved to Postgres through `packages/store` (`apps/web/src/lib/server/definitions.ts` and the form actions in `apps/web/src/routes/i/[instance]/processes/edit/+page.server.ts`).
 Each workspace is a namespace the signed-in user can read.
 Every gesture changes the draft through the model's node operations and is saved as one draft revision, with a notice that offers Undo (`⌘Z` too).
 The process details list what the draft changes since the latest published version, with Publish and Undo.
@@ -72,14 +91,18 @@ A governed process publishes when someone presses Publish and the publish checks
 Sign-in is a dev-only stand-in for OIDC: pick one of the seeded users at `/signin`, with no password.
 It is on only in `pnpm dev`, never in a production build.
 Every read and write acts as that user and goes through `can()`, and actions they cannot take are disabled with the reason.
-The seed (`packages/store/src/seed.ts`) creates account `acme` with these users, and loads the model's synthetic fixtures as published definitions:
+The seed (`packages/store/src/seed.ts`) creates two accounts, `acme` ("Acme") and `example-family` ("Example family"), with these users, loads the model's synthetic fixtures as published definitions, and starts five cases:
 
-| User            | Access                                                      | Can                                                        |
-| --------------- | ----------------------------------------------------------- | ---------------------------------------------------------- |
-| Olive Owner     | account-owner of `acme`                                     | everything                                                 |
-| Devon Developer | developer of `acme`, namespace-admin of `acme/eng/platform` | read everything; create and publish in `acme/eng/platform` |
-| Wren Writer     | read-only of `acme`, write on `acme/eng`                    | read everything; edit, create and publish under `acme/eng` |
-| Rae Reader      | read-only of `acme`                                         | read only                                                  |
+| User                     | Access                                                      | In the demo cases                                                        |
+| ------------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Olive Owner              | account-owner of `acme`                                     | engineering director: signs off RCAs                                     |
+| Devon Developer          | developer of `acme`, namespace-admin of `acme/eng/platform` | on-call engineer: reports incidents                                      |
+| Wren Writer              | read-only of `acme`, write on `acme/eng`                    | incident commander: classifies and resolves incidents                    |
+| Rae Reader               | read-only of `acme`                                         | reads the incidents; nothing to do                                       |
+| Alex Example             | account-owner of `example-family`, read-only of `acme`      | a parent and claimant in the family; communications lead posting updates |
+| Sam Example              | developer of `example-family`                               | the other parent; applying for citizenship                               |
+| Dana Cole                | guest: care provider on one family case                     | sends a hospital's itemised invoice                                      |
+| Example Health Insurance | guest: insurer in `personal/example-user/family`            | assesses claims                                                          |
 
 ## Checks
 
@@ -94,7 +117,7 @@ pnpm format              # Prettier (pnpm format:check to verify only)
 ```
 
 Run a single project's task with moon directly, for example `moon run model:test`.
-The `store` tests, which cover the seed, editing, publishing and permission refusals, need Postgres (`pnpm db:up` and a `.env`): they migrate a throwaway database next to the one `DATABASE_URL` names, and are skipped when it is unset outside CI.
+The `store` tests, which cover the seed, editing, publishing, running cases and permission refusals, need Postgres (`pnpm db:up` and a `.env`): they migrate a throwaway database next to the one `DATABASE_URL` names, and are skipped when it is unset outside CI.
 
 ## Database migrations
 

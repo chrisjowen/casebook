@@ -35,7 +35,7 @@
 	<div class="min-w-0 flex-1">
 		<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
 			<span class="text-[14px] font-medium">{task.title}</span>
-			{#if showStatus}<StatusTag {task} />{/if}
+			{#if showStatus}<StatusTag {task} {me} />{/if}
 		</div>
 		<div
 			class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground"

@@ -156,7 +156,7 @@ describe('a case', () => {
 				sharedBy: []
 			}
 		],
-		can: { addProcess: false, moveVersions: { allowed: false, reason: 'no' } }
+		can: { addProcess: false }
 	};
 	const page = (c: CaseView) =>
 		text(render(CasePage, { props: { data: { ...frame, case: c }, params: {} } as never }).body);

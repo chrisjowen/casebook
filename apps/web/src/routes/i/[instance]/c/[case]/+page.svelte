@@ -49,9 +49,9 @@
 		<header class="mb-6 px-1">
 			<h1 class="text-[22px] font-semibold tracking-tight">{c.title}</h1>
 			<p class="mt-1 text-[14px] text-muted-foreground">
-				{#if c.subject}{c.subject} ·
-				{/if}opened {day(c.openedAt)}{#if c.openedBy}
-					by {c.openedBy.name}{/if}
+				{[c.subject, `opened ${day(c.openedAt)}${c.openedBy ? ` by ${c.openedBy.name}` : ''}`]
+					.filter(Boolean)
+					.join(' · ')}
 			</p>
 		</header>
 
@@ -150,8 +150,7 @@
 									<span class="text-muted-foreground">· {r.display}</span>
 								{/if}
 								<p class="text-[12px] text-muted-foreground">
-									{r.by.name} · {day(r.at)}{#if r.from}
-										· {r.from.title}{/if}
+									{[r.by.name, day(r.at), r.from?.title].filter(Boolean).join(' · ')}
 								</p>
 							</div>
 						</li>

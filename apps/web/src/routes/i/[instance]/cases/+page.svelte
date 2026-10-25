@@ -62,8 +62,7 @@
 									{/if}
 								</div>
 								<p class="mt-0.5 text-[13px] text-muted-foreground">
-									{#if c.subject}{c.subject} ·
-									{/if}opened {day(c.openedAt)}
+									{[c.subject, `opened ${day(c.openedAt)}`].filter(Boolean).join(' · ')}
 								</p>
 							</div>
 							<ChevronRight class="mt-1 size-4 text-muted-foreground/50" />

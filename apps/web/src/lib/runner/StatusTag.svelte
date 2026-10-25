@@ -13,9 +13,19 @@
 	import { names, relative } from './format';
 
 	let {
-		task
-	}: { task: Pick<TaskSummary, 'status' | 'repeating' | 'due' | 'overdue' | 'waitingOn'> } =
-		$props();
+		task,
+		me
+	}: {
+		task: Pick<TaskSummary, 'status' | 'repeating' | 'due' | 'overdue' | 'waitingOn'>;
+		/** The signed-in user: work waiting on their own earlier task says so. */
+		me?: string;
+	} = $props();
+
+	const waitingLabel = $derived(
+		task.waitingOn && me && task.waitingOn.holders.some((h) => h.id === me)
+			? `After “${task.waitingOn.title}”`
+			: `Waiting on ${names(task.waitingOn?.holders ?? [])}`
+	);
 </script>
 
 {#if task.repeating && (task.status === 'ready' || task.status === 'held') && task.due}
@@ -34,9 +44,7 @@
 		><CircleAlert class="size-3" />Missing information</span
 	>
 {:else if task.status === 'waiting'}
-	<span class="tag bg-muted text-muted-foreground"
-		><Hourglass class="size-3" />Waiting on {names(task.waitingOn?.holders ?? [])}</span
-	>
+	<span class="tag bg-muted text-muted-foreground"><Hourglass class="size-3" />{waitingLabel}</span>
 {:else if task.status === 'upcoming'}
 	<span class="tag bg-muted text-muted-foreground"><Lock class="size-3" />Later</span>
 {:else if task.status === 'skipped'}
