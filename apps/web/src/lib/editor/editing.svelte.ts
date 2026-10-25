@@ -22,14 +22,20 @@ interface Failure {
 }
 
 export class Editor {
-	busy = $state(false);
 	notice = $state<Notice | undefined>();
+	#pending = $state(0);
+	#queue: Promise<unknown> = Promise.resolve();
 	#timer: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
 		/** The open definition. */
 		private readonly current: () => LoadedDefinition | undefined
 	) {}
+
+	/** Whether a request is running or waiting its turn. */
+	get busy() {
+		return this.#pending > 0;
+	}
 
 	get definition() {
 		return this.current();
@@ -48,33 +54,33 @@ export class Editor {
 
 	/** Saves `ops` as one edit of the open draft. Resolves true when it was saved. */
 	async apply(ops: Operation[]): Promise<boolean> {
-		const definition = this.definition;
-		if (!definition || this.blocked) return false;
-		const result = await this.#submit('edit', {
-			definitionId: definition.id,
-			baseRevision: String(definition.revision ?? 0),
-			ops: JSON.stringify(ops)
+		const result = await this.#submit('edit', () => {
+			const definition = this.definition;
+			if (!definition || this.blocked) return undefined;
+			return {
+				definitionId: definition.id,
+				baseRevision: String(definition.revision ?? 0),
+				ops: JSON.stringify(ops)
+			};
 		});
 		if (result?.version !== undefined) this.#say('info', `Published as version ${result.version}`);
 		return result !== undefined;
 	}
 
 	async undo(): Promise<void> {
-		const definition = this.definition;
-		if (!definition || this.blocked) return;
-		const result = await this.#submit('undo', {
-			definitionId: definition.id,
-			baseRevision: String(definition.revision ?? 0)
+		const result = await this.#submit('undo', () => {
+			const definition = this.definition;
+			if (!definition || this.blocked) return undefined;
+			return { definitionId: definition.id, baseRevision: String(definition.revision ?? 0) };
 		});
 		if (result) this.#say('info', 'Undid the last edit');
 	}
 
 	async publish(): Promise<void> {
-		const definition = this.definition;
-		if (!definition) return;
-		const result = await this.#submit('publish', {
-			definitionId: definition.id,
-			baseRevision: String(definition.revision ?? 0)
+		const result = await this.#submit('publish', () => {
+			const definition = this.definition;
+			if (!definition) return undefined;
+			return { definitionId: definition.id, baseRevision: String(definition.revision ?? 0) };
 		});
 		if (result?.version !== undefined) this.#say('info', `Published version ${result.version}`);
 	}
@@ -85,7 +91,7 @@ export class Editor {
 		title: string,
 		changePolicy: 'governed' | 'living'
 	): Promise<string | undefined> {
-		const result = await this.#submit('create', { namespaceId, title, changePolicy });
+		const result = await this.#submit('create', () => ({ namespaceId, title, changePolicy }));
 		return typeof result?.slug === 'string' ? result.slug : undefined;
 	}
 
@@ -93,12 +99,31 @@ export class Editor {
 		this.notice = undefined;
 	}
 
-	async #submit(
+	/**
+	 * Queues a request behind any still running, so each is sent against the page as the one before
+	 * it left it. `fields` is read when the request's turn comes; undefined skips it.
+	 */
+	#submit(
+		action: string,
+		fields: () => Record<string, string> | undefined
+	): Promise<Record<string, unknown> | undefined> {
+		this.#pending++;
+		const run = this.#queue.then(async () => {
+			try {
+				const values = fields();
+				return values && (await this.#post(action, values));
+			} finally {
+				this.#pending--;
+			}
+		});
+		this.#queue = run;
+		return run;
+	}
+
+	async #post(
 		action: string,
 		fields: Record<string, string>
 	): Promise<Record<string, unknown> | undefined> {
-		if (this.busy) return undefined;
-		this.busy = true;
 		try {
 			const body = new FormData();
 			for (const [key, value] of Object.entries(fields)) body.set(key, value);
@@ -123,8 +148,6 @@ export class Editor {
 		} catch (error) {
 			this.#say('error', error instanceof Error ? error.message : String(error));
 			return undefined;
-		} finally {
-			this.busy = false;
 		}
 	}
 
