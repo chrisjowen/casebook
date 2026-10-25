@@ -32,7 +32,7 @@ These screenshots come from `pnpm db:seed`: the synthetic sample processes and t
 
 ![The case record for Mira Example, with documents and values](docs/screenshots/record.webp)
 
-**Processes**: the instance's definitions with status, version, change policy and live cases.
+**Processes**: the instance's definitions with status, version, change policy, live cases and any draft changes pending.
 
 ![The Example family process list](docs/screenshots/processes.webp)
 
@@ -44,9 +44,17 @@ These screenshots come from `pnpm db:seed`: the synthetic sample processes and t
 
 ![The Upload the marriage certificate step open in the inspector](docs/screenshots/step.webp)
 
+**A condition, built and tested**: a step's "Only when" as rows of fact, operator and value, tried against the values on a case.
+
+![The Record the reimbursement step's condition, Insurer decision is not declined, tested against Mira Example's claim](docs/screenshots/condition.webp)
+
 **Draft and publishing**: what the draft changes since the latest published version, with the publish checks, Publish and Undo.
 
 ![The Spouse citizenship details showing one change since version 1 and Publish version 2](docs/screenshots/publish.webp)
+
+**Lookups**: the lists of values choices are made from, shared by a workspace or kept in one process.
+
+![The family's shared ISO 3166 countries lookup, with its values, the process that uses it and its history](docs/screenshots/lookups.webp)
 
 ## Docs
 

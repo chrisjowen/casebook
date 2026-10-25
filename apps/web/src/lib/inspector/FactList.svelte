@@ -217,20 +217,41 @@
 					{:else}
 						<div class="px-1 py-1 text-[13px]">{labelOf(ix, fact)}</div>
 					{/if}
-					<div class="px-1 pb-0.5 text-[11px] break-words text-muted-foreground">
-						{#if list === 'records'}
-							{users.length
-								? `Needed by ${users.map((u) => labelOf(ix, u.core.id)).join(', ')}`
-								: 'Not used by a later step yet'}
-						{:else if from.length}
-							<span class="inline-flex items-center gap-1"
-								><ArrowLeft class="size-3" />from {from.map((f) => labelOf(ix, f)).join(', ')}</span
+					<!-- The name has the row; what uses it and its kind share the line below. -->
+					<div class="flex items-start gap-2">
+						<div
+							class="min-w-0 flex-1 px-1 pt-1 pb-0.5 text-[11px] break-words text-muted-foreground"
+						>
+							{#if list === 'records'}
+								{users.length
+									? `Needed by ${users.map((u) => labelOf(ix, u.core.id)).join(', ')}`
+									: 'Not used by a later step yet'}
+							{:else if from.length}
+								<span class="inline-flex items-center gap-1"
+									><ArrowLeft class="size-3" />from {from
+										.map((f) => labelOf(ix, f))
+										.join(', ')}</span
+								>
+							{:else if records.includes(fact)}
+								Recorded by this step
+							{:else}
+								<span class="inline-flex items-center gap-1 text-amber-700"
+									><TriangleAlert class="size-3" />Nothing records this yet</span
+								>
+							{/if}
+						</div>
+						{#if edit && current && !isOutcome(fact)}
+							<select
+								class={[select, 'field-sizing-content max-w-40 shrink-0']}
+								aria-label="Kind of {labelOf(ix, fact)}"
+								value={current}
+								onchange={(e) => setKind(fact, e.currentTarget.value, e.currentTarget, current)}
 							>
-						{:else if records.includes(fact)}
-							Recorded by this step
+								{@render kinds(current)}
+							</select>
 						{:else}
-							<span class="inline-flex items-center gap-1 text-amber-700"
-								><TriangleAlert class="size-3" />Nothing records this yet</span
+							<span class="shrink-0 px-1 pt-1 text-[11.5px] text-muted-foreground"
+								>{kindOf.label}</span
 							>
 						{/if}
 					</div>
@@ -256,18 +277,6 @@
 						</div>
 					{/if}
 				</div>
-				{#if edit && current && !isOutcome(fact)}
-					<select
-						class={[select, 'mt-1 max-w-28']}
-						aria-label="Kind of {labelOf(ix, fact)}"
-						value={current}
-						onchange={(e) => setKind(fact, e.currentTarget.value, e.currentTarget, current)}
-					>
-						{@render kinds(current)}
-					</select>
-				{:else}
-					<span class="mt-2 shrink-0 px-1 text-[11.5px] text-muted-foreground">{kindOf.label}</span>
-				{/if}
 				<button
 					class="mt-1 flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
 					aria-label="More about {labelOf(ix, fact)}"
@@ -323,7 +332,11 @@
 				bind:value={name}
 				onkeydown={add}
 			/>
-			<select class={[select, 'max-w-28']} aria-label="Kind for a new fact" bind:value={kind}>
+			<select
+				class={[select, 'field-sizing-content max-w-32 shrink-0']}
+				aria-label="Kind for a new fact"
+				bind:value={kind}
+			>
 				{@render kinds(undefined)}
 			</select>
 			<datalist id={listId}
