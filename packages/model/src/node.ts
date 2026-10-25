@@ -180,6 +180,8 @@ export interface LookupValue {
 	label?: string;
 	/** A short code for the value, such as an ISO country code or an insurer's number. */
 	code?: string;
+	/** What the value means, shown to whoever chooses it. */
+	description?: string;
 	disabled?: boolean;
 }
 

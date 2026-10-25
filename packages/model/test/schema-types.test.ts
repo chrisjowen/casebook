@@ -173,7 +173,7 @@ const shapes: [name: string, schemaFields: object, typeFields: object][] = [
 	[
 		'LookupValue',
 		$defs.lookupValue.properties,
-		{ value: true, label: true, code: true, disabled: true } satisfies Record<
+		{ value: true, label: true, code: true, description: true, disabled: true } satisfies Record<
 			keyof LookupValue,
 			true
 		>

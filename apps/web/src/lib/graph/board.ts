@@ -11,6 +11,7 @@ import type { Edge, Node } from '@xyflow/svelte';
 import type { FactNode } from '@casebook/model';
 import { branchChoices } from '$lib/conditions/conditions';
 import {
+	choiceLabel,
 	choiceValues,
 	collectorsByFact,
 	collectsOf,
@@ -126,7 +127,7 @@ export function boardRows(ix: ProcessIndex, item: WorkItem): BoardRow[] {
 		if (choices.length)
 			return choices.map((c) => ({
 				handle: `b:${String(c)}`,
-				title: String(c),
+				title: choiceLabel(ix, core.outcome, c),
 				type: 'Choice',
 				glyph: 'branch' as const,
 				fact: core.outcome

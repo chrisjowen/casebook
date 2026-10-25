@@ -25,6 +25,7 @@ import {
 	freshLookupId,
 	newLookupNode,
 	nodeReferences,
+	removeValue,
 	type ChoicesFrom,
 	type LookupId,
 	type LookupNode,
@@ -32,6 +33,7 @@ import {
 	type ValuesEdit
 } from '@casebook/model';
 import {
+	choiceLabel,
 	choicesOf,
 	collectsOf,
 	indexDocument,
@@ -323,6 +325,29 @@ export function addChoice(ix: ProcessIndex, fact: FactId, choice: string): Edit 
 	return setChoices(ix, fact, [...list, choice]);
 }
 
+/**
+ * Takes a choice off a choice fact: out of the lookup it is chosen from, or out of its own
+ * options. Cases that hold it keep it.
+ */
+export function removeChoice(ix: ProcessIndex, fact: FactId, choice: string): Edit | string {
+	const node = ix.byId.get(fact) as FactNode;
+	const lookup = node.core.schema['x-lookup'];
+	if (lookup?.kind === 'lookup') {
+		const list = ix.byId.get(lookup.lookup) as LookupNode;
+		return changeValues(ix, list.core.id, removeValue(list.core.values, choice));
+	}
+	if (lookup?.kind === 'dataset') {
+		return `${labelOf(ix, fact)} is chosen from a shared lookup; change the value there`;
+	}
+	return setChoices(
+		ix,
+		fact,
+		choicesOf(ix, fact)
+			.map((c) => c.value)
+			.filter((c) => c !== choice)
+	);
+}
+
 // Lookups (ADR 0025): named lists of values that choice facts are chosen from.
 
 /** A new lookup, named and with these values, in one edit. */
@@ -370,7 +395,16 @@ export function chooseFrom(ix: ProcessIndex, fact: FactId, to: ChoicesFrom): Edi
 		: {
 				type: 'string',
 				...Object.fromEntries(
-					['format', 'x-evidence', 'items', 'minItems', 'maxItems', 'pattern']
+					[
+						'format',
+						'x-evidence',
+						'items',
+						'minItems',
+						'maxItems',
+						'pattern',
+						'minLength',
+						'maxLength'
+					]
 						.filter((k) => k in schema)
 						.map((k) => [k, null])
 				)
@@ -425,9 +459,45 @@ export function removeLookup(ix: ProcessIndex, id: string): Edit | string {
 
 /** Sets the choices of a choice fact, such as a decision's outcome. */
 export function setChoices(ix: ProcessIndex, fact: FactId, choices: string[]): Edit {
+	const schema = (ix.byId.get(fact) as FactNode).core.schema;
 	return {
-		ops: [{ op: 'update_core', id: fact, changes: { schema: { enum: choices } } }],
+		ops: [
+			{
+				op: 'update_core',
+				id: fact,
+				changes: { schema: choicesPatch(schema, { kind: 'own', options: choices }) }
+			}
+		],
 		label: `Choices for ${labelOf(ix, fact)}: ${choices.join(', ')}`
+	};
+}
+
+/**
+ * Lets people choose several of a choice fact's values, or only one. Its own options move
+ * between the fact and its items; a lookup it is chosen from stays.
+ */
+export function setMultiple(ix: ProcessIndex, fact: FactId, several: boolean): Edit {
+	const schema = (ix.byId.get(fact) as FactNode).core.schema;
+	const own = choicesOf(ix, fact).map((c) => c.value);
+	const isOwn = !schema['x-lookup'];
+	const changes = several
+		? {
+				type: 'array',
+				items: { type: 'string', ...(isOwn ? { enum: own } : {}) },
+				enum: null
+			}
+		: {
+				type: 'string',
+				items: null,
+				minItems: null,
+				maxItems: null,
+				...(isOwn ? { enum: own } : {})
+			};
+	return {
+		ops: [{ op: 'update_core', id: fact, changes: { schema: changes } }],
+		label: several
+			? `People can choose several ${labelOf(ix, fact)}`
+			: `People choose one ${labelOf(ix, fact)}`
 	};
 }
 
@@ -465,7 +535,7 @@ export function outcomeName(ix: ProcessIndex, outcome: string): string {
 /** The guard for "runs only when `outcome` is `choice`", in prose and as an expression. */
 export function branchGuard(ix: ProcessIndex, outcome: string, choice: string): Guard {
 	return {
-		text: `Only when ${outcomeName(ix, outcome)} is ${choice}`,
+		text: `Only when ${outcomeName(ix, outcome)} is ${choiceLabel(ix, outcome, choice)}`,
 		expr: `${outcome} == '${choice.replaceAll("'", "\\'")}'`
 	};
 }
@@ -481,7 +551,7 @@ export function branchTo(ix: ProcessIndex, decision: string, choice: string, to:
 	ops.push(setWhen(to, branchGuard(ix, outcome, choice)));
 	return {
 		ops,
-		label: `${labelOf(ix, to)} runs only when ${labelOf(ix, decision)} is ${choice}`
+		label: `${labelOf(ix, to)} runs only when ${labelOf(ix, decision)} is ${choiceLabel(ix, outcome, choice)}`
 	};
 }
 

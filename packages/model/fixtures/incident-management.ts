@@ -289,10 +289,10 @@ export const incidentManagement: DefinitionDocument = {
 				kind: 'lookup',
 				title: 'Severity levels',
 				values: [
-					{ value: 'SEV1', label: 'SEV1 · Full outage' },
-					{ value: 'SEV2', label: 'SEV2 · Major' },
-					{ value: 'SEV3', label: 'SEV3 · Minor' },
-					{ value: 'SEV4', label: 'SEV4 · Cosmetic' }
+					{ value: 'SEV1', description: 'A customer-facing service is down' },
+					{ value: 'SEV2', description: 'A major feature is broken or badly slow' },
+					{ value: 'SEV3', description: 'A minor feature is degraded; there is a workaround' },
+					{ value: 'SEV4', description: 'Cosmetic, or affects very few people' }
 				]
 			},
 			content:

@@ -324,10 +324,10 @@ describe.skipIf(!url)('choices on case forms (Postgres)', () => {
 		});
 		if ('ok' in severity) throw new Error(severity.reason);
 		expect(severity.fields[0]?.options?.map((o) => o.label)).toEqual([
-			'SEV1 · Full outage',
-			'SEV2 · Major',
-			'SEV3 · Minor',
-			'SEV4 · Cosmetic'
+			'SEV1',
+			'SEV2',
+			'SEV3',
+			'SEV4'
 		]);
 
 		const view = await loadCase(db, users.devon, 'acme', caseId);

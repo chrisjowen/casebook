@@ -94,6 +94,11 @@ export function choicesOf(ix: ProcessIndex, fact: string | undefined): Choice[] 
 		: [];
 }
 
+/** How a choice of a fact reads: its lookup label, or the stored value itself. */
+export function choiceLabel(ix: ProcessIndex, fact: string | undefined, value: string): string {
+	return choicesOf(ix, fact).find((c) => c.value === value)?.label ?? value;
+}
+
 /** The values a fact can be given now, such as a decision's outcomes for its branches. */
 export function choiceValues(ix: ProcessIndex, fact: string | undefined): string[] {
 	return choicesOf(ix, fact)
@@ -407,6 +412,9 @@ export function factType(schema: FactSchema | undefined): { label: string; glyph
 	}
 	if (lookup) return { label: 'Lookup', glyph: 'lookup' };
 	if (Array.isArray(schema.enum)) return { label: 'Choice', glyph: 'choice' };
+	if (schema.type === 'array' && Array.isArray((schema.items as FactSchema | undefined)?.enum)) {
+		return { label: 'Choices', glyph: 'choice' };
+	}
 	if (schema.format === 'date') return { label: 'Date', glyph: 'date' };
 	if (schema.format === 'date-time') return { label: 'Date & time', glyph: 'date' };
 	if (schema.format === 'uri') return { label: 'Link', glyph: 'link' };

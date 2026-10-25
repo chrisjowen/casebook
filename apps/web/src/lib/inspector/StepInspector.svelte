@@ -29,6 +29,7 @@
 		X
 	} from '@lucide/svelte';
 	import {
+		choiceLabel,
 		choiceValues,
 		describeEvidence,
 		humanizeDuration,
@@ -51,7 +52,8 @@
 		removeApproval,
 		removeWork,
 		renameNode,
-		setChoices,
+		addChoice,
+		removeChoice,
 		setWhen,
 		type Edit
 	} from '$lib/editor/ops';
@@ -238,7 +240,9 @@
 					<li class="flex items-start gap-2 rounded-lg border px-2.5 py-2">
 						<GitBranch class="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
 						<div class="min-w-0 flex-1">
-							<div class="text-[13px] font-medium">{choice}</div>
+							<div class="text-[13px] font-medium">
+								{choiceLabel(ix, outcome.core.id, choice)}
+							</div>
 							<div
 								class="mt-0.5 flex flex-wrap items-center gap-1 text-[11.5px] text-muted-foreground"
 							>
@@ -277,19 +281,21 @@
 								class={remove}
 								disabled={choices.length <= 1}
 								aria-label="Remove choice {choice}"
-								onclick={() =>
-									save(
-										setChoices(
-											ix,
-											outcome.core.id,
-											choices.filter((c) => c !== choice)
-										)
-									)}><X class="size-3.5" /></button
+								onclick={() => save(removeChoice(ix, outcome.core.id, choice))}
+								><X class="size-3.5" /></button
 							>
 						{/if}
 					</li>
 				{/each}
 			</ul>
+			{@const from = outcome.core.schema['x-lookup']}
+			{#if from?.kind === 'lookup'}
+				<button
+					class="cursor-pointer self-start text-[11.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+					onclick={() => onselect(from.lookup)}
+					>Choices come from the {labelOf(ix, from.lookup)} lookup</button
+				>
+			{/if}
 			{#if edit}
 				<input
 					type="text"
@@ -301,8 +307,7 @@
 						e.stopPropagation();
 						const c = newChoice.trim();
 						if (e.key !== 'Enter' || !c) return;
-						if (choices.includes(c)) return save(`${c} is already a choice`);
-						if (await save(setChoices(ix, outcome.core.id, [...choices, c]))) newChoice = '';
+						if (await save(addChoice(ix, outcome.core.id, c))) newChoice = '';
 					}}
 				/>
 			{/if}

@@ -36,8 +36,8 @@ const services = schemaOf(incidentManagement, 'fact.affected-services');
 describe('factChoices', () => {
 	it('reads a lookup node’s values, labels first', () => {
 		expect(factChoices(incidentManagement, severity)?.slice(0, 2)).toEqual([
-			{ value: 'SEV1', label: 'SEV1 · Full outage' },
-			{ value: 'SEV2', label: 'SEV2 · Major' }
+			{ value: 'SEV1', label: 'SEV1', description: 'A customer-facing service is down' },
+			{ value: 'SEV2', label: 'SEV2', description: 'A major feature is broken or badly slow' }
 		]);
 	});
 

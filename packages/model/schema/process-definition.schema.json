@@ -354,6 +354,7 @@
 				"value": { "$ref": "#/$defs/text" },
 				"label": { "$ref": "#/$defs/text" },
 				"code": { "$ref": "#/$defs/text" },
+				"description": { "$ref": "#/$defs/text" },
 				"disabled": { "type": "boolean" }
 			}
 		},

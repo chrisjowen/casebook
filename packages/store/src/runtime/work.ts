@@ -745,7 +745,7 @@ export interface FormField {
 	/** Guidance from the fact's description or content. */
 	hint?: string;
 	/** For a choice: what can be chosen, each stored as its value and read as its label. */
-	options?: { value: string; label: string; code?: string }[];
+	options?: { value: string; label: string; code?: string; description?: string }[];
 	people?: PersonView[];
 	/** Whether more than one value can be given. */
 	multiple: boolean;
@@ -913,7 +913,12 @@ function fieldKind(
 			multiple: schema.type === 'array',
 			options: choices
 				.filter((c) => !c.disabled || held.has(c.value))
-				.map((c) => ({ value: c.value, label: c.label, ...(c.code ? { code: c.code } : {}) }))
+				.map((c) => ({
+					value: c.value,
+					label: c.label,
+					...(c.code ? { code: c.code } : {}),
+					...(c.description ? { description: c.description } : {})
+				}))
 		};
 	}
 	switch (schema.type) {

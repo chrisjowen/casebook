@@ -420,8 +420,8 @@ describe('lookups', () => {
 		const values = (node(next, 'lookup.severity-levels')?.core as { values: { value: string }[] })
 			.values;
 		expect(values.at(-1)).toEqual({ value: 'SEV5' });
-		expect(edits.addChoice(ix, 'fact.severity' as FactId, 'sev1 · full outage')).toBe(
-			'sev1 · full outage is already in the list'
+		expect(edits.addChoice(ix, 'fact.severity' as FactId, 'sev1')).toBe(
+			'sev1 is already in the list'
 		);
 	});
 
@@ -434,5 +434,53 @@ describe('lookups', () => {
 		expect(
 			node(apply(next, edits.removeLookup(indexDocument(next), made.id)), made.id)
 		).toBeUndefined();
+	});
+});
+
+describe('choices that allow several', () => {
+	it('moves own options onto the items and back', () => {
+		const own = apply(
+			doc,
+			edits.chooseFrom(ix, 'fact.incident-summary', { kind: 'own', options: ['A', 'B'] })
+		);
+		const several = apply(
+			own,
+			edits.setMultiple(indexDocument(own), 'fact.incident-summary', true)
+		);
+		expect((node(several, 'fact.incident-summary') as FactNode).core.schema).toEqual({
+			type: 'array',
+			items: { type: 'string', enum: ['A', 'B'] },
+			'x-sensitivity': 'none'
+		});
+		const one = apply(
+			several,
+			edits.setMultiple(indexDocument(several), 'fact.incident-summary', false)
+		);
+		expect((node(one, 'fact.incident-summary') as FactNode).core.schema).toEqual({
+			type: 'string',
+			enum: ['A', 'B'],
+			'x-sensitivity': 'none'
+		});
+		expect(factType((node(several, 'fact.incident-summary') as FactNode).core.schema).label).toBe(
+			'Choices'
+		);
+	});
+
+	it('keeps a lookup when a fact allows several of its values', () => {
+		const several = apply(doc, edits.setMultiple(ix, 'fact.severity' as FactId, true));
+		expect((node(several, 'fact.severity') as FactNode).core.schema).toEqual({
+			type: 'array',
+			items: { type: 'string' },
+			'x-lookup': { kind: 'lookup', lookup: 'lookup.severity-levels' }
+		});
+	});
+
+	it('removes a choice from the lookup it is chosen from', () => {
+		const next = apply(doc, edits.removeChoice(ix, 'fact.severity' as FactId, 'SEV4'));
+		expect(
+			(node(next, 'lookup.severity-levels')?.core as { values: { value: string }[] }).values.map(
+				(v) => v.value
+			)
+		).toEqual(['SEV1', 'SEV2', 'SEV3']);
 	});
 });

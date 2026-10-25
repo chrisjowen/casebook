@@ -33,6 +33,8 @@ export interface Choice {
 	value: string;
 	label: string;
 	code?: string;
+	/** What it means, for whoever chooses it. */
+	description?: string;
 	/** Turned off: not offered for new entries, but still read on cases that hold it. */
 	disabled?: boolean;
 }
@@ -50,6 +52,7 @@ const toChoice = (v: LookupValue): Choice => ({
 	value: v.value,
 	label: labelOfValue(v),
 	...(v.code === undefined ? {} : { code: v.code }),
+	...(v.description === undefined ? {} : { description: v.description }),
 	...(v.disabled ? { disabled: true } : {})
 });
 
@@ -237,6 +240,20 @@ export function setValueCode(
 	});
 }
 
+/** Sets or clears what a value means. */
+export function setValueDescription(
+	values: readonly LookupValue[],
+	value: string,
+	description: string
+): ValuesEdit {
+	const text = description.trim();
+	return values.map((v) => {
+		if (v.value !== value) return v;
+		const rest = omit(v, 'description');
+		return text ? { ...rest, description: text } : rest;
+	});
+}
+
 /** Turns a value off, so it is no longer offered, or back on. */
 export function setValueDisabled(
 	values: readonly LookupValue[],
@@ -301,6 +318,9 @@ export function describeValueChanges(
 					? `removed the code of ${labelOfValue(v)}`
 					: `set the code of ${labelOfValue(v)} to ${v.code}`
 			);
+		}
+		if (old.description !== v.description) {
+			parts.push(`changed what ${labelOfValue(v)} means`);
 		}
 		if (!!old.disabled !== !!v.disabled) {
 			parts.push(`turned ${v.disabled ? 'off' : 'on'} ${labelOfValue(v)}`);
@@ -380,12 +400,18 @@ export function lookupListProblem(list: unknown): string | undefined {
 	for (const v of values as unknown[]) {
 		if (typeof v !== 'object' || v === null || Array.isArray(v))
 			return 'Each value must be an object';
-		const { value, label, code, disabled, ...extra } = v as Record<string, unknown>;
+		const { value, label, code, description, disabled, ...extra } = v as Record<
+			string,
+			unknown
+		>;
 		if (Object.keys(extra).length) return `A value has no field "${Object.keys(extra)[0]}"`;
 		if (!isText(value)) return 'Every value needs a name';
 		if (label !== undefined && !isText(label))
 			return `The label of ${String(value)} cannot be empty`;
 		if (code !== undefined && !isText(code)) return `The code of ${String(value)} cannot be empty`;
+		if (description !== undefined && !isText(description)) {
+			return `The meaning of ${String(value)} cannot be empty`;
+		}
 		if (disabled !== undefined && typeof disabled !== 'boolean') {
 			return `Whether ${String(value)} is turned off must be true or false`;
 		}

@@ -13,6 +13,8 @@
 		lookupFromFact,
 		removeFact,
 		rename,
+		setChoices,
+		setMultiple,
 		type Edit
 	} from '$lib/editor/ops';
 	import {
@@ -56,9 +58,6 @@
 	} = $props();
 	const schema = $derived(fact.core.schema);
 	const type = $derived(factType(schema));
-	const options = $derived(
-		Array.isArray(schema.enum) ? (schema.enum as unknown[]).map(String) : []
-	);
 	const collectedBy = $derived(
 		ix.work.filter((w) => collectsOf(w).some((c) => c.fact === fact.core.id))
 	);
@@ -79,7 +78,11 @@
 		Date: { type: 'string', format: 'date' },
 		Choice: { type: 'string', enum: ['Yes', 'No'] }
 	} as const;
-	const simple = $derived(type.label in KINDS && (!lookup || fromList) && !schema['x-evidence']);
+	const simple = $derived(
+		(type.label in KINDS || type.label === 'Choices') &&
+			(!lookup || fromList) &&
+			!schema['x-evidence']
+	);
 	const id = $derived(fact.core.id);
 	const setSchema = (changes: Record<string, unknown>): Operation => ({
 		op: 'update_core',
@@ -90,9 +93,17 @@
 		setSchema({
 			format: null,
 			enum: null,
+			items: null,
+			minItems: null,
+			maxItems: null,
 			'x-lookup': null,
 			...KINDS[label as keyof typeof KINDS]
 		});
+	const isOutcome = $derived(
+		ix.work.some((w) => w.core.kind === 'decision' && w.core.outcome === fact.core.id)
+	);
+	// A choice that allows several reads as Choice in the Kind menu; "People can choose several" sets it.
+	const kindLabel = $derived(type.label === 'Choices' ? 'Choice' : type.label);
 
 	// Where the choices come from, as the select below names it: "own", "lookup.x" or "shared:name".
 	const isChoice = $derived(type.glyph === 'choice');
@@ -136,7 +147,8 @@
 					kind: 'own',
 					options: choicesOf(ix, id)
 						.filter((c) => !c.disabled)
-						.map((c) => c.label)
+						// stored values stay as they are, so cases and conditions keep matching
+						.map((c) => c.value)
 				})
 			);
 		}
@@ -157,8 +169,8 @@
 		<div class="grid grid-cols-2 gap-3">
 			<EditSelect
 				label="Kind"
-				value={type.label}
-				options={(type.label in KINDS ? Object.keys(KINDS) : [type.label]).map((k) => ({
+				value={kindLabel}
+				options={(kindLabel in KINDS ? Object.keys(KINDS) : [kindLabel]).map((k) => ({
 					value: k,
 					label: k
 				}))}
@@ -231,33 +243,43 @@
 							? 'Change it on the Lookups page'
 							: 'Make it on the Lookups page'}<ArrowUpRight class="size-3" /></a
 					>{/if}
-			{:else if edit}
-				<EditText
-					label="Options"
-					value={options.join(', ')}
-					hint="Separate options with commas."
-					onsave={(text) =>
-						edit([
-							setSchema({
-								enum: text
-									.split(',')
-									.map((o) => o.trim())
-									.filter(Boolean)
-							})
-						])}
+			{:else if change}
+				<LookupValues
+					values={choicesOf(ix, id).map((c) => ({ value: c.value }))}
+					simple
+					onchange={(next) =>
+						change(
+							typeof next === 'string'
+								? next
+								: setChoices(
+										ix,
+										id,
+										next.map((v) => v.label ?? v.value)
+									)
+						)}
 				/>
-				{#if change}
-					<button
-						class="self-start text-[11.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-						title="Keep these options as a named list, to reuse, reorder, give codes and turn off"
-						onclick={() => change(lookupFromFact(ix, id))}>Make these a lookup</button
-					>
-				{/if}
-			{:else if options.length}
-				<div class="flex flex-wrap gap-1.5">
-					{#each options as o (o)}<span class="rounded-md border px-2 py-0.5 text-[12px]">{o}</span
-						>{/each}
-				</div>
+				<button
+					class="self-start text-[11.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+					title="Keep these options as a named list, to reuse, reorder, give codes and meanings and turn off"
+					onclick={() => change(lookupFromFact(ix, id))}>Make these a lookup</button
+				>
+			{:else}
+				<LookupValues values={choicesOf(ix, id).map((c) => ({ value: c.value }))} dense />
+			{/if}
+			{#if change && !isOutcome}
+				<label class="flex cursor-pointer items-center gap-2 text-[12.5px]">
+					<input
+						type="checkbox"
+						class="accent-brand"
+						checked={schema.type === 'array'}
+						onchange={async (e) => {
+							const field = e.currentTarget;
+							const on = field.checked;
+							if (!(await change(setMultiple(ix, id, on)))) field.checked = !on;
+						}}
+					/>
+					People can choose several
+				</label>
 			{/if}
 		</Group>
 	{/if}
