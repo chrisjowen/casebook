@@ -3,6 +3,7 @@
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
+import { localhostAllowedHostnames } from '@modelcontextprotocol/server';
 import { createDb, filesDirectory, localFileStore } from '@casebook/store';
 import { devAuthorizationServer } from '../auth/dev-server.js';
 import { casebookMcpApp, nodeListener } from '../http.js';
@@ -36,6 +37,7 @@ const app = casebookMcpApp({
 	files: localFileStore(files),
 	signIn: devAuthorizationServer({ db, issuer: origin, resource }),
 	resource,
+	allowedHosts: [...localhostAllowedHostnames(), origin.hostname],
 	onerror: report
 });
 const server = createServer(nodeListener(app, report));
