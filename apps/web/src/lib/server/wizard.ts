@@ -19,6 +19,7 @@ import {
 	describeRange,
 	mergeProcesses,
 	modelName,
+	modelProblem,
 	pendingTurn,
 	processOf,
 	renameProcess,
@@ -38,6 +39,10 @@ import type {
 	WizardView
 } from '$lib/wizard/types';
 import { getDb } from './db';
+import { isRunning, progressOf, runTurn, TurnTimeout, turnTimeoutSeconds } from './wizard-runs';
+
+/** Requests that run the agent, one at a time and with a timeout. */
+const AGENT_ACTIONS = new Set<WizardAction['action']>(['split', 'reply', 'draft']);
 
 /** Largest workbook accepted for import. */
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -120,6 +125,8 @@ export async function loadWizard(
 		model: safeModelName(),
 		state,
 		ranges,
+		timeoutSeconds: turnTimeoutSeconds(),
+		...(progressOf(id, actor.id) ? { progress: progressOf(id, actor.id)! } : {}),
 		...(open && turn
 			? { preview: await preview(actor, open.definitionId, open.key, turn.id, turn.ops) }
 			: {})
@@ -228,24 +235,56 @@ export async function act(
 			reason: 'The import changed while you were working on it; reload to see the latest'
 		};
 	}
+	if (isRunning(id)) {
+		return {
+			ok: false,
+			status: 409,
+			reason: 'The assistant is still working on this import; wait for it to finish'
+		};
+	}
 	const drafts = storeDrafts(db, actor);
-	const agent = () => ({ model: createChatModel(), drafts, workbook: session.workbook });
+	const deps = { drafts, actor, namespaceId: session.namespaceId };
 	let state: WizardState;
 	try {
-		state = await apply(session.state, request, {
-			agent,
-			drafts,
-			actor,
-			namespaceId: session.namespaceId
-		});
+		if (AGENT_ACTIONS.has(request.action)) {
+			const problem = await modelProblem();
+			if (problem) return { ok: false, status: 503, reason: problem };
+			state = await runTurn(id, actor.id, ({ signal, onProgress }) =>
+				apply(session.state, request, {
+					...deps,
+					agent: () => ({
+						model: createChatModel(),
+						drafts,
+						workbook: session.workbook,
+						signal,
+						onProgress
+					})
+				})
+			);
+		} else {
+			state = await apply(session.state, request, {
+				...deps,
+				agent: () => {
+					throw new WizardError('That request does not run the assistant');
+				}
+			});
+		}
 	} catch (error) {
 		if (error instanceof WizardError) return { ok: false, status: 422, reason: error.message };
+		if (error instanceof TurnTimeout) {
+			const minutes = Math.round(turnTimeoutSeconds() / 60);
+			return {
+				ok: false,
+				status: 504,
+				reason: `The assistant (${modelName()}) did not finish within ${minutes} minutes, so it was stopped and nothing changed. Try again, ask for something smaller, or set a faster model in CASEBOOK_WIZARD_MODEL.`
+			};
+		}
 		console.error('wizard', request.action, error);
 		const message = error instanceof Error ? error.message : String(error);
 		return {
 			ok: false,
 			status: 502,
-			reason: `The assistant could not answer (${modelName()}): ${message.slice(0, 300)}`
+			reason: `The assistant (${modelName()}) could not answer: ${message.slice(0, 300)}`
 		};
 	}
 	const saved = await saveWizardSession(db, actor, { id, baseVersion, state });

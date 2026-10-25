@@ -2,6 +2,7 @@
 // split, or accepting, rejecting or publishing what it drafted. Answers with the import's new version.
 import { error, json } from '@sveltejs/kit';
 import { act } from '$lib/server/wizard';
+import { progressOf } from '$lib/server/wizard-runs';
 import type { WizardAction } from '$lib/wizard/types';
 import type { RequestHandler } from './$types';
 
@@ -15,4 +16,10 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
 	}
 	const result = await act({ id: locals.user.id }, params.id, body, Number(body.version));
 	return json(result, { status: result.ok ? 200 : result.status });
+};
+
+/** What the assistant is doing on this import right now, polled while a turn runs. */
+export const GET: RequestHandler = ({ params, locals }) => {
+	if (!locals.user) error(401, 'Sign in first');
+	return json({ progress: progressOf(params.id, locals.user.id) ?? null });
 };

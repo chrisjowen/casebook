@@ -7,8 +7,10 @@
  * 4. `acceptTurn` saves a proposal as one edit of the draft, `rejectTurn` drops it.
  * Publishing is the editor's own publish, which runs the publish checks (ADR 0005).
  */
-import { rangeAddress, type Workbook } from '@casebook/sheet-import';
 import { runAgent, type AgentContext } from './agent.js';
+import { sheetOverview } from './context.js';
+
+export { sheetOverview };
 import type { DraftAccess } from './drafts.js';
 import { formatRange, sourceRef } from './sources.js';
 import {
@@ -33,27 +35,6 @@ export { startState as start };
 export function proposeSplit(ctx: AgentContext, state: WizardState): Promise<WizardState> {
 	const request = `Read the workbook and propose how to split it into processes. Its sheets:\n${sheetOverview(ctx.workbook)}`;
 	return ask(ctx, state, request, undefined, true);
-}
-
-/**
- * One line per table in the workbook, with its cells and header, such as
- * `- "Claims" A2:F8: Step, Who, When (7 rows)`, so the split can be read off the tables.
- */
-export function sheetOverview(workbook: Workbook): string {
-	const lines: string[] = [];
-	for (const sheet of workbook.sheets) {
-		if (sheet.hidden || !sheet.source) continue;
-		for (const region of sheet.regions) {
-			const header = region.header;
-			const range = header
-				? rangeAddress(header.row, region.firstCol, region.lastRow, region.lastCol)
-				: region.range;
-			const labels = header ? `: ${Object.values(header.labels).join(', ')}` : '';
-			const rows = region.lastRow - (header?.row ?? region.firstRow - 1);
-			lines.push(`- "${sheet.name}" ${range}${labels} (${rows} rows)`);
-		}
-	}
-	return lines.join('\n');
 }
 
 /** The person's message in chat: the agent answers in the current phase. */

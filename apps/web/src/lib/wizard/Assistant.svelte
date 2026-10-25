@@ -24,7 +24,7 @@
 		Wand2,
 		X
 	} from '@lucide/svelte';
-	import type { ChatEntry, Turn, WizardAction, WizardView } from './types';
+	import type { ChatEntry, RunProgress, Turn, WizardAction, WizardView } from './types';
 	import { inlineRuns } from './inline';
 
 	let {
@@ -71,6 +71,29 @@
 			?.card
 	);
 
+	/** What the server says the assistant is doing, while a turn runs. */
+	let activity = $state<RunProgress | undefined>();
+	/** The request that last failed, offered again with Retry. */
+	let failed = $state<{ request: WizardAction; label: string } | undefined>();
+	const AGENT: ReadonlySet<WizardAction['action']> = new Set(['split', 'reply', 'draft']);
+
+	/** Polls the import's progress until `done` settles. */
+	async function watch(done: Promise<unknown>) {
+		let settled = false;
+		void done.finally(() => (settled = true));
+		while (!settled) {
+			try {
+				const response = await fetch(`/wizard/${view.id}`, { signal: AbortSignal.timeout(10_000) });
+				const body = (await response.json()) as { progress: RunProgress | null };
+				if (!settled) activity = body.progress ?? activity;
+			} catch {
+				// A missed poll only delays the next update.
+			}
+			await Promise.race([done, new Promise((r) => setTimeout(r, 1500))]).catch(() => undefined);
+		}
+		activity = undefined;
+	}
+
 	/** Sends a request; resolves the import's answer, or undefined after showing why it failed. */
 	async function send(
 		request: WizardAction,
@@ -79,27 +102,76 @@
 		if (busy) return undefined;
 		busy = label;
 		problem = undefined;
+		failed = undefined;
+		activity = undefined;
+		// The server stops a turn after its timeout; give its answer a minute more to arrive.
+		const limit = (view.timeoutSeconds + 60) * 1000;
+		const call = fetch(`/wizard/${view.id}`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ ...request, version }),
+			signal: AbortSignal.timeout(limit)
+		});
+		if (AGENT.has(request.action)) void watch(call);
 		try {
-			const response = await fetch(`/wizard/${view.id}`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ ...request, version })
-			});
+			const response = await call;
 			const result = await response.json();
 			if (!result.ok) {
 				problem = result.reason ?? 'That did not work';
+				failed = { request, label };
 				return undefined;
 			}
 			saved = result.version;
 			await invalidateAll();
 			return result;
 		} catch (error) {
-			problem = error instanceof Error ? error.message : String(error);
+			problem =
+				error instanceof DOMException && error.name === 'TimeoutError'
+					? `No answer from the server after ${Math.round(limit / 60_000)} minutes. Reload to see whether the assistant finished, or try again.`
+					: `Could not reach the server: ${error instanceof Error ? error.message : String(error)}`;
+			failed = { request, label };
 			return undefined;
 		} finally {
 			busy = undefined;
 		}
 	}
+
+	/** Sends the request that failed once more, against the import as it is now. */
+	async function retry() {
+		const again = failed;
+		if (!again) return;
+		await invalidateAll();
+		await send(again.request, again.label);
+	}
+
+	// A turn already running when the page opens, such as after a reload, is shown until it ends.
+	let resumed = false;
+	$effect(() => {
+		if (resumed || !view.progress) return;
+		resumed = true;
+		busy = 'The assistant is working';
+		const done = (async () => {
+			for (;;) {
+				await new Promise((r) => setTimeout(r, 2000));
+				try {
+					const body = (await (await fetch(`/wizard/${view.id}`)).json()) as {
+						progress: RunProgress | null;
+					};
+					if (!body.progress) return;
+				} catch {
+					return;
+				}
+			}
+		})();
+		void watch(done);
+		void done.then(async () => {
+			busy = undefined;
+			await invalidateAll();
+		});
+	});
+
+	const elapsed = (seconds: number) =>
+		`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
 	async function acceptSplit() {
 		const result = await send({ action: 'accept-split' }, 'Creating the processes');
@@ -125,10 +197,10 @@
 		await send({ action: 'draft', key }, `Drafting ${titleOf(key)}`);
 	}
 
-	// The first split is asked for as soon as the import opens.
+	// The first split is asked for as soon as the import opens, unless it is already being made.
 	let asked = false;
 	$effect(() => {
-		if (!asked && wiz.phase === 'split' && !wiz.split && !busy) {
+		if (!asked && wiz.phase === 'split' && !wiz.split && !busy && !view.progress) {
 			asked = true;
 			void send({ action: 'split' }, 'Reading the spreadsheet');
 		}
@@ -563,9 +635,21 @@
 		{#if busy}
 			<div class="flex gap-2.5" role="status">
 				{@render avatar()}
-				<p class="flex items-center gap-2 text-[13px] text-muted-foreground">
-					<LoaderCircle class="size-3.5 animate-spin" />{busy}…
-				</p>
+				<div class="min-w-0 flex-1 text-[13px]">
+					<p class="flex items-center gap-2 text-muted-foreground">
+						<LoaderCircle class="size-3.5 shrink-0 animate-spin" />{activity?.activity ??
+							busy}…{#if activity}<span class="ml-auto shrink-0 text-[11px] tabular-nums"
+								>{elapsed(activity.seconds)}</span
+							>{/if}
+					</p>
+					{#if activity && activity.seconds >= 20}
+						<p class="mt-1 text-[11.5px] text-muted-foreground">
+							{activity.waiting
+								? 'It starts as soon as the model is free.'
+								: `${view.model} can take a few minutes on a large sheet. It stops after ${Math.round(view.timeoutSeconds / 60)} minutes if it gets stuck.`}
+						</p>
+					{/if}
+				</div>
 			</div>
 		{/if}
 		{#if problem}
@@ -575,10 +659,11 @@
 			>
 				<CircleAlert class="mt-0.5 size-3.5 shrink-0 text-destructive" />
 				<p class="min-w-0 flex-1">{problem}</p>
-				{#if wiz.phase === 'split' && !wiz.split}
+				{#if failed}
 					<button
-						class="shrink-0 cursor-pointer font-medium text-brand"
-						onclick={() => send({ action: 'split' }, 'Reading the spreadsheet')}>Try again</button
+						class="shrink-0 cursor-pointer font-medium text-brand disabled:opacity-45"
+						disabled={!!busy}
+						onclick={retry}>Retry</button
 					>
 				{/if}
 			</div>

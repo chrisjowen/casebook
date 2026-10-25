@@ -49,6 +49,17 @@ export interface WizardView {
 	/** Where each proposed process, shared set (`shared:<n>`) or created process comes from. */
 	ranges: Record<string, string[]>;
 	preview?: ProposalPreview;
+	/** A turn of the assistant running or waiting on this import, if any. */
+	progress?: RunProgress;
+	/** How long one turn may run before the server stops it. */
+	timeoutSeconds: number;
+}
+
+/** What a running or waiting turn is doing. */
+export interface RunProgress {
+	activity: string;
+	waiting: boolean;
+	seconds: number;
 }
 
 /** An import the signed-in person started in the open workspace. */

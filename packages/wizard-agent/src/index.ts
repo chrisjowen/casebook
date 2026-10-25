@@ -8,14 +8,21 @@ export {
 	textOf,
 	tidyOperation,
 	operationsInText,
-	workbookText,
 	type AgentContext,
 	type AgentOutcome
 } from './agent.js';
 export * as wizard from './wizard.js';
+export {
+	INLINE_CHARS,
+	rangesText,
+	sheetOverview,
+	workbookOpening,
+	workbookText
+} from './context.js';
 export { SYSTEM_PROMPT } from './prompt.js';
 export {
 	createChatModel,
+	modelProblem,
 	modelName,
 	modelSpec,
 	parseModel,

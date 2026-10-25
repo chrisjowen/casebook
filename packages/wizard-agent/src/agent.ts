@@ -24,7 +24,8 @@ import {
 	type Node,
 	type Operation
 } from '@casebook/model';
-import { renderWorkbookText, type Workbook } from '@casebook/sheet-import';
+import type { Workbook } from '@casebook/sheet-import';
+import { workbookOpening, workbookText } from './context.js';
 import type { DraftAccess } from './drafts.js';
 import { SYSTEM_PROMPT } from './prompt.js';
 import {
@@ -49,6 +50,10 @@ export interface AgentContext {
 	/** Definitions as the signed-in person reaches them. */
 	drafts: DraftAccess;
 	workbook: Workbook;
+	/** Stops the run, such as when it takes too long. */
+	signal?: AbortSignal;
+	/** Told what the agent is doing as it goes, such as `Reading the draft`. */
+	onProgress?: (activity: string) => void;
 }
 
 /** What one run of the agent produced. */
@@ -69,8 +74,6 @@ export type AgentOutcome =
 	  };
 
 const WORKBOOK_FILE = '/workbook.md';
-/** Bound on the workbook text the agent reads, to keep a turn's context reasonable. */
-const WORKBOOK_CHARS = 60_000;
 /** Bound on agent steps in one turn, so a confused agent cannot loop for long. */
 const RECURSION_LIMIT = 40;
 /** Refused tool calls in a row after which the agent is told to stop and explain. */
@@ -158,16 +161,19 @@ async function invoke(
 		model: ctx.model,
 		tools,
 		systemPrompt: SYSTEM_PROMPT,
-		middleware: [focus(tools.map((t) => t.name)), plainToolResults]
+		middleware: [focus(tools.map((t) => t.name)), plainToolResults, progress(ctx)]
 	});
 	const workbook = workbookText(ctx.workbook, state.fileName);
+	const drafting =
+		state.phase === 'draft' ? state.processes.find((p) => p.key === state.activeKey) : undefined;
+	const opening = workbookOpening(ctx.workbook, state.fileName, drafting);
 	const now = new Date().toISOString();
 	let result: { messages: unknown };
 	try {
 		result = await agent.invoke(
 			{
 				messages: [
-					...history(state, request, workbook),
+					...history(state, request, opening),
 					...followUp.flatMap(([said, next]) => [new AIMessage(said), new HumanMessage(next)])
 				],
 				files: {
@@ -179,7 +185,7 @@ async function invoke(
 					}
 				}
 			},
-			{ recursionLimit: RECURSION_LIMIT }
+			{ recursionLimit: RECURSION_LIMIT, ...(ctx.signal ? { signal: ctx.signal } : {}) }
 		);
 	} catch (error) {
 		// A model that keeps calling tools is stopped; what its tools accepted so far still counts.
@@ -193,10 +199,28 @@ async function invoke(
 	return last ? textOf(last).trim() : 'Done.';
 }
 
-/** The workbook as the agent reads it: one line per row, every cell with its address. */
-export function workbookText(workbook: Workbook, fileName: string): string {
-	const { text } = renderWorkbookText(workbook, { maxTotalChars: WORKBOOK_CHARS });
-	return `# ${fileName}\n\n${text}`;
+const TOOL_ACTIVITY: Record<string, string> = {
+	read_file: 'Reading the workbook',
+	propose_split: 'Checking the proposed processes',
+	read_draft: 'Reading the draft',
+	apply_operations: 'Checking the proposed changes'
+};
+
+/** Reports each model call and tool call to `ctx.onProgress`, so a person can see it working. */
+function progress(ctx: AgentContext) {
+	let calls = 0;
+	return createMiddleware({
+		name: 'WizardProgress',
+		wrapModelCall: (request, handler) => {
+			calls++;
+			ctx.onProgress?.(calls === 1 ? 'Reading the spreadsheet' : `Thinking (step ${calls})`);
+			return handler(request);
+		},
+		wrapToolCall: (request, handler) => {
+			ctx.onProgress?.(TOOL_ACTIVITY[request.toolCall.name] ?? 'Working');
+			return handler(request);
+		}
+	});
 }
 
 /** The one deepagents built-in tool the wizard keeps: reading the workbook from its file. */
@@ -267,14 +291,15 @@ export function textOf(message: BaseMessage): string {
 }
 
 /**
- * The conversation so far as alternating messages, opening with the workbook and ending with
+ * The conversation so far as alternating messages, opening with the workbook (see
+ * `workbookOpening`) and ending with
  * `request`. Notes of what the person did outside the chat, and the fate of each proposal, are told
  * to the agent in brackets.
  */
-export function history(state: WizardState, request: string, workbook?: string): BaseMessage[] {
+export function history(state: WizardState, request: string, opening?: string): BaseMessage[] {
 	const upload = `I uploaded ${state.fileName}.`;
 	const turns: { role: 'user' | 'assistant'; text: string }[] = [
-		{ role: 'user', text: workbook ? `${upload} Here it is:\n\n${workbook}` : upload }
+		{ role: 'user', text: opening ? `${upload} ${opening}` : upload }
 	];
 	const push = (role: 'user' | 'assistant', text: string) => {
 		const last = turns.at(-1)!;

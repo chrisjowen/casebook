@@ -78,3 +78,32 @@ export function createChatModel(spec?: string): BaseChatModel {
 			});
 	}
 }
+
+/**
+ * Why the configured model cannot be used right now, in plain words, or undefined when it can:
+ * Ollama must answer within a few seconds and have the model pulled; a hosted model needs its key.
+ */
+export async function modelProblem(spec?: string): Promise<string | undefined> {
+	const { provider, model } = modelSpec(spec);
+	if (provider === 'anthropic' && !process.env.ANTHROPIC_API_KEY) {
+		return 'ANTHROPIC_API_KEY is not set, so the assistant cannot reach Claude.';
+	}
+	if (provider === 'openai' && !process.env.OPENAI_API_KEY && !process.env.OPENAI_BASE_URL) {
+		return 'OPENAI_API_KEY is not set, so the assistant cannot reach OpenAI.';
+	}
+	if (provider !== 'ollama') return undefined;
+	const url = process.env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_URL;
+	let names: string[];
+	try {
+		const response = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(5_000) });
+		const body = (await response.json()) as { models?: { name: string }[] };
+		names = (body.models ?? []).map((m) => m.name);
+	} catch {
+		return `Ollama is not answering at ${url}. Start it with "ollama serve" and try again.`;
+	}
+	const wanted = model.includes(':') ? model : `${model}:latest`;
+	if (!names.includes(wanted)) {
+		return `Ollama does not have the model ${model}. Pull it with "ollama pull ${model}", or set CASEBOOK_WIZARD_MODEL to one it has.`;
+	}
+	return undefined;
+}

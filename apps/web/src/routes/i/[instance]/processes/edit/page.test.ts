@@ -222,6 +222,7 @@ describe('spreadsheet import', () => {
 		fileName: 'newborn-tracker.xlsx',
 		namespaceId: sre,
 		model: 'ollama:qwen2.5:7b',
+		timeoutSeconds: 480,
 		state,
 		ranges: { p2: ['"Birth reg" A2:G7 · 6 rows'], p3: ['"Claims" A2:F8 · 7 rows'] },
 		...extra
