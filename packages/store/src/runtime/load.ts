@@ -4,9 +4,11 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
 	evaluateProcess,
+	foldConversation,
 	foldProgress,
 	ITEM_EVENTS,
 	runnableProcess,
+	type Conversation,
 	type DefinitionDocument,
 	type ItemEvent,
 	type ProcessState,
@@ -102,6 +104,8 @@ export interface LoadedAttachment {
 	holders: Map<string, string[]>;
 	/** Its work-item events, oldest first. */
 	events: EventRecord[];
+	/** Its items' saved drafts and questions (ADR 0026). */
+	conversation: Conversation;
 }
 
 export interface LoadedCase {
@@ -325,6 +329,18 @@ export async function loadCases(db: Queryable, caseIds: string[], now: Date): Pr
 					now,
 					timeZone
 				);
+				const conversation = foldConversation(
+					events
+						.filter((e) => e.attachmentId === a.id && e.item !== undefined)
+						.map((e) => ({
+							seq: e.seq,
+							type: e.type,
+							item: e.item!,
+							by: e.by,
+							at: e.at.toISOString(),
+							data: e.data
+						}))
+				);
 				const roles = new Map<string, string[]>();
 				for (const role of process.roles.keys()) {
 					roles.set(role, holders.of(c, role));
@@ -346,6 +362,7 @@ export async function loadCases(db: Queryable, caseIds: string[], now: Date): Pr
 					state,
 					holders: roles,
 					events: own,
+					conversation,
 					...(a.label ? { label: a.label } : {}),
 					...(a.startedBy ? { startedBy: a.startedBy } : {}),
 					...(a.completedAt ? { completedAt: a.completedAt } : {})
@@ -367,8 +384,10 @@ export async function loadCases(db: Queryable, caseIds: string[], now: Date): Pr
 			people.add(e.by);
 			if (e.onBehalfOf) people.add(e.onBehalfOf);
 		}
-		for (const a of attachments)
+		for (const a of attachments) {
 			for (const hs of a.holders.values()) hs.forEach((h) => people.add(h));
+			for (const q of a.conversation.questions) if (q.to) people.add(q.to);
+		}
 		for (const f of history) for (const v of principalValues(f, attachments)) people.add(v);
 		if (c.openedBy) people.add(c.openedBy);
 		loaded.set(c.id, {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	// One task in a list: what it is, which case and process, where the process stands.
-	import { ChevronRight } from '@lucide/svelte';
+	import { ChevronRight, MessageSquareReply } from '@lucide/svelte';
 	import type { ResolvedPathname } from '$app/types';
 	import type { TaskSummary } from '@casebook/store';
 	import ItemIcon from './ItemIcon.svelte';
@@ -36,6 +36,14 @@
 		<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
 			<span class="text-[14px] font-medium">{task.title}</span>
 			{#if showStatus}<StatusTag {task} {me} />{/if}
+			{#if task.questions?.answered}
+				<span
+					class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[12px] font-medium text-emerald-800"
+					><MessageSquareReply class="size-3" />{task.questions.answered === 1
+						? 'New answer'
+						: `${task.questions.answered} new answers`}</span
+				>
+			{/if}
 		</div>
 		<div
 			class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground"

@@ -1,14 +1,14 @@
 <script lang="ts">
-	// My work: everything waiting on the signed-in user in this instance, in a fixed order: ready,
-	// paused for missing information, waiting on someone else, and repeating work last and quiet.
+	// My work: everything waiting on the signed-in user in this instance, in a fixed order:
+	// questions others asked them, ready, paused for missing information, waiting on someone else,
+	// and repeating work last and quiet.
 	import { page } from '$app/state';
-	import { Hourglass, Inbox } from '@lucide/svelte';
+	import { ChevronRight, Hourglass, Inbox, MessageCircleQuestion } from '@lucide/svelte';
 	import Frame from '$lib/runner/Frame.svelte';
 	import FilterChips from '$lib/runner/FilterChips.svelte';
-	import Notice from '$lib/runner/Notice.svelte';
 	import Section from '$lib/runner/Section.svelte';
 	import TaskRow from '$lib/runner/TaskRow.svelte';
-	import { day, lowerFirst, names } from '$lib/runner/format';
+	import { day, lowerFirst, names, relative } from '$lib/runner/format';
 	import { links } from '$lib/runner/links';
 	import type { PageProps } from './$types';
 
@@ -18,18 +18,25 @@
 	const slug = $derived(data.instance.slug);
 	const me = $derived(data.user.id);
 	const filter = $derived(page.url.searchParams.get('process') ?? '');
-	const justDone = $derived(page.url.searchParams.get('done'));
 	const keep = (t: { definitionSlug: string }) => !filter || t.definitionSlug === filter;
+	const heldNote = (task: (typeof work.held)[number]) =>
+		task.held
+			? `“${task.held.note}” — ${task.held.by.id === me ? 'you' : task.held.by.name}, ${day(task.held.at)}`
+			: undefined;
+	// Work with a new answer to the user's question comes first in its group.
+	const answeredFirst = <T extends { questions?: { answered: number } }>(list: T[]) =>
+		[...list].sort((x, y) => Number(!!y.questions?.answered) - Number(!!x.questions?.answered));
 
-	const ready = $derived(work.ready.filter(keep));
-	const held = $derived(work.held.filter(keep));
+	const asked = $derived(work.asked.filter(keep));
+	const ready = $derived(answeredFirst(work.ready.filter(keep)));
+	const held = $derived(answeredFirst(work.held.filter(keep)));
 	const waiting = $derived(work.waiting.filter(keep));
 	const recurring = $derived(work.recurring.filter(keep));
-	const total = $derived(work.ready.length + work.held.length);
+	const total = $derived(work.asked.length + work.ready.length + work.held.length);
 	// One chip per process, named without the label that tells two runs on one case apart.
 	const options = $derived([
 		...new Map(
-			[...work.ready, ...work.held, ...work.recurring, ...work.waiting].map((t) => [
+			[...work.asked, ...work.ready, ...work.held, ...work.recurring, ...work.waiting].map((t) => [
 				t.definitionSlug,
 				{ value: t.definitionSlug, label: t.process.split(' · ')[0]! }
 			])
@@ -53,11 +60,40 @@
 			</p>
 		</header>
 
-		{#if justDone}
-			<Notice><span class="font-medium">Done:</span> {justDone}.</Notice>
-		{/if}
-
 		<div class="mb-6 px-1"><FilterChips {options} /></div>
+
+		{#if asked.length}
+			<Section title="Questions for you" count={asked.length} hint="Someone needs information">
+				{#each asked as q (q.question.id)}
+					<a
+						href={links.task(slug, q.caseId, q.attachmentId, q.item)}
+						class="group flex items-start gap-3 px-4 py-3.5 hover:bg-muted/50"
+					>
+						<span
+							class="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand"
+							><MessageCircleQuestion class="size-4" /></span
+						>
+						<div class="min-w-0 flex-1">
+							<div class="text-[14px]">
+								<span class="font-medium">{q.question.by.name}</span>
+								<span class="text-muted-foreground">asks about “{q.title}”</span>
+							</div>
+							<p class="mt-1 line-clamp-2 text-[14px] text-foreground/85">“{q.question.text}”</p>
+							<div
+								class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground"
+							>
+								<span class="text-foreground/80">{q.caseTitle}</span>
+								<span>{q.process}</span>
+								<span>{relative(q.question.at)}</span>
+							</div>
+						</div>
+						<ChevronRight
+							class="mt-2 size-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5"
+						/>
+					</a>
+				{/each}
+			</Section>
+		{/if}
 
 		{#if ready.length}
 			<Section title="Ready for you" count={ready.length}>
@@ -82,9 +118,7 @@
 						{me}
 						showStatus
 						href={links.task(slug, task.caseId, task.attachmentId, task.item)}
-						note={task.held
-							? `“${task.held.note}” — ${task.held.by.id === me ? 'you' : task.held.by.name}, ${day(task.held.at)}`
-							: undefined}
+						note={heldNote(task)}
 					/>
 				{/each}
 			</Section>
@@ -158,7 +192,7 @@
 			</Section>
 		{/if}
 
-		{#if !ready.length && !held.length && !waiting.length && !recurring.length}
+		{#if !asked.length && !ready.length && !held.length && !waiting.length && !recurring.length}
 			<div
 				class="grid place-items-center rounded-xl border border-dashed bg-card px-6 py-16 text-center"
 			>

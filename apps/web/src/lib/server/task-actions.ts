@@ -1,15 +1,20 @@
 /**
- * The form actions of a task page, shared by members and guests: complete it, start filling it
- * in, pause it, resume it, skip it, or approve or send back the work it reviews. Each acts as the
- * signed-in user through the store's runtime, which checks their role with `can`.
+ * The form actions of a task page, shared by members and guests: complete it, save it to finish
+ * later, start filling it in, pause it, resume it, skip it, approve or send back the work it
+ * reviews, and ask someone for information in a thread on it. Each acts as the signed-in user
+ * through the store's runtime, which checks their role with `can`.
  */
 import { redirect, type Actions, type RequestEvent } from '@sveltejs/kit';
 import {
+	askQuestion,
 	completeItem,
 	decideApproval,
 	demoPdf,
 	holdItem,
+	replyToQuestion,
+	resolveQuestion,
 	resumeItem,
+	saveDraft,
 	skipItem,
 	startItem,
 	type ItemRef,
@@ -23,8 +28,8 @@ import { actorOf, fileStore, refused } from './runner';
 /** Where a task page sends the user once the task is done, and which task it is. */
 export interface TaskRoute {
 	ref: (event: RequestEvent) => ItemRef;
-	/** Where to go after completing it, given its title. */
-	after: (event: RequestEvent, title: string) => string;
+	/** Where to go after completing or deciding it, given its title and whether it was sent back. */
+	after: (event: RequestEvent, title: string, outcome: 'done' | 'sent-back') => string;
 }
 
 const LOCAL_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
@@ -79,7 +84,7 @@ export function taskActions(route: TaskRoute): Actions {
 				{ files: fileStore() }
 			);
 			if (!result.ok) return refused(result);
-			redirect(303, route.after(event, String(form.get('title') ?? 'the task')));
+			redirect(303, route.after(event, String(form.get('title') ?? 'the task'), 'done'));
 		},
 		decide: async (event) => {
 			const form = await event.request.formData();
@@ -98,12 +103,61 @@ export function taskActions(route: TaskRoute): Actions {
 				note: String(form.get('note') ?? '')
 			});
 			if (!result.ok) return refused(result);
-			redirect(303, route.after(event, String(form.get('title') ?? 'the review')));
+			redirect(
+				303,
+				route.after(
+					event,
+					String(form.get('title') ?? 'the review'),
+					verdict === 'approve' ? 'done' : 'sent-back'
+				)
+			);
+		},
+		save: async (event) => {
+			const { values } = await readForm(await event.request.formData());
+			return (
+				ok(await saveDraft(getDb(), actorOf(event.locals), { ...route.ref(event), values })) ?? {
+					saved: true
+				}
+			);
+		},
+		reply: async (event) => {
+			const form = await event.request.formData();
+			return (
+				ok(
+					await replyToQuestion(getDb(), actorOf(event.locals), {
+						...route.ref(event),
+						question: Number(form.get('question')),
+						text: String(form.get('text') ?? '')
+					})
+				) ?? { replied: true }
+			);
+		},
+		resolve: async (event) => {
+			const form = await event.request.formData();
+			return (
+				ok(
+					await resolveQuestion(getDb(), actorOf(event.locals), {
+						...route.ref(event),
+						question: Number(form.get('question'))
+					})
+				) ?? { resolved: true }
+			);
 		},
 		start: async (event) =>
 			ok(await startItem(getDb(), actorOf(event.locals), route.ref(event))) ?? { started: true },
 		hold: async (event) => {
 			const form = await event.request.formData();
+			const to = String(form.get('to') ?? '');
+			if (to) {
+				// Naming who can help asks them, in a thread on the task, pausing it unless told not to.
+				const result = await askQuestion(getDb(), actorOf(event.locals), {
+					...route.ref(event),
+					to,
+					text: String(form.get('note') ?? ''),
+					pause: form.get('pause') === 'yes'
+				});
+				return result.ok ? { asked: true } : refused(result);
+			}
 			return (
 				ok(
 					await holdItem(getDb(), actorOf(event.locals), {

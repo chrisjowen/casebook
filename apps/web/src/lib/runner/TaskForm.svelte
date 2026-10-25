@@ -1,10 +1,14 @@
 <script lang="ts">
 	// One focused task: its status in plain words, what it uses (values already on the case, with
-	// where they came from), and what to record. Members and guests share it; a guest's view holds
-	// only their own form's data. There is no claim button: whoever finishes first completes it,
-	// and starting to fill it in tells the others who is on it.
-	import { enhance } from '$app/forms';
+	// where they came from), and what to record, with one action bar: complete it, save it to
+	// finish later, or say what is missing (asking someone for it). Members and guests share it; a
+	// guest's view holds only their own form's data. There is no claim button: whoever finishes
+	// first completes it, and starting to fill it in tells the others who is on it.
+	import { tick } from 'svelte';
+	import { deserialize, enhance } from '$app/forms';
+	import { beforeNavigate } from '$app/navigation';
 	import {
+		ChevronRight,
 		CircleAlert,
 		CircleCheck,
 		CircleSlash,
@@ -26,7 +30,9 @@
 		me,
 		form,
 		taskHref,
-		demoFiles = false
+		demoFiles = false,
+		showHeader = true,
+		stuck = $bindable(false)
 	}: {
 		view: TaskView;
 		me: string;
@@ -35,6 +41,10 @@
 		/** Links to the task a recorded value came from; unset for guests. */
 		taskHref?: (attachmentId: string, item: string) => ResolvedPathname;
 		demoFiles?: boolean;
+		/** The page shows the title itself, above the form. */
+		showHeader?: boolean;
+		/** The "I can't finish this yet" panel is open: say what's missing, and ask someone. */
+		stuck?: boolean;
 	} = $props();
 
 	const task = $derived(view.task);
@@ -63,9 +73,116 @@
 			.join(' ')
 	);
 
-	let pausing = $state(false);
+	// A saved draft reopens the form where it was left; files wait for completion.
+	const fields = $derived(
+		view.fields.map((f) => {
+			const saved = view.draft?.values[f.fact];
+			return saved && f.kind !== 'file'
+				? { ...f, current: { raw: saved, display: saved.join(', ') } }
+				: f;
+		})
+	);
+	const hasFiles = $derived(view.evidence.length > 0 || view.fields.some((f) => f.kind === 'file'));
+	const answered = $derived(view.questions.filter((q) => !q.resolved && !q.waiting));
+	/** The newest answer from someone who was asked, shown where the pause is explained. */
+	const answer = $derived.by(() => {
+		for (const q of [...answered].reverse()) {
+			const reply = [...q.replies].reverse().find((r) => r.by.id === q.to.id);
+			if (reply) return { ...reply, question: q.text };
+		}
+		return undefined;
+	});
+
+	// Typed values are saved as a draft as people go, so nothing is lost on a reload, a question
+	// or a visit elsewhere; files wait for completion.
+	let formEl = $state<HTMLFormElement>();
+	let dirty = false;
+	let finishing = false;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	let saving: Promise<void> = Promise.resolve();
+	let savedAt = $state<string>();
+	let saveFailed = $state<string>();
+	let savedNote = $state('');
+	const canSave = $derived(canAct && task.kind !== 'approval');
+	function draftBody() {
+		const body = new FormData(formEl);
+		for (const key of [...body.keys()]) if (!key.startsWith('value:')) body.delete(key);
+		return body;
+	}
+	function saveNow() {
+		clearTimeout(timer);
+		saving = saving.then(sendDraft);
+		return saving;
+	}
+	async function sendDraft() {
+		if (finishing || !dirty || !formEl || !canSave) return;
+		dirty = false;
+		let reason = 'Something went wrong.';
+		try {
+			const response = await fetch('?/save', {
+				method: 'POST',
+				body: draftBody(),
+				headers: { 'x-sveltekit-action': 'true' }
+			});
+			const result = deserialize(await response.text());
+			if (result.type === 'success') {
+				savedAt = new Date().toISOString();
+				saveFailed = undefined;
+				return;
+			}
+			if (result.type === 'failure')
+				reason = (result.data as Failure | undefined)?.reason || reason;
+		} catch {
+			reason = 'The server could not be reached, or you were signed out.';
+		}
+		dirty = true;
+		saveFailed = reason;
+	}
+	function touched() {
+		if (finishing) return;
+		started();
+		if (!canSave) return;
+		dirty = true;
+		clearTimeout(timer);
+		timer = setTimeout(saveNow, 1500);
+	}
+	beforeNavigate(() => void saveNow());
+	$effect(() => {
+		const flush = () => {
+			if (!finishing && dirty && formEl && canSave) navigator.sendBeacon('?/save', draftBody());
+		};
+		window.addEventListener('pagehide', flush);
+		return () => window.removeEventListener('pagehide', flush);
+	});
+	const lastSave = $derived(
+		savedAt
+			? { by: 'you', at: savedAt }
+			: view.draft
+				? { by: view.draft.by.id === me ? 'you' : view.draft.by.name, at: view.draft.at }
+				: undefined
+	);
+
+	// The stuck panel opens in view, with its first field ready.
+	let chosenHelper = $state('');
+	$effect(() => {
+		if (!stuck) return;
+		void tick().then(() => {
+			const note = document.getElementById('hold-note');
+			note?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+			note?.focus({ preventScroll: true });
+		});
+	});
+	const helperName = $derived(view.askable.find((p) => p.id === chosenHelper)?.name);
 	let skipping = $state(false);
 	let told = false;
+	const occurrence = $derived(task.lastDone?.at);
+	$effect(() => {
+		void occurrence;
+		savedAt = undefined;
+		saveFailed = undefined;
+		savedNote = '';
+		told = false;
+	});
 	/** Tells the others someone has started on it, once, as soon as the form is touched. */
 	function started() {
 		if (told || !canAct) return;
@@ -78,12 +195,14 @@
 	}
 </script>
 
-<header class="flex items-start gap-3">
-	<div class="min-w-0">
-		<h1 class="text-[22px] leading-tight font-semibold tracking-tight">{task.title}</h1>
-		<p class="mt-1 text-[13px] text-muted-foreground">{who}</p>
-	</div>
-</header>
+{#if showHeader}
+	<header class="flex items-start gap-3">
+		<div class="min-w-0">
+			<h1 class="text-[22px] leading-tight font-semibold tracking-tight">{task.title}</h1>
+			<p class="mt-1 text-[13px] text-muted-foreground">{who}</p>
+		</div>
+	</header>
+{/if}
 {#if view.requester}
 	<p class="mt-3 text-[13px] text-muted-foreground">
 		Requested by <span class="font-medium text-foreground">{view.requester.name}</span> for {view
@@ -107,7 +226,7 @@
 	<p class="mt-5 text-[13px] text-muted-foreground">
 		{othersStarted.map((s) => s.by.name).join(' and ')} started this {relative(
 			othersStarted[0]!.at
-		)}. Whoever finishes first completes it.
+		)}.{view.you.canAct ? ' Whoever finishes first completes it.' : ''}
 	</p>
 {/if}
 {#if task.sentBack && open}
@@ -130,12 +249,22 @@
 					task.held.at
 				)}
 			</p>
+			{#if answer}
+				<div
+					class="mt-2.5 rounded-lg border border-amber-200 bg-background px-3 py-2 text-foreground"
+				>
+					<p class="text-[12px] text-muted-foreground">
+						{answer.by.id === me ? 'You' : answer.by.name} answered, {relative(answer.at)}:
+					</p>
+					<p class="mt-0.5 text-[14px] whitespace-pre-line">{answer.text}</p>
+				</div>
+			{/if}
 		</div>
 		{#if view.you.canAct}
 			<form method="POST" action="?/resume" use:enhance>
 				<button
 					class="cursor-pointer rounded-lg border border-amber-300 bg-background px-3 py-1.5 font-medium hover:bg-amber-100"
-					>It’s arrived — resume</button
+					>{answer ? 'Got it — resume' : 'It’s arrived — resume'}</button
 				>
 			</form>
 		{/if}
@@ -212,8 +341,21 @@
 {/if}
 
 {#if view.uses.length}
-	<section class="mt-8">
-		<h2 class="mb-2 text-[13px] font-semibold">What this uses</h2>
+	<!-- Folded to one line when everything it uses is in; open when something is missing. -->
+	<details class="group mt-8" open={view.uses.some((u) => !u.recorded)}>
+		<summary
+			class="mb-2 flex cursor-pointer list-none items-baseline gap-2 text-[13px] [&::-webkit-details-marker]:hidden"
+		>
+			<ChevronRight
+				class="size-3.5 shrink-0 self-center text-muted-foreground transition-transform group-open:rotate-90"
+			/>
+			<h2 class="shrink-0 font-semibold">What this uses</h2>
+			<span class="truncate text-muted-foreground group-open:hidden"
+				>{view.uses
+					.map((u) => (u.recorded ? `${u.title}: ${u.recorded.display}` : u.title))
+					.join(' · ')}</span
+			>
+		</summary>
 		<dl class="divide-y rounded-xl border bg-card">
 			{#each view.uses as use (use.fact)}
 				<div
@@ -249,7 +391,7 @@
 				</div>
 			{/each}
 		</dl>
-	</section>
+	</details>
 {/if}
 
 {#if failure.reason && !Object.keys(problems).length}
@@ -336,10 +478,28 @@
 			method="POST"
 			action="?/complete"
 			enctype="multipart/form-data"
-			use:enhance
+			bind:this={formEl}
+			use:enhance={async ({ action }) => {
+				if (!action.search.includes('save')) {
+					finishing = true;
+					clearTimeout(timer);
+					await saving;
+					dirty = false;
+				}
+				return async ({ result, update }) => {
+					if (result.type === 'success') {
+						savedAt = new Date().toISOString();
+						saveFailed = undefined;
+					}
+					const failed = finishing && result.type !== 'redirect' && result.type !== 'success';
+					await update({ reset: false });
+					finishing = false;
+					if (failed) dirty = canSave;
+				};
+			}}
 			class="mt-8"
-			oninput={started}
-			onchange={started}
+			oninput={touched}
+			onchange={touched}
 		>
 			<input type="hidden" name="title" value={task.title} />
 			{#if Object.keys(problems).length}
@@ -362,7 +522,7 @@
 				<h2 class="-mb-1 text-[13px] font-semibold">
 					{task.kind === 'decision' ? 'Your decision' : 'What to record'}
 				</h2>
-				{#each view.fields as field (field.fact)}
+				{#each fields as field (field.fact)}
 					<FactField {field} error={problems[field.fact]} {demoFiles} />
 				{/each}
 				{#each view.evidence as ev (ev.slot)}
@@ -383,16 +543,27 @@
 			</fieldset>
 
 			{#if canAct}
-				<div class="mt-5 flex flex-wrap items-center gap-3">
+				<div
+					class="sticky bottom-3 z-10 mt-5 flex flex-wrap items-center gap-2 rounded-xl border bg-card/95 px-3 py-2.5 shadow-sm backdrop-blur"
+				>
 					<button
 						class="h-10 cursor-pointer rounded-lg bg-foreground px-5 text-[14px] font-medium text-background hover:bg-foreground/90"
 						>{verb}</button
 					>
+					<button
+						formaction="?/save"
+						formnovalidate
+						class="h-10 cursor-pointer rounded-lg border bg-card px-3 text-[14px] font-medium hover:bg-muted sm:px-4"
+						><span class="sm:hidden">Save</span><span class="hidden sm:inline">Save for later</span
+						></button
+					>
 					{#if task.status !== 'held'}
 						<button
 							type="button"
-							class="h-10 cursor-pointer rounded-lg px-3 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
-							onclick={() => (pausing = !pausing)}>I can’t finish this yet</button
+							aria-expanded={stuck}
+							aria-controls="stuck"
+							class="h-10 cursor-pointer rounded-lg px-2 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground sm:px-3"
+							onclick={() => (stuck = !stuck)}>I can’t finish this yet</button
 						>
 					{/if}
 					{#if view.canSkip}
@@ -403,38 +574,104 @@
 							>{task.repeating ? 'Stop repeating' : 'This doesn’t apply'}</button
 						>
 					{/if}
+					<span
+						class="ml-auto text-[12px] text-muted-foreground sm:inline {saveFailed ? '' : 'hidden'}"
+						role="status"
+					>
+						{#if saveFailed}
+							<span class="text-destructive">Not saved: {saveFailed}</span>
+						{:else if lastSave}
+							Saved{lastSave.by === 'you' ? '' : ` by ${lastSave.by}`}
+							{relative(lastSave.at)}{hasFiles ? '. Files attach when you complete it.' : '.'}
+						{:else if canSave}
+							Saved as you type.
+						{/if}
+					</span>
 				</div>
 			{/if}
 		</form>
 
-		{#if pausing}
+		{#if stuck}
 			<form
+				id="stuck"
 				method="POST"
 				action="?/hold"
-				use:enhance={() =>
-					async ({ update }) => {
+				use:enhance={async () => {
+					await saveNow();
+					const asked = helperName;
+					return async ({ result, update }) => {
 						await update();
-						pausing = false;
-					}}
-				class="mt-4 grid gap-2 rounded-xl border bg-card px-5 py-4"
+						if (result.type === 'success') {
+							savedNote = asked ? `Question sent to ${asked}.` : 'Paused.';
+							stuck = false;
+							chosenHelper = '';
+						}
+					};
+				}}
+				class="mt-4 grid gap-3 rounded-xl border bg-card px-5 py-4"
 			>
-				<label for="hold-note" class="text-[13px] font-medium">What are you waiting for?</label>
-				<textarea
-					id="hold-note"
-					name="note"
-					rows="2"
-					placeholder="e.g. The apostille hasn’t arrived yet"
-					class="rounded-lg border bg-background px-3 py-2 text-[14px]"></textarea>
+				<h2 class="text-[13px] font-semibold">
+					{task.status === 'held' ? 'Ask for information' : 'What’s stopping you?'}
+				</h2>
+				<div class="grid gap-1.5">
+					<label for="hold-note" class="text-[13px] font-medium"
+						>{helperName ? `What do you need from ${helperName}?` : 'What’s missing?'}</label
+					>
+					<textarea
+						id="hold-note"
+						name="note"
+						rows="2"
+						placeholder={helperName
+							? 'e.g. Which hospital sent the bill, and on what date?'
+							: 'e.g. The apostille hasn’t arrived yet'}
+						class="rounded-lg border bg-background px-3 py-2 text-[14px]"></textarea>
+					{#if problems.note || problems.text}<p class="text-[12px] font-medium text-destructive">
+							{problems.note ?? problems.text}
+						</p>{/if}
+				</div>
+				{#if view.askable.length}
+					<div class="grid gap-1.5">
+						<label for="hold-to" class="text-[13px] font-medium">Can someone here help?</label>
+						<select
+							id="hold-to"
+							name="to"
+							bind:value={chosenHelper}
+							class="h-10 rounded-lg border bg-background px-3 text-[14px]"
+						>
+							<option value="">No — I’m waiting on something outside</option>
+							{#each view.askable as p (p.id)}<option value={p.id}>Ask {p.name}</option>{/each}
+						</select>
+						{#if problems.to}<p class="text-[12px] font-medium text-destructive">
+								{problems.to}
+							</p>{/if}
+					</div>
+				{/if}
+				{#if helperName && task.status === 'ready'}
+					<label class="flex items-center gap-2 text-[13px]">
+						<input type="checkbox" name="pause" value="yes" checked class="accent-brand" />
+						Pause this task until they answer
+					</label>
+				{/if}
 				<div class="flex flex-wrap items-center gap-2">
 					<button
-						class="h-9 cursor-pointer rounded-lg border px-4 text-[13px] font-medium hover:bg-muted"
-						>Pause this task</button
+						class="h-9 cursor-pointer rounded-lg bg-foreground px-4 text-[13px] font-medium text-background hover:bg-foreground/90"
+						>{helperName ? 'Send question' : 'Pause this task'}</button
 					>
-					<span class="text-[12px] text-muted-foreground"
-						>It moves to “Needs information”, and whoever is waiting on it sees why.</span
+					<button
+						type="button"
+						class="h-9 cursor-pointer rounded-lg px-3 text-[13px] text-muted-foreground hover:bg-muted"
+						onclick={() => (stuck = false)}>Cancel</button
 					>
+					<span class="text-[12px] text-muted-foreground">
+						{helperName
+							? `${helperName} sees it at the top of My work and answers on this task.`
+							: 'It moves to “Needs information”, and whoever is waiting on it sees why.'}
+					</span>
 				</div>
 			</form>
+		{/if}
+		{#if savedNote}
+			<p class="mt-3 text-[13px] text-muted-foreground" role="status">{savedNote}</p>
 		{/if}
 		{#if skipping}
 			<form

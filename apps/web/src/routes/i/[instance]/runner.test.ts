@@ -272,8 +272,8 @@ describe('a case', () => {
 
 	it('shows the user’s tasks, one stage strip per process, what others are doing, and the record', () => {
 		const html = page(view);
-		expect(html).toContain('Your tasks in this case');
-		expect(html).toContain('Complete the application form');
+		expect(html).toContain('Up next for you Complete the application form');
+		expect(html).toContain('Start');
 		expect(html).toContain('Claim a medical bill · Delivery bill');
 		expect(html).toContain('Collect the bill Submit the claim Insurer review Reimbursement');
 		expect(html).toContain('Waiting on Dana Cole — send the itemised invoice.');
@@ -310,7 +310,48 @@ describe('a task', () => {
 		expect(html).toContain('Parents’ passport numbers');
 		expect(html).toContain('or use a demo document');
 		expect(html).toContain('Complete task');
+		expect(html).toContain('Save for later');
 		expect(html).toContain('I can’t finish this yet');
+		expect(html).toContain('Ask for information');
+	});
+
+	it('reopens a saved draft and says who saved it', () => {
+		const html = page(
+			taskView({
+				draft: {
+					values: { 'fact.parent-passport-numbers': ['X0000001', 'X0000002'] },
+					by: sam,
+					at: new Date().toISOString()
+				}
+			})
+		);
+		expect(html).toMatch(/X0000001\s+X0000002/);
+		expect(html).toContain('Saved by Sam Example');
+	});
+
+	it('threads questions on the task, with who was asked and their answer', () => {
+		const at = new Date().toISOString();
+		const html = page(
+			taskView({
+				questions: [
+					{
+						id: 7,
+						by: alex,
+						to: dana,
+						at,
+						text: 'Which ward was it?',
+						replies: [{ by: dana, at, text: 'Ward 4' }],
+						waiting: false,
+						canReply: true
+					}
+				]
+			})
+		);
+		expect(html).toContain('You asked Dana Cole');
+		expect(html).toContain('Which ward was it?');
+		expect(html).toContain('Answered');
+		expect(html).toContain('Ward 4');
+		expect(html).toContain('Mark resolved');
 	});
 
 	it('shows the problems a refused form came back with', () => {
@@ -348,6 +389,46 @@ describe('a task', () => {
 		const other = page({ ...approval, you: { ...approval.you, canAct: false } });
 		expect(other).toContain('This is for Alex Example or Sam Example');
 		expect(other).not.toContain('Submit review');
+	});
+
+	it('hands over to what comes next after completing, sending back or posting an update', async () => {
+		const { page: state } = await import('$app/state');
+		const done = (outcome: string, view = taskView()) => {
+			state.url = new URL(
+				`http://localhost/i/example-family/c/case-mira/t/a/i?done=${outcome}`
+			) as never;
+			try {
+				return text(
+					render(TaskPage, {
+						props: {
+							data: {
+								...frame,
+								case: { id: 'case-mira', title: 'Mira Example' },
+								task: view,
+								next: [task({ title: 'Book the appointment', item: 'step.book' })],
+								demoFiles: true
+							},
+							form: null,
+							params: {}
+						} as never
+					}).body
+				);
+			} finally {
+				state.url = new URL('http://localhost/i/example-family') as never;
+			}
+		};
+		expect(done('done', taskView({ task: task({ status: 'done' }) }))).toContain(
+			'Done. Thank you.'
+		);
+		const posted = done('done', taskView({ task: task({ status: 'ready', repeating: true }) }));
+		expect(posted).toContain('Update posted. Thank you.');
+		expect(posted).toContain('Next: Book the appointment');
+		const sentBack = done(
+			'sent-back',
+			taskView({ task: task({ kind: 'approval', status: 'waiting' }), fields: [] })
+		);
+		expect(sentBack).toContain('Sent back for changes.');
+		expect(sentBack).toContain('Next: Book the appointment');
 	});
 
 	it('lets the role skip work whose condition is prose only', () => {

@@ -49,6 +49,7 @@ export function task(overrides: Partial<TaskSummary> = {}): TaskSummary {
 export function work(overrides: Partial<WorkView> = {}): WorkView {
 	return {
 		instance: family,
+		asked: [],
 		ready: [],
 		held: [],
 		waiting: [],
@@ -101,6 +102,9 @@ export function taskView(overrides: Partial<TaskView> = {}): TaskView {
 		],
 		evidence: [],
 		canSkip: false,
+		questions: [],
+		askable: [dana],
+		outline: [],
 		process: {
 			id: 'run-birth',
 			name: 'Register a birth abroad',

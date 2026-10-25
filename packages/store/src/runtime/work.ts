@@ -5,6 +5,7 @@
 // those forms use.
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import {
+	awaitingAnswer,
 	collectedBy,
 	factChoices,
 	isFileFact,
@@ -17,6 +18,7 @@ import {
 	type GuardState,
 	type ItemState,
 	type ItemStatus,
+	type Question,
 	type StageState,
 	type WorkItemKind
 } from '@casebook/model';
@@ -97,6 +99,8 @@ export interface TaskSummary {
 	due?: string;
 	overdue?: boolean;
 	lastDone?: Mark;
+	/** Open questions about it: how many wait on an answer, and how many have one (ADR 0026). */
+	questions?: { waiting: number; answered: number };
 }
 
 /** A process on a case that the user is waiting on others for. */
@@ -138,8 +142,23 @@ export interface CaseCard {
 	processes: AttachmentSummary[];
 }
 
+/** A question someone asked the actor about a task, which waits on their answer. */
+export interface AskedEntry {
+	caseId: string;
+	caseTitle: string;
+	attachmentId: string;
+	item: string;
+	/** The task it is about. */
+	title: string;
+	process: string;
+	definitionSlug: string;
+	question: { id: number; text: string; by: PersonView; at: string };
+}
+
 export interface WorkView {
 	instance: Instance;
+	/** Questions others asked the actor, oldest first. */
+	asked: AskedEntry[];
 	ready: TaskSummary[];
 	held: TaskSummary[];
 	waiting: WaitingEntry[];
@@ -183,13 +202,21 @@ export async function listInstances(db: Db, actor: Actor, now = new Date()): Pro
 		if (!isAccountRole(row.role) || result.some((r) => r.slug === row.slug)) continue;
 		const loaded = await readableCases(db, actor, row.id, now);
 		const mine = loaded.cases.flatMap((c) => myStates(c, actor));
+		const me = subjectOf(actor);
+		const asked = loaded.cases.flatMap((c) =>
+			c.attachments.flatMap((a) =>
+				a.conversation.questions.filter((q) => q.to === me && awaitingAnswer(q))
+			)
+		);
 		result.push({
 			slug: row.slug,
 			name: row.name,
 			role: row.role,
-			waitingOnYou: mine.filter(
-				({ state }) => !state.item.repeat && (state.status === 'ready' || state.status === 'held')
-			).length
+			waitingOnYou:
+				asked.length +
+				mine.filter(
+					({ state }) => !state.item.repeat && (state.status === 'ready' || state.status === 'held')
+				).length
 		});
 	}
 	return result;
@@ -351,8 +378,16 @@ function summarizeTask(
 				}
 			: {}),
 		...(state.due ? { due: state.due, overdue: state.overdue ?? false } : {}),
-		...(progress.done ? { lastDone: mark(progress.done) } : {})
+		...(progress.done ? { lastDone: mark(progress.done) } : {}),
+		...questionCount(a, item.id)
 	};
+}
+
+function questionCount(a: LoadedAttachment, item: string) {
+	const open = a.conversation.questions.filter((q) => q.item === item && !q.resolved);
+	if (open.length === 0) return {};
+	const waiting = open.filter(awaitingAnswer).length;
+	return { questions: { waiting, answered: open.length - waiting } };
 }
 
 /** The actor's open items in a case: those whose role they hold. */
@@ -414,9 +449,25 @@ export async function loadWork(
 	const held: TaskSummary[] = [];
 	const recurring: TaskSummary[] = [];
 	const waiting: WaitingEntry[] = [];
+	const asked: AskedEntry[] = [];
 	const cards: CaseCard[] = [];
 
 	for (const c of loaded.cases) {
+		for (const a of c.attachments) {
+			for (const q of a.conversation.questions) {
+				if (q.to !== me || !awaitingAnswer(q)) continue;
+				asked.push({
+					caseId: c.id,
+					caseTitle: c.title,
+					attachmentId: a.id,
+					item: q.item,
+					title: a.process.items.find((i) => i.id === q.item)?.title ?? q.item,
+					process: attachmentName(a),
+					definitionSlug: a.definitionSlug,
+					question: { id: q.id, text: q.text, by: person(loaded.people, q.by), at: q.at }
+				});
+			}
+		}
 		const mine = myStates(c, actor);
 		for (const { a, state } of mine) {
 			const task = summarizeTask(c, a, state, loaded.people);
@@ -469,6 +520,7 @@ export async function loadWork(
 	const byDue = (x: TaskSummary, y: TaskSummary) => (x.due ?? '').localeCompare(y.due ?? '');
 	return {
 		instance: found.instance,
+		asked: asked.sort((x, y) => x.question.at.localeCompare(y.question.at)),
 		ready,
 		held,
 		waiting,
@@ -787,6 +839,45 @@ export interface TaskView {
 	reviews?: { title: string; doneBy?: PersonView };
 	/** For a guest: who asked, and one line of context. */
 	requester?: PersonView;
+	/** The form as someone last saved it, which it reopens with (ADR 0026). */
+	draft?: { values: Record<string, string[]>; by: PersonView; at: string };
+	/** Questions asked about the task, oldest first, each with its thread. */
+	questions: QuestionView[];
+	/** Who the actor can ask for information: people who can open the case; none on an approval, which is decided rather than paused. */
+	askable: PersonView[];
+	/** Every stage of the task's process with its work items, for finding the way around. */
+	outline: OutlineStage[];
+	/** One plain line about what everyone else is doing in the process. */
+	others?: string;
+}
+
+export interface QuestionView {
+	id: number;
+	by: PersonView;
+	to: PersonView;
+	at: string;
+	text: string;
+	replies: { by: PersonView; at: string; text: string }[];
+	/** It still waits on the person asked. */
+	waiting: boolean;
+	resolved?: Mark;
+	/** The actor can reply or resolve it: they asked, were asked, or can do the task. */
+	canReply: boolean;
+}
+
+export interface OutlineStage {
+	id: string;
+	title: string;
+	state: StageState['state'];
+	items: {
+		id: string;
+		kind: WorkItemKind;
+		title: string;
+		status: ItemStatus;
+		/** The actor holds its role. */
+		mine: boolean;
+		holders: PersonView[];
+	}[];
 }
 
 /** One task's form, for a member who can open its case. */
@@ -795,7 +886,7 @@ export async function loadTask(
 	actor: Actor,
 	instanceSlug: string,
 	ref: { attachmentId: string; item: string },
-	now = new Date()
+	{ askable = false, now = new Date() }: { askable?: boolean; now?: Date } = {}
 ): Promise<TaskView | ReadRefusal> {
 	const found = await instanceFor(db, actor, instanceSlug);
 	if ('ok' in found) return found;
@@ -803,7 +894,7 @@ export async function loadTask(
 	if (!located || located.c.accountId !== found.accountId) return notFound();
 	const read = await can(db, actor, 'case.read', { type: 'case', caseId: located.c.id });
 	if (!read.allowed) return denied(read.reason);
-	const view = await taskView(db, actor, located, located.people);
+	const view = await taskView(db, actor, located, located.people, askable);
 	return { ...view, instance: found.instance, process: summarizeAttachment(located.a) };
 }
 
@@ -827,7 +918,8 @@ async function taskView(
 	db: Db,
 	actor: Actor,
 	{ c, a, state }: { c: LoadedCase; a: LoadedAttachment; state: ItemState },
-	people: ReadonlyMap<string, Person>
+	people: ReadonlyMap<string, Person>,
+	withAskable = false
 ): Promise<TaskView> {
 	const { item } = state;
 	const me = subjectOf(actor);
@@ -842,7 +934,30 @@ async function taskView(
 	const roleTitle = a.process.roles.get(item.role)?.title ?? item.role;
 	const fields = await formFields(db, c, a, collectedBy(item), record);
 	const reviewed = item.reviews ? a.state.items.find((s) => s.item.id === item.reviews) : undefined;
+	const draft =
+		decision.allowed && isOpen(state.status) ? a.conversation.drafts[item.id] : undefined;
+	const inThread = (q: Question) => q.by === me || q.to === me || decision.allowed;
 	return {
+		questions: a.conversation.questions
+			.filter((q) => q.item === item.id)
+			.map((q) => ({
+				id: q.id,
+				by: p(q.by),
+				to: p(q.to),
+				at: q.at,
+				text: q.text,
+				replies: q.replies.map((r) => ({ by: p(r.by), at: r.at, text: r.text })),
+				waiting: awaitingAnswer(q),
+				canReply: inThread(q),
+				...(q.resolved ? { resolved: { by: p(q.resolved.by), at: q.resolved.at } } : {})
+			})),
+		askable:
+			withAskable && decision.allowed && isOpen(state.status) && item.kind !== 'approval'
+				? await askablePeople(db, c, me)
+				: [],
+		outline: outline(a, me, people),
+		others: othersLine(a, me, people),
+		...(draft ? { draft: { values: draft.values, by: p(draft.by), at: draft.at } } : {}),
 		case: { id: c.id, title: c.title },
 		task: summarizeTask(c, a, state, people),
 		you: {
@@ -894,6 +1009,44 @@ async function taskView(
 				}
 			: {})
 	};
+}
+
+/** Everyone in the case's account who can open it, but the actor, by name. */
+async function askablePeople(db: Db, c: LoadedCase, me: string): Promise<PersonView[]> {
+	const rows = await db
+		.selectDistinct({ id: principals.id, name: principals.displayName })
+		.from(roleBindings)
+		.innerJoin(principals, eq(principals.id, roleBindings.principalId))
+		.where(and(eq(roleBindings.accountId, c.accountId), eq(principals.kind, 'user')))
+		.orderBy(asc(principals.displayName));
+	const others = rows.filter((row) => row.id !== me);
+	const reads = await Promise.all(
+		others.map((row) => can(db, { id: row.id }, 'case.read', { type: 'case', caseId: c.id }))
+	);
+	return others.filter((_, i) => reads[i]!.allowed);
+}
+
+/** A process's stages with their work items, each marked when the actor holds its role. */
+function outline(
+	a: LoadedAttachment,
+	me: string,
+	people: ReadonlyMap<string, Person>
+): OutlineStage[] {
+	return a.state.stages.map((stage, index) => ({
+		id: stage.id,
+		title: stage.title,
+		state: stage.state,
+		items: a.state.items
+			.filter((s) => s.stageIndex === index)
+			.map((s) => ({
+				id: s.item.id,
+				kind: s.item.kind,
+				title: s.item.title,
+				status: s.status,
+				mine: holdersOf(a, s.item.role).includes(me),
+				holders: holdersOf(a, s.item.role).map((id) => person(people, id))
+			}))
+	}));
 }
 
 function fieldKind(
@@ -1189,6 +1342,10 @@ export async function loadGuestTask(
 		})),
 		evidence: view.evidence,
 		canSkip: false,
+		questions: [],
+		askable: [],
+		outline: [],
+		...(view.draft?.by.id === me ? { draft: view.draft } : {}),
 		...(view.content ? { content: view.content } : {}),
 		...(requester ? { requester: person(people, requester) } : {})
 	};
