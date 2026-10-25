@@ -108,8 +108,8 @@ export interface NewWork {
 }
 
 /**
- * A named step, or a named decision with a Yes/No outcome fact, optionally needing facts and
- * guarded. Naming comes first, so adding and naming is one edit and one undo.
+ * A named step, or a named decision with a Yes/No outcome fact of the same name, so rules and the
+ * case record read "Big spend? is Yes", optionally needing facts and guarded. Naming comes first, so adding and naming is one edit and one undo.
  */
 export function addWork(document: DefinitionDocument, w: NewWork): Edit & { id: string } {
 	const ix = indexDocument(document);
@@ -127,14 +127,14 @@ export function addWork(document: DefinitionDocument, w: NewWork): Edit & { id: 
 	};
 	const ops: Operation[] = [];
 	if (w.kind === 'decision') {
-		const outcome = freshId(document, 'fact', `${title} outcome`);
+		const outcome = freshId(document, 'fact', title);
 		ops.push({
 			op: 'add_node',
 			node: {
 				core: {
 					id: outcome,
 					kind: 'fact',
-					title: `${title} outcome`,
+					title,
 					schema: { type: 'string', enum: ['Yes', 'No'] }
 				}
 			}
@@ -183,17 +183,17 @@ export const rename = (id: string, title: string): Operation => ({
 });
 
 /**
- * Renames a node. A decision's outcome named after the decision follows the new name, so the
- * outcome never keeps a stale "New decision outcome".
+ * Renames a node. A decision's outcome named after the decision (or "<decision> outcome", as
+ * older drafts have it) follows the new name, so the outcome never keeps a stale "New decision".
  */
 export function renameNode(ix: ProcessIndex, id: string, title: string): Edit {
 	const ops = [rename(id, title)];
 	const node = ix.byId.get(id);
 	if (node?.core.kind === 'decision') {
 		const outcome = node.core.outcome;
-		if (labelOf(ix, outcome) === `${labelOf(ix, id)} outcome`) {
-			ops.push(rename(outcome, `${title} outcome`));
-		}
+		const was = labelOf(ix, outcome);
+		if (was === labelOf(ix, id)) ops.push(rename(outcome, title));
+		else if (was === `${labelOf(ix, id)} outcome`) ops.push(rename(outcome, `${title} outcome`));
 	}
 	return { ops, label: `Renamed ${labelOf(ix, id)} to ${title}` };
 }
@@ -479,7 +479,8 @@ export function copyIntoProcess(
 export function removeLookup(ix: ProcessIndex, id: string): Edit | string {
 	const users = factsUsingLookup(ix.document, id);
 	if (users.length) {
-		return `${labelOf(ix, id)} is still used by ${users.map((f) => labelOf(ix, f)).join(', ')}; choose other values for ${users.length === 1 ? 'it' : 'them'} first`;
+		const facts = users.map((f) => `“${labelOf(ix, f)}”`).join(', ');
+		return `The ${users.length === 1 ? 'fact' : 'facts'} ${facts} still ${users.length === 1 ? 'chooses' : 'choose'} from ${labelOf(ix, id)}; change ${users.length === 1 ? 'its' : 'their'} kind first`;
 	}
 	return {
 		ops: [{ op: 'remove_node', id: id as NodeId }],

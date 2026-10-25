@@ -15,6 +15,7 @@
 	import type { LoadedDefinition } from '$lib/definitions/types';
 	import { toneBar } from '$lib/graph/tones';
 	import { addRole, rename } from '$lib/editor/ops';
+	import { day } from '$lib/runner/format';
 	import { getEditor } from '$lib/editor/editing.svelte';
 	import { draftStatus, publishBlocked } from '$lib/editor/status';
 	import Field from './Field.svelte';
@@ -123,9 +124,10 @@
 		</p>
 		{#if loaded.published}
 			<p class="text-[11px] text-muted-foreground">
-				Version {loaded.published.version} published by {loaded.published.by} on {new Date(
-					loaded.published.at
-				).toLocaleDateString(undefined, { dateStyle: 'medium' })}.
+				Version {loaded.published.version} published by {loaded.published.by} on {day(
+					loaded.published.at,
+					true
+				)}.
 			</p>
 		{/if}
 		{#if loaded.changes.length}

@@ -32,7 +32,12 @@
 	const asked = $derived(work.asked.filter(keep));
 	const ready = $derived(answeredFirst(work.ready.filter(keep)));
 	const held = $derived(answeredFirst(work.held.filter(keep)));
-	const waiting = $derived(work.waiting.filter(keep));
+	// A process whose question is waiting on the user shows once, under Questions for you.
+	const waiting = $derived(
+		work.waiting.filter(
+			(w) => keep(w) && !work.asked.some((q) => q.attachmentId === w.attachmentId)
+		)
+	);
 	const recurring = $derived(work.recurring.filter(keep));
 	const total = $derived(work.asked.length + work.ready.length + work.held.length);
 	// One chip per process, named without the label that tells two runs on one case apart.

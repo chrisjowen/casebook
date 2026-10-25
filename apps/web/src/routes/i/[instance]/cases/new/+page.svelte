@@ -39,6 +39,8 @@
 	let subject = $state('');
 	let label = $state('');
 	let nameProblem = $state('');
+	/** Roles nobody holds that were left empty, which would leave their work waiting on nobody. */
+	let roleProblem = $state('');
 	/** Who fills each case role, by role id. */
 	let people = $state<Record<string, string[]>>({});
 
@@ -109,6 +111,12 @@
 			return;
 		}
 		nameProblem = '';
+		const empty = caseRoles.filter((r) => r.scope !== 'case' && !people[r.id]?.length);
+		if (step === 1 && empty.length) {
+			roleProblem = `Choose who does ${empty.map((r) => r.title ?? r.id).join(' and ')}: nobody else has ${empty.length === 1 ? 'that role' : 'those roles'}, so ${empty.length === 1 ? 'its' : 'their'} work would wait on nobody`;
+			return;
+		}
+		roleProblem = '';
 		step = Math.min(step + 1, 2);
 	}
 
@@ -393,7 +401,9 @@
 										</div>
 									</div>
 								{/each}
-								{#if failure.problems && Object.keys(failure.problems).some( (k) => k.startsWith('role:') )}
+								{#if roleProblem}
+									<p class="text-[12px] font-medium text-destructive" role="alert">{roleProblem}</p>
+								{:else if failure.problems && Object.keys(failure.problems).some( (k) => k.startsWith('role:') )}
 									<p class="text-[12px] font-medium text-destructive">{failure.reason}</p>
 								{/if}
 							</fieldset>
@@ -447,7 +457,7 @@
 											? people[role.id]!.map((id) =>
 													id === data.user.id ? 'You' : nameOf(id)
 												).join(', ')
-											: 'Nobody yet'}
+											: 'Nobody yet — its work waits until someone is named'}
 									</dd>
 									<button
 										type="button"

@@ -9,6 +9,7 @@
 		Briefcase,
 		FileSpreadsheet,
 		Inbox,
+		ListChecks,
 		LoaderCircle,
 		Plus,
 		Search,
@@ -159,6 +160,14 @@
 				icon: Workflow,
 				href: links.processes(instance),
 				top: true
+			},
+			{
+				key: 'go-lookups',
+				group: 'Go to',
+				label: 'Lookups',
+				hint: 'Lists of values choices are made from',
+				icon: ListChecks,
+				href: links.lookups(instance)
 			}
 		];
 		(found?.tasks ?? []).forEach((t, i) =>

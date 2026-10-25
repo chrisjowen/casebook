@@ -565,6 +565,11 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 				{ text: 'Which region is affected?', to: { name: 'Rae Reader' }, waiting: true }
 			]);
 
+			// The case says what it waits on: Rae's answer.
+			const onCase = await loadCase(db, users.devon, 'acme', held.task.caseId);
+			if ('ok' in onCase) throw new Error(onCase.reason);
+			expect(onCase.processes[0]!.others).toBe('Waiting on Rae Reader to answer a question.');
+
 			const raeWork = await work('rae', 'acme');
 			expect(raeWork.asked).toMatchObject([
 				{ title: held.task.title, question: { text: 'Which region is affected?' } }

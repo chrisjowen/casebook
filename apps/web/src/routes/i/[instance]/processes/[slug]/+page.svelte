@@ -92,7 +92,7 @@
 		<section class="mt-8">
 			<div class="mb-2 flex items-baseline gap-2 px-1">
 				<h2 class="text-[13px] font-semibold">
-					Cases running it <span class="font-normal text-muted-foreground">{total}</span>
+					Cases <span class="font-normal text-muted-foreground">{total}</span>
 				</h2>
 				{#if total}
 					<a

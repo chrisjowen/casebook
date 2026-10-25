@@ -12,7 +12,7 @@
 	<div class="flex flex-wrap gap-1.5" role="group" aria-label="Filter by process">
 		{#each [{ value: '', label: 'All processes' }, ...options] as option (option.value)}
 			<a
-				href={links.here(page.url, { process: option.value })}
+				href={links.here(page.url, { process: option.value, saved: undefined })}
 				data-sveltekit-noscroll
 				class={[
 					'rounded-full border px-3 py-1 text-[12px] transition-colors',

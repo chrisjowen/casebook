@@ -91,6 +91,8 @@
 	);
 	const hasFiles = $derived(view.evidence.length > 0 || view.fields.some((f) => f.kind === 'file'));
 	const answered = $derived(view.questions.filter((q) => !q.resolved && !q.waiting));
+	// Whoever was asked sees the question once, above, not again as the pause it caused.
+	const askedMe = $derived(view.questions.some((q) => q.to.id === me && q.waiting));
 	/** The newest answer from someone who was asked, shown where the pause is explained. */
 	const answer = $derived.by(() => {
 		for (const q of [...answered].reverse()) {
@@ -249,7 +251,7 @@
 		</p>
 	</div>
 {/if}
-{#if task.status === 'held' && task.held}
+{#if task.status === 'held' && task.held && !askedMe}
 	<div class="mt-6 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px]">
 		<CircleAlert class="mt-0.5 size-4 shrink-0 text-amber-700" />
 		<div class="flex-1">
@@ -264,7 +266,9 @@
 					class="mt-2.5 rounded-lg border border-amber-200 bg-background px-3 py-2 text-foreground"
 				>
 					<p class="text-[12px] text-muted-foreground">
-						{answer.by.id === me ? 'You' : answer.by.name} answered, {relative(answer.at)}:
+						{answer.by.id === me ? 'You' : answer.by.name} answered {relative(answer.at) === 'now'
+							? 'just now'
+							: relative(answer.at)}:
 					</p>
 					<p class="mt-0.5 text-[14px] whitespace-pre-line">{answer.text}</p>
 				</div>

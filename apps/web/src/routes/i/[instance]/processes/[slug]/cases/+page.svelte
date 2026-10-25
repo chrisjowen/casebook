@@ -73,6 +73,7 @@
 			<ul class="divide-y rounded-xl border bg-card">
 				{#each data.view.cases as run (run.attachment.id)}
 					{@const behind =
+						!run.attachment.complete &&
 						run.attachment.binding === 'pinned' &&
 						run.attachment.version < run.attachment.latestVersion}
 					<li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">

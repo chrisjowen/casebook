@@ -690,28 +690,40 @@
 					<button
 						class="flex h-9 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-[12.5px] hover:bg-muted"
 						title="Add a step (N)"
+						aria-label="Step"
 						onmousedown={releaseFocus}
-						onclick={() => addNext('step')}><SquareStack class="size-4" />Step</button
+						onclick={() => addNext('step')}
+						><SquareStack class="size-4" /><span class="hidden @min-[36rem]:inline">Step</span
+						></button
 					>
 					<button
 						class="flex h-9 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-[12.5px] hover:bg-muted"
 						title="Add a decision (D)"
+						aria-label="Decision"
 						onmousedown={releaseFocus}
-						onclick={() => addNext('decision')}><Signpost class="size-4" />Decision</button
+						onclick={() => addNext('decision')}
+						><Signpost class="size-4" /><span class="hidden @min-[36rem]:inline">Decision</span
+						></button
 					>
 					<button
 						class="flex h-9 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-[12.5px] hover:bg-muted"
 						title="Add a stage"
+						aria-label="Stage"
 						onmousedown={releaseFocus}
-						onclick={() => (ui.addingStage = true)}><Columns3 class="size-4" />Stage</button
+						onclick={() => (ui.addingStage = true)}
+						><Columns3 class="size-4" /><span class="hidden @min-[36rem]:inline">Stage</span
+						></button
 					>
 					<span class="mx-1 h-5 w-px bg-border"></span>
 					<button
 						class="flex h-9 cursor-pointer items-center gap-2 rounded-xl px-3 text-[12.5px] text-muted-foreground hover:bg-muted hover:text-foreground"
 						onmousedown={releaseFocus}
+						aria-label="Add or find"
 						onclick={() => (ui.palette = true)}
-						><Search class="size-4" />Add or find<kbd
-							class="rounded-md border bg-background px-1.5 text-[10.5px]">/</kbd
+						><Search class="size-4" /><span class="hidden @min-[36rem]:inline">Add or find</span
+						><kbd
+							class="hidden rounded-md border bg-background px-1.5 text-[10.5px] @min-[36rem]:inline"
+							>/</kbd
 						></button
 					>
 				</div>

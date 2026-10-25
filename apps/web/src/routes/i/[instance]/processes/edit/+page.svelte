@@ -315,7 +315,7 @@
 			<section class="flex min-w-0 flex-1 flex-col">
 				<div
 					class={[
-						'flex h-12 shrink-0 items-center gap-2 border-b bg-background px-3',
+						'no-scrollbar flex h-12 shrink-0 items-center gap-2 overflow-x-auto border-b bg-background px-3',
 						splitting && assistantOpen && 'hidden'
 					]}
 				>
@@ -649,8 +649,14 @@
 						>
 					</div>
 					{#if !isMap && editor.blocked && selected !== 'shared'}
-						<p class="border-b bg-muted/40 px-5 py-2 text-[11.5px] text-muted-foreground">
-							{editor.blocked}
+						<!-- The store's reason names roles and namespaces; say it plainly, keep it as a tooltip. -->
+						<p
+							class="border-b bg-muted/40 px-5 py-2 text-[11.5px] text-muted-foreground"
+							title={editor.blocked}
+						>
+							{loaded && !loaded.can.edit.allowed
+								? `You can view this process. To change it, ask someone who can edit processes in ${workspace.label}.`
+								: editor.blocked}
 						</p>
 					{/if}
 					<div class="no-scrollbar min-h-0 flex-1 overflow-y-auto">

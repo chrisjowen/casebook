@@ -673,8 +673,15 @@ function othersLine(a: LoadedAttachment, me: string, people: ReadonlyMap<string,
 	);
 	const mine = active.filter((s) => holdersOf(a, s.item.role).includes(me));
 	const others = active.filter((s) => !holdersOf(a, s.item.role).includes(me));
-	if (others.length === 0)
+	if (others.length === 0) {
+		// A question still out is what the case waits on, even with nothing else to do.
+		const askedOf = [
+			...new Set(a.conversation.questions.filter((q) => awaitingAnswer(q)).map((q) => q.to))
+		].filter((id) => id !== me);
+		if (askedOf.length)
+			return `Waiting on ${names(askedOf.map((id) => person(people, id).name))} to answer a question.`;
 		return mine.length ? 'Nobody else has anything to do right now.' : 'Nothing is in progress.';
+	}
 	const parts = others.map((s) => {
 		const who = names(
 			holdersOf(a, s.item.role).map((id) => person(people, id).name),

@@ -3,8 +3,11 @@ import type { LoadedDefinition } from '$lib/definitions/types';
 /** Why the draft cannot be published now, or undefined when it can. Living drafts never are. */
 export function publishBlocked(d: LoadedDefinition): string | undefined {
 	if (d.policy === 'living') return 'Every edit of a living process is already published';
-	if (!d.can.publish.allowed) return d.can.publish.reason;
+	if (!d.can.publish.allowed) return 'Publishing it needs someone who can publish processes here';
 	if (d.revision === undefined) return 'There is no draft to publish';
+	if (!d.document.nodes.some((n) => n.core.kind === 'step' || n.core.kind === 'decision')) {
+		return 'Add a step first: a process with no steps has nothing for a case to do';
+	}
 	if (d.published && d.changes.length === 0) {
 		return `Nothing has changed since version ${d.published.version}`;
 	}
