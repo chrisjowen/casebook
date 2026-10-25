@@ -17,7 +17,13 @@ import {
 	undoSharedLookupEdit,
 	type SharedLookup
 } from '../src/lookups.js';
-import { editDefinition, publishDefinition, readDraft, type Refusal } from '../src/definitions.js';
+import {
+	createDefinition,
+	editDefinition,
+	publishDefinition,
+	readDraft,
+	type Refusal
+} from '../src/definitions.js';
 import {
 	completeItem,
 	listProcesses,
@@ -281,6 +287,39 @@ describe.skipIf(!url)('shared lookups (Postgres)', () => {
 			label: 'Follow-up'
 		});
 		if (!again.ok) throw new Error(again.reason);
+		const review = await createDefinition(db, users.olive, {
+			namespaceId: ns.get('acme/eng/sre')!,
+			title: 'Service review',
+			changePolicy: 'living'
+		});
+		if (!review.ok) throw new Error(review.reason);
+		const reviewed = await editDefinition(db, users.olive, {
+			definitionId: review.definitionId,
+			baseRevision: 1,
+			ops: [
+				{
+					op: 'add_node',
+					node: {
+						core: {
+							id: 'fact.services',
+							kind: 'fact',
+							title: 'Services',
+							schema: {
+								type: 'string',
+								'x-lookup': { kind: 'dataset', dataset: 'service-catalog' }
+							}
+						}
+					}
+				},
+				{ op: 'link', from: 'step.first-step', edge: 'collects', to: 'fact.services' }
+			]
+		});
+		if (!reviewed.ok) throw new Error(reviewed.reason);
+		const both = await startCase(db, users.olive, {
+			definitionId: review.definitionId,
+			caseId: started.caseId
+		});
+		if (!both.ok) throw new Error(both.reason);
 
 		const other = await createSharedLookup(db, users.olive, {
 			namespaceId: ns.get('acme/eng')!,
@@ -316,12 +355,15 @@ describe.skipIf(!url)('shared lookups (Postgres)', () => {
 				facts: [{ id: 'fact.affected-services', title: 'Affected services' }],
 				draftOnly: false,
 				cases: before + 1
-			})
+			}),
+			expect.objectContaining({ slug: 'service-review', cases: 1 })
 		]);
 		refused(
 			await deleteSharedLookup(db, users.olive, seen.id),
 			'referenced',
-			/Incident management, and \d+ cases? still uses? it\. Turn its values off instead/
+			new RegExp(
+				`Incident management, Service review, and ${before + 1} cases? still uses? it\\. Turn its values off instead`
+			)
 		);
 	});
 });

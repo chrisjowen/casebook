@@ -178,6 +178,14 @@ export async function readSharedLookup(
  * of their cases run on a version that does.
  */
 export async function sharedLookupUses(db: Db, lookup: SharedLookup): Promise<LookupUse[]> {
+	return (await usesOf(db, lookup)).uses;
+}
+
+/** `sharedLookupUses`, with the ids of every version that chooses from the lookup. */
+async function usesOf(
+	db: Db,
+	lookup: SharedLookup
+): Promise<{ uses: LookupUse[]; versionIds: string[] }> {
 	const inside = (
 		await db
 			.select({ id: namespaces.id, path: namespaces.path })
@@ -186,7 +194,7 @@ export async function sharedLookupUses(db: Db, lookup: SharedLookup): Promise<Lo
 	).filter(
 		(n) => n.path === lookup.namespace.path || n.path.startsWith(`${lookup.namespace.path}/`)
 	);
-	if (inside.length === 0) return [];
+	if (inside.length === 0) return { uses: [], versionIds: [] };
 	const definitions = await db
 		.select({
 			id: processDefinitions.id,
@@ -202,6 +210,7 @@ export async function sharedLookupUses(db: Db, lookup: SharedLookup): Promise<Lo
 		)
 		.orderBy(asc(processDefinitions.slug));
 	const uses: LookupUse[] = [];
+	const versionIds: string[] = [];
 	for (const d of definitions) {
 		const path = inside.find((n) => n.id === d.namespaceId)!.path;
 		// a nearer namespace's list of the same name hides this one there
@@ -224,24 +233,16 @@ export async function sharedLookupUses(db: Db, lookup: SharedLookup): Promise<Lo
 				.where(eq(definitionVersions.definitionId, d.id))
 				.orderBy(desc(definitionVersions.version))
 		).filter((v) => factsUsingShared(v.body as DefinitionDocument, lookup.name).length > 0);
-		const [bound] = versions.length
-			? await db
-					.select({ n: countDistinct(caseAttachments.caseId) })
-					.from(caseAttachments)
-					.where(
-						inArray(
-							caseAttachments.definitionVersionId,
-							versions.map((v) => v.id)
-						)
-					)
-			: [];
+		const cases = await casesOn(
+			db,
+			versions.map((v) => v.id)
+		);
 		const published = versions.filter((v) => v.status === 'published');
 		const documents = [
 			...(draft ? [draft.body] : []),
 			...versions.map((v) => v.body)
 		] as DefinitionDocument[];
 		const inDraft = draft ? factsUsingShared(draft.body as DefinitionDocument, lookup.name) : [];
-		const cases = bound?.n ?? 0;
 		if (inDraft.length === 0 && published.length === 0 && cases === 0) continue;
 		const facts = [...new Set(documents.flatMap((doc) => factsUsingShared(doc, lookup.name)))];
 		const titleOf = (id: string) => {
@@ -252,6 +253,7 @@ export async function sharedLookupUses(db: Db, lookup: SharedLookup): Promise<Lo
 			return id;
 		};
 		const process = documents[0]!.nodes.find((n) => n.core.kind === 'process');
+		versionIds.push(...versions.map((v) => v.id));
 		uses.push({
 			definitionId: d.id,
 			slug: d.slug,
@@ -262,7 +264,17 @@ export async function sharedLookupUses(db: Db, lookup: SharedLookup): Promise<Lo
 			cases
 		});
 	}
-	return uses;
+	return { uses, versionIds };
+}
+
+/** How many cases run on any of these definition versions. */
+async function casesOn(db: Db, versionIds: string[]): Promise<number> {
+	if (versionIds.length === 0) return 0;
+	const [row] = await db
+		.select({ n: countDistinct(caseAttachments.caseId) })
+		.from(caseAttachments)
+		.where(inArray(caseAttachments.definitionVersionId, versionIds));
+	return row?.n ?? 0;
 }
 
 /** A shared lookup's versions, newest first, each with what it changed. */
@@ -444,9 +456,9 @@ export async function deleteSharedLookup(
 	const read = await readSharedLookup(db, actor, lookupId);
 	if (!read.ok) return read;
 	if (!read.can.edit.allowed) return refuse('access-denied', read.can.edit.reason);
-	const uses = await sharedLookupUses(db, read.lookup);
+	const { uses, versionIds } = await usesOf(db, read.lookup);
 	if (uses.length) {
-		const cases = uses.reduce((n, u) => n + u.cases, 0);
+		const cases = await casesOn(db, versionIds);
 		return refuse(
 			'referenced',
 			`${read.lookup.title} is still used by ${uses.map((u) => u.title).join(', ')}` +
