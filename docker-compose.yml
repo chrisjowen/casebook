@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: casebook
+      POSTGRES_PASSWORD: casebook
+      POSTGRES_DB: casebook
+    ports:
+      - '127.0.0.1:${CASEBOOK_PG_PORT:-5433}:5432'
+    volumes:
+      - casebook-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U casebook -d casebook']
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  casebook-pgdata:

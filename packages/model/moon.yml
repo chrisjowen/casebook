@@ -1,0 +1,34 @@
+$schema: '../../.moon/cache/schemas/project.json'
+
+language: 'typescript'
+layer: 'library'
+
+tasks:
+  build:
+    command: 'tsc -p tsconfig.build.json'
+    inputs:
+      - 'src/**/*'
+      - 'tsconfig.build.json'
+      - '/tsconfig.base.json'
+    outputs:
+      - 'dist'
+  check:
+    command: 'tsc -p tsconfig.json'
+    inputs:
+      - 'src/**/*'
+      - 'test/**/*'
+      - 'schema/**/*'
+      - 'tsconfig.json'
+      - '/tsconfig.base.json'
+  lint:
+    command: 'eslint .'
+    inputs:
+      - '**/*'
+      - '/eslint.config.js'
+  test:
+    command: 'vitest run'
+    inputs:
+      - 'src/**/*'
+      - 'test/**/*'
+      - 'schema/**/*'
+      - 'vitest.config.ts'

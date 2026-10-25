@@ -1,0 +1,19 @@
+# Package manager files
+pnpm-lock.yaml
+
+# Build outputs and caches
+**/dist/
+**/build/
+**/.svelte-kit/
+**/drizzle/
+.moon/cache/
+
+# Static assets
+apps/web/static/
+
+# Hand-authored decision records keep their own Markdown style
+docs/
+
+# Local agent tooling
+.claude/
+.serena/

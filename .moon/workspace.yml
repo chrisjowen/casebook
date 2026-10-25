@@ -1,0 +1,10 @@
+$schema: './cache/schemas/workspace.json'
+
+projects:
+  - 'apps/*'
+  - 'packages/*'
+
+vcs:
+  client: 'git'
+  provider: 'github'
+  defaultBranch: 'main'

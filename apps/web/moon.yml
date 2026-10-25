@@ -1,0 +1,34 @@
+$schema: '../../.moon/cache/schemas/project.json'
+
+language: 'typescript'
+layer: 'application'
+
+tasks:
+  dev:
+    command: 'vite dev'
+    preset: 'server'
+  build:
+    command: 'vite build'
+    inputs:
+      - 'src/**/*'
+      - 'static/**/*'
+      - 'vite.config.ts'
+      - 'tsconfig.json'
+    outputs:
+      - 'build'
+  check:
+    script: 'svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings'
+    inputs:
+      - 'src/**/*'
+      - 'vite.config.ts'
+      - 'tsconfig.json'
+  lint:
+    command: 'eslint .'
+    inputs:
+      - '**/*'
+      - '/eslint.config.js'
+  test:
+    command: 'vitest run --passWithNoTests'
+    inputs:
+      - 'src/**/*'
+      - 'vite.config.ts'

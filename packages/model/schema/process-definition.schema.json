@@ -1,0 +1,7 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "urn:casebook:schema:process-definition:v0",
+	"title": "Process definition",
+	"description": "Placeholder for the versioned process-definition schema (ADR 0002). Node shapes follow ADR 0003.",
+	"type": "object"
+}
