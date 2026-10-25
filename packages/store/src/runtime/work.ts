@@ -1340,6 +1340,58 @@ export async function loadProcess(
 	slugOrId: string,
 	now = new Date()
 ): Promise<ProcessView | ReadRefusal> {
+	const found = await casesRunning(db, actor, instanceSlug, slugOrId, now);
+	if ('ok' in found) return found;
+	const { instance, process, loaded, hiddenCases } = found;
+	return {
+		instance,
+		process,
+		cases: loaded.flatMap((c) =>
+			c.attachments
+				.filter((a) => a.definitionId === process.id)
+				.map((a) => ({ id: c.id, title: c.title, attachment: summarizeAttachment(a) }))
+		),
+		hiddenCases
+	};
+}
+
+/** A case running a process, with the current value of each fact on it. */
+export interface CaseFacts {
+	id: string;
+	title: string;
+	facts: Record<string, unknown>;
+}
+
+/**
+ * The readable cases running a process, newest first, with their facts, so its editor can test
+ * conditions against real values.
+ */
+export async function loadCaseFacts(
+	db: Db,
+	actor: Actor,
+	instanceSlug: string,
+	slugOrId: string,
+	now = new Date()
+): Promise<{ ok: true; cases: CaseFacts[] } | ReadRefusal> {
+	const found = await casesRunning(db, actor, instanceSlug, slugOrId, now);
+	if ('ok' in found) return found;
+	return {
+		ok: true,
+		cases: found.loaded.map((c) => ({
+			id: c.id,
+			title: c.title,
+			facts: Object.fromEntries([...c.facts].map(([fact, record]) => [fact, record.value]))
+		}))
+	};
+}
+
+async function casesRunning(
+	db: Db,
+	actor: Actor,
+	instanceSlug: string,
+	slugOrId: string,
+	now: Date
+) {
 	const list = await listProcesses(db, actor, instanceSlug);
 	if ('ok' in list) return list;
 	const process = list.groups
@@ -1357,11 +1409,7 @@ export async function loadProcess(
 	return {
 		instance: list.instance,
 		process,
-		cases: loaded.flatMap((c) =>
-			c.attachments
-				.filter((a) => a.definitionId === process.id)
-				.map((a) => ({ id: c.id, title: c.title, attachment: summarizeAttachment(a) }))
-		),
+		loaded,
 		hiddenCases: caseIds.length - readable.length
 	};
 }

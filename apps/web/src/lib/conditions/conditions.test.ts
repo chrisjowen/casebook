@@ -1,0 +1,56 @@
+import { describe, expect, it } from 'vitest';
+import { incidentManagement } from '@casebook/model/fixtures';
+import { indexDocument } from '$lib/graph/derive';
+import { checkCode, choicesOf, complete, describe as words, factInfo } from './conditions';
+
+const ix = indexDocument(incidentManagement);
+const labels = (text: string, cursor = text.length) =>
+	complete(ix, text, cursor).items.map((s) => s.label);
+
+describe('conditions in the editor', () => {
+	it('words conditions with the facts’ names', () => {
+		expect(words(ix, "fact.severity in ['SEV1', 'SEV2']")).toBe('Severity is SEV1 or SEV2');
+		expect(words(ix, 'fact.resolved-at != null')).toBe('Resolved at has a value');
+		expect(factInfo(ix)('fact.severity').kind).toBe('choice');
+		expect(choicesOf(ix, 'fact.severity')).toEqual(['SEV1', 'SEV2', 'SEV3', 'SEV4']);
+	});
+
+	it('finds code that does not work, and where', () => {
+		expect(checkCode(ix, "fact.severity in ['SEV1']")).toBeUndefined();
+		expect(checkCode(ix, 'fact.severty == 1')).toEqual({
+			message: 'This process has no fact called fact.severty.',
+			at: 0,
+			length: 12
+		});
+		expect(checkCode(ix, 'fact.severity == ')).toMatchObject({
+			message: 'The expression ends too early.'
+		});
+		expect(checkCode(ix, 'days_since(fact.resolved-at) > 2 and frob')).toMatchObject({
+			at: 37,
+			length: 4
+		});
+	});
+
+	it('suggests facts, helpers and words where a value goes', () => {
+		const start = labels('');
+		expect(start).toContain('Severity');
+		expect(start).toContain('days_since(date)');
+		expect(start).toContain('not');
+		expect(labels('sev')).toEqual(['Severity']);
+		expect(complete(ix, 'sev', 3).items[0]).toMatchObject({ insert: 'fact.severity' });
+		expect(complete(ix, 'fact.severity == x and sev', 26).from).toBe(23);
+		expect(labels('days')).toEqual([
+			'days_since(date)',
+			'days_between(from, to)',
+			'add_days(date, days)'
+		]);
+	});
+
+	it('suggests operators after a value, and a choice fact’s values after comparing it', () => {
+		expect(labels('fact.severity ')).toContain('==');
+		expect(labels('fact.severity ')).not.toContain('Severity');
+		expect(labels('fact.severity == ').slice(0, 4)).toEqual(['SEV1', 'SEV2', 'SEV3', 'SEV4']);
+		expect(labels("fact.severity in ['SEV1', ").slice(0, 1)).toEqual(['SEV1']);
+		expect(labels('fact.severity == x a')).toEqual(['and']);
+	});
+});

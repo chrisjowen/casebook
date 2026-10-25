@@ -14,6 +14,7 @@
 	import {
 		ChevronRight,
 		Copy,
+		FlaskConical,
 		Eye,
 		FileText,
 		GitBranch,
@@ -26,7 +27,15 @@
 		UserPlus,
 		X
 	} from '@lucide/svelte';
-	import { describeEvidence, labelOf, type ProcessIndex, type WorkItem } from '$lib/graph/derive';
+	import {
+		describeEvidence,
+		humanizeDuration,
+		labelOf,
+		type ProcessIndex,
+		type WorkItem
+	} from '$lib/graph/derive';
+	import BranchTest from '$lib/conditions/BranchTest.svelte';
+	import ConditionEditor from '$lib/conditions/ConditionEditor.svelte';
 	import { roleTone } from '$lib/graph/layout';
 	import { toneBar } from '$lib/graph/tones';
 	import {
@@ -50,7 +59,6 @@
 	import Field from './Field.svelte';
 	import FieldPreview from './FieldPreview.svelte';
 	import Group from './Group.svelte';
-	import Expr from './Expr.svelte';
 
 	let {
 		ix,
@@ -92,6 +100,10 @@
 	let preview = $state(false);
 	let newChoice = $state('');
 	let branchFor = $state<string | undefined>();
+	/** The rule just added, which opens ready to build. */
+	let added = $state<'when' | 'repeat' | undefined>();
+	let testBranches = $state(false);
+	const INTERVALS = ['PT15M', 'PT30M', 'PT1H', 'PT4H', 'P1D', 'P7D'];
 	let branchName = $state('');
 
 	async function setRole(value: string) {
@@ -269,6 +281,15 @@
 					}}
 				/>
 			{/if}
+			<button
+				class="flex cursor-pointer items-center gap-1.5 self-start text-[12px] text-muted-foreground hover:text-foreground"
+				aria-expanded={testBranches}
+				onclick={() => (testBranches = !testBranches)}
+				><FlaskConical class="size-3.5" />Test the branches<ChevronRight
+					class={['size-3.5 transition-transform', testBranches && 'rotate-90']}
+				/></button
+			>
+			{#if testBranches && decision}<BranchTest {ix} {decision} {onselect} />{/if}
 		</Group>
 	{:else}
 		<Group title="Records" count={step?.core.collects?.length ?? 0}>
@@ -339,57 +360,73 @@
 
 	<Group title="Rules">
 		{#if core.when}
-			<div class="flex items-start gap-2">
-				<Split class="mt-2.5 size-3.5 shrink-0 text-muted-foreground" />
-				<div class="min-w-0 flex-1">
-					<EditText
-						label="Only when"
-						value={core.when.text}
-						onsave={edit &&
-							((text) =>
-								save({
-									ops: [setWhen(id, text ? { ...core.when!, text } : null)],
-									label: text ? 'Changed when it runs' : 'Removed the condition'
-								}))}
-					/>
-					{#if core.when.expr}<div class="mt-1.5"><Expr expr={core.when.expr} {ix} /></div>{/if}
-				</div>
-				{#if edit}
-					<button
-						class={['mt-6', remove]}
-						aria-label="Remove the condition"
-						onclick={() => save({ ops: [setWhen(id, null)], label: 'Removed the condition' })}
-						><X class="size-3.5" /></button
-					>
-				{/if}
-			</div>
+			<ConditionEditor
+				{ix}
+				guard={core.when}
+				label="Only when"
+				icon={Split}
+				lead="Only when"
+				open={added === 'when'}
+				outcome={{
+					true: `${decision ? 'this decision' : 'this step'} runs`,
+					false: `${decision ? 'this decision' : 'this step'} is skipped`,
+					unknown: 'it waits until these are recorded'
+				}}
+				onsave={edit && ((when, label) => save({ ops: [setWhen(id, when)], label }))}
+				onremove={edit &&
+					(() => save({ ops: [setWhen(id, null)], label: 'Removed the condition' }))}
+				removeLabel="Remove the condition"
+			/>
 		{/if}
 		{#if step?.core.repeat}
-			<div class="flex items-start gap-2">
-				<Repeat class="mt-2.5 size-3.5 shrink-0 text-muted-foreground" />
-				<div class="min-w-0 flex-1">
-					<EditText
-						label="Repeats until"
-						value={step.core.repeat.until.text}
-						onsave={edit &&
-							((text) =>
-								save(
-									set(
-										{ repeat: { ...step!.core.repeat!, until: { text } } },
-										'Changed when it stops repeating'
-									)
-								))}
-					/>
-				</div>
-				{#if edit}
-					<button
-						class={['mt-6', remove]}
-						aria-label="Stop repeating"
-						onclick={() => save(set({ repeat: null }, `${labelOf(ix, id)} no longer repeats`))}
-						><X class="size-3.5" /></button
-					>
-				{/if}
-			</div>
+			<ConditionEditor
+				{ix}
+				guard={step.core.repeat.until}
+				label="Repeats until"
+				icon={Repeat}
+				lead="Until"
+				open={added === 'repeat'}
+				outcome={{
+					true: 'it stops repeating',
+					false: 'it keeps repeating',
+					unknown: 'it keeps repeating until these are recorded'
+				}}
+				onsave={edit &&
+					((until, label) => save(set({ repeat: { ...step!.core.repeat!, until } }, label)))}
+				onremove={edit &&
+					(() => save(set({ repeat: null }, `${labelOf(ix, id)} no longer repeats`)))}
+				removeLabel="Stop repeating"
+			/>
+			<label class="ml-5.5 flex items-center gap-2 text-[12px] text-muted-foreground">
+				Suggested every
+				<select
+					class="h-7 cursor-pointer rounded-md bg-muted/70 px-1.5 text-[12px] text-foreground outline-none focus:ring-2 focus:ring-brand-ring disabled:cursor-default"
+					value={step.core.repeat.every ?? ''}
+					disabled={!edit}
+					onchange={(e) => {
+						const every = e.currentTarget.value || undefined;
+						const rest = { ...step!.core.repeat! };
+						delete rest.every;
+						save(
+							set(
+								{ repeat: every ? { ...rest, every } : rest },
+								every
+									? `${labelOf(ix, id)} repeats every ${humanizeDuration(every)}`
+									: `${labelOf(ix, id)} has no set interval`
+							)
+						);
+					}}
+				>
+					<option value="">No set interval</option>
+					{#each INTERVALS as every (every)}<option value={every}>{humanizeDuration(every)}</option
+						>{/each}
+					{#if step.core.repeat.every && !INTERVALS.includes(step.core.repeat.every)}
+						<option value={step.core.repeat.every}
+							>{humanizeDuration(step.core.repeat.every)}</option
+						>
+					{/if}
+				</select>
+			</label>
 		{/if}
 		{#if approval}
 			<div class="flex items-start gap-2.5 rounded-lg border px-3 py-2">
@@ -427,25 +464,29 @@
 				{#if !core.when}
 					<button
 						class={quiet}
-						onclick={() =>
-							save({
+						onclick={async () => {
+							added = 'when';
+							await save({
 								ops: [
 									setWhen(id, { text: `Only when ${labelOf(ix, id).toLowerCase()} is needed` })
 								],
-								label: 'Added a condition; word it here'
-							})}><Split class="size-3.5" />Only when…</button
+								label: 'Added a condition; build its rules here'
+							});
+						}}><Split class="size-3.5" />Only when…</button
 					>
 				{/if}
 				{#if step && !step.core.repeat}
 					<button
 						class={quiet}
-						onclick={() =>
-							save(
+						onclick={async () => {
+							added = 'repeat';
+							await save(
 								set(
 									{ repeat: { until: { text: 'Until it is no longer needed' }, every: 'PT1H' } },
 									`${labelOf(ix, id)} repeats every hour`
 								)
-							)}><Repeat class="size-3.5" />Repeats…</button
+							);
+						}}><Repeat class="size-3.5" />Repeats…</button
 					>
 				{/if}
 				{#if step && !approval}
