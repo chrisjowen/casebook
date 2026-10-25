@@ -26,3 +26,4 @@ Architecture decisions for casebook, one file per decision.
 | 0020 | [Editing definitions through the store, with a dev sign-in](0020-editing-through-the-store.md) | Accepted (amends 0019) |
 | 0021 | [Building a process on the board](0021-building-on-the-board.md) | Accepted (amends 0013, 0019) |
 | 0022 | [Running cases](0022-running-cases.md) | Accepted (amends 0016, 0017) |
+| 0023 | [Agents work cases over MCP, signed in as a user](0023-agents-over-mcp.md) | Accepted |

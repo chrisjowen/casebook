@@ -1,0 +1,51 @@
+$schema: '../../.moon/cache/schemas/project.json'
+
+language: 'typescript'
+layer: 'application'
+
+# The server imports @casebook/model and @casebook/store, which resolve to their built output.
+dependsOn:
+  - 'model'
+  - 'store'
+
+tasks:
+  build:
+    command: 'tsc -p tsconfig.build.json'
+    deps:
+      - '^:build'
+    inputs:
+      - 'src/**/*'
+      - 'tsconfig.build.json'
+      - '/tsconfig.base.json'
+    outputs:
+      - 'dist'
+  check:
+    command: 'tsc -p tsconfig.json'
+    deps:
+      - '^:build'
+    inputs:
+      - 'src/**/*'
+      - 'test/**/*'
+      - 'vitest.config.ts'
+      - 'tsconfig.json'
+      - '/tsconfig.base.json'
+  lint:
+    command: 'eslint .'
+    inputs:
+      - '**/*'
+      - '/eslint.config.js'
+  test:
+    command: 'vitest run'
+    deps:
+      - '^:build'
+    inputs:
+      - 'src/**/*'
+      - 'test/**/*'
+      - 'vitest.config.ts'
+      - '$DATABASE_URL'
+  # The MCP endpoint and its dev sign-in, on http://localhost:5190. Local use only.
+  dev:
+    command: 'node dist/cli/serve.js'
+    preset: 'server'
+    deps:
+      - '~:build'
