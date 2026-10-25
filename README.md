@@ -127,7 +127,7 @@ A governed process publishes when someone presses Publish and the publish checks
 
 ## Spreadsheet wizard
 
-"Import a spreadsheet", beside the process tabs, turns an `.xlsx` tracker into processes (ADR 0011, ADR 0024); "Use the sample" imports a synthetic newborn tracker, also downloadable from `/wizard/sample.xlsx`.
+"Import a spreadsheet", beside the process tabs, turns an `.xlsx` tracker into processes (ADR 0011, ADR 0024); "Use the sample" imports a synthetic newborn tracker, also downloadable from `/wizard/sample`.
 The board stays in view, with the assistant in a slide-over beside it that can be closed and reopened:
 
 1. The assistant proposes how to split the workbook into processes, each with the cells it comes from. Rename, merge, split off a range or ask in chat for a different split, then accept it to create the processes.
@@ -146,7 +146,7 @@ It runs on any tool-calling chat model LangChain supports, set in `.env`:
 | `CASEBOOK_WIZARD_TIMEOUT_SECONDS` | `480`                    | How long one assistant turn may run before it is stopped with a message.                                         |
 
 Small local models are slower and propose less, which shows up as proposals to reject or push back on rather than broken drafts.
-The assistant runs one turn at a time and shows what it is doing while it works; a large workbook is shown to the model as its tables and first rows, with the rest read on demand, so a turn stays within minutes on a local model.
+The assistant runs one turn at a time on Ollama (turns on a hosted model run side by side), stops a turn still unfinished `CASEBOOK_WIZARD_TIMEOUT_SECONDS` after its request arrived, and shows what it is doing while it works; a large workbook is shown to the model as its tables and first rows, with the rest read on demand, so a turn stays within minutes on a local model.
 
 Sign-in is a dev-only stand-in for OIDC: pick one of the seeded users at `/signin`, with no password.
 It is on only in `pnpm dev`, never in a production build.

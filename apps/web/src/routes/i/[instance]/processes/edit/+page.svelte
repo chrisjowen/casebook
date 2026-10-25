@@ -440,7 +440,8 @@
 								}}><FileSpreadsheet class="size-3.5" />Use the sample: newborn-tracker.xlsx</button
 							>
 							<a
-								href={resolve('/wizard/sample.xlsx')}
+								href={resolve('/wizard/sample')}
+								download
 								class="flex size-8 items-center justify-center rounded-lg border text-muted-foreground hover:bg-muted"
 								title="Download the sample"
 								aria-label="Download the sample"><Download class="size-3.5" /></a

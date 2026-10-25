@@ -54,6 +54,12 @@ export interface AgentContext {
 	signal?: AbortSignal;
 	/** Told what the agent is doing as it goes, such as `Reading the draft`. */
 	onProgress?: (activity: string) => void;
+	/**
+	 * Whether operations a model writes into its reply are read, and operations written slightly
+	 * wrong are tidied before they are checked, for small local models. Otherwise operations are
+	 * taken only from `apply_operations`, checked as sent.
+	 */
+	lenient?: boolean;
 }
 
 /** What one run of the agent produced. */
@@ -118,11 +124,11 @@ export async function runAgent(
 	const exchange: [reply: string, next: string][] = [];
 	let reply = await invoke(ctx, state, preface + request, tools, exchange);
 	// Small models sometimes describe their operations, or write them into the reply as JSON,
-	// instead of calling apply_operations. Operations written out are read from the reply through
-	// the same checks a call gets, and the agent is told the result so it can go on.
+	// instead of calling apply_operations. With `lenient`, operations written out are read from the
+	// reply through the same checks a call gets, and the agent is told the result so it can go on.
 	for (let round = 1; ; round++) {
 		const before = session.ops.length;
-		const written = operationsInText(reply);
+		const written = ctx.lenient ? operationsInText(reply) : [];
 		const result = written.length > 0 ? await apply(written) : undefined;
 		const proposedNone = session.ops.length === session.carried.length;
 		let next: string;
@@ -511,9 +517,8 @@ export function tidyOperation(value: unknown): unknown {
 	const fields = Object.keys((schema as { properties: Record<string, unknown> }).properties);
 	const tidy = Object.fromEntries(Object.entries(value).filter(([key]) => fields.includes(key)));
 	// Core fields written beside the core, as `{id, kind, title, core: {source}}` or with no core at
-	// all, are taken to be part of it. A step or decision that says nothing of who may do it is
-	// left to people (`actor: "human"`), the policy that grants an agent the least, and a condition
-	// with a null expression keeps just its prose.
+	// all, are taken to be part of it, and a condition with a null expression keeps just its prose.
+	// Who may do a step is never filled in or guessed: one that leaves it out is refused.
 	const node = tidy.node as Record<string, unknown> | undefined;
 	if (op === 'add_node' && node && typeof node === 'object' && !Array.isArray(node)) {
 		const { content, data, core, ...beside } = node;
@@ -526,14 +531,6 @@ export function tidyOperation(value: unknown): unknown {
 		}
 		const full = (tidy.node as { core?: Record<string, unknown> }).core;
 		if (full && (full.kind === 'step' || full.kind === 'decision')) {
-			// A role given as the actor, as `{"kind": "role.parent"}` or `"role.parent"`, is the role.
-			const actor = full.actor as unknown;
-			const named = typeof actor === 'string' ? actor : (actor as { kind?: unknown } | null)?.kind;
-			if (typeof named === 'string' && named.startsWith('role.')) {
-				full.role ??= named;
-				full.actor = 'human';
-			}
-			full.actor ??= 'human';
 			const when = full.when as { expr?: unknown } | undefined;
 			if (when && typeof when === 'object' && when.expr === null) delete when.expr;
 		}
@@ -641,8 +638,9 @@ function operationVariants(): {
 
 /**
  * `apply_operations`'s input: a list of node operations. The model is shown every operation's
- * JSON Schema (ADR 0019), but LangChain is not asked to enforce them: each operation is tidied and
- * checked by the tool itself, which explains a refusal in plain language the model can act on.
+ * JSON Schema (ADR 0019), but LangChain is not asked to enforce them: each operation is checked
+ * by the tool itself (tidied first when lenient), which explains a refusal in plain language the
+ * model can act on.
  */
 function operationsInput() {
 	const { variants, defs } = operationVariants();
@@ -748,7 +746,7 @@ function draftTools(
 			const existing = new Map(current.nodes.map((n) => [n.core.id as string, n]));
 			const skipped: string[] = [];
 			list.forEach((value, i) => {
-				const result = checkOperation(withSource(tidyOperation(value)));
+				const result = checkOperation(withSource(ctx.lenient ? tidyOperation(value) : value));
 				if (!result.valid) {
 					refused.push(`operation ${i + 1}: ${result.errors.map((e) => e.message).join('; ')}`);
 					return;

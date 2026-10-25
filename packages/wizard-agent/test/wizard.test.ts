@@ -22,9 +22,9 @@ import { answer, call, lastToolResult, ScriptedModel, type Step } from './fake-m
 const workbook = readWorkbook(sampleWorkbook());
 const FILE = SAMPLE_FILE_NAME;
 
-function context(script: Step[], drafts = memoryDrafts()) {
+function context(script: Step[], drafts = memoryDrafts(), { lenient = false } = {}) {
 	const model = new ScriptedModel(script);
-	const ctx: AgentContext = { model, drafts, workbook };
+	const ctx: AgentContext = { model, drafts, workbook, lenient };
 	return { ctx, model, drafts };
 }
 
@@ -561,7 +561,8 @@ describe('a model that struggles', () => {
 				},
 				answer('That is the whole draft.')
 			],
-			drafts
+			drafts,
+			{ lenient: true }
 		);
 		const state = await wizard.draft(ctx, split, split.activeKey!);
 		expect(model.remaining).toBe(0);
@@ -581,11 +582,30 @@ describe('a model that struggles', () => {
 		];
 		const { ctx, model } = context(
 			parts.map((ops, i) => answer(`Part ${i + 1}:\n${json(ops)}`)),
-			drafts
+			drafts,
+			{ lenient: true }
 		);
 		const state = await wizard.draft(ctx, split, split.activeKey!);
 		expect(model.remaining).toBe(0);
 		expect(pendingTurn(state, state.activeKey!)?.ops).toEqual(firstDraft);
+	});
+
+	it('does not read operations from the reply of a model that is not lenient', async () => {
+		const { state: split, drafts } = await acceptedSplit();
+		const json = '```json\n' + JSON.stringify(firstDraft) + '\n```';
+		const { ctx, model } = context(
+			[
+				answer(`Here is the draft:\n${json}`),
+				(messages) => {
+					expect(String(messages.at(-1)!.content)).toMatch(/You did not call apply_operations/);
+					return answer(`Here it is again:\n${json}`)(messages);
+				}
+			],
+			drafts
+		);
+		const state = await wizard.draft(ctx, split, split.activeKey!);
+		expect(model.remaining).toBe(0);
+		expect(state.turns).toEqual([]);
 	});
 
 	it('leaves nodes sent again unchanged alone, and points a changed one at update_core', async () => {
@@ -631,10 +651,56 @@ describe('a model that struggles', () => {
 					return answer('Drafted.')(messages);
 				}
 			],
-			drafts
+			drafts,
+			{ lenient: true }
 		);
 		const state = await wizard.draft(ctx, split, split.activeKey!);
 		expect(pendingTurn(state, state.activeKey!)?.ops).toEqual(firstDraft);
+	});
+
+	it('checks the operations of a model that is not lenient as sent', async () => {
+		const { state: split, drafts } = await acceptedSplit();
+		const loose = firstDraft.map((op) => ({ ...op, changes: {} }));
+		const { ctx } = context(
+			[
+				call('apply_operations', { operations: loose }),
+				(messages) => {
+					expect(lastToolResult(messages)).toMatch(/Nothing applied\./);
+					return answer('Drafted.')(messages);
+				},
+				answer('I could not draft it.')
+			],
+			drafts
+		);
+		const state = await wizard.draft(ctx, split, split.activeKey!);
+		expect(state.turns).toEqual([]);
+	});
+
+	it('refuses a step that does not say who may do it, rather than guessing', async () => {
+		const { state: split, drafts } = await acceptedSplit();
+		const unsaid = firstDraft.map((op) => {
+			if (op.op !== 'add_node' || op.node.core.kind !== 'step') return op;
+			const core = Object.entries(op.node.core).filter(([key]) => key !== 'actor');
+			return { ...op, node: { core: Object.fromEntries(core) } };
+		});
+		const { ctx } = context(
+			[
+				call('apply_operations', { operations: unsaid }),
+				(messages) => {
+					const result = lastToolResult(messages);
+					expect(result).toMatch(/Applied 5 of 7 operations/);
+					expect(result).toMatch(/step\.gather-documents: core is missing required field "actor"/);
+					expect(result).toMatch(
+						/step\.register-the-birth: core is missing required field "actor"/
+					);
+					return answer('Drafted, without the steps.')(messages);
+				}
+			],
+			drafts,
+			{ lenient: true }
+		);
+		const state = await wizard.draft(ctx, split, split.activeKey!);
+		expect(pendingTurn(state, state.activeKey!)?.ops).toEqual(firstDraft.slice(0, 5));
 	});
 
 	it('keeps the operations that fit and lists each refused one with its reason', async () => {

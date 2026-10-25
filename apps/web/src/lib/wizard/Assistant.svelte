@@ -104,7 +104,8 @@
 		problem = undefined;
 		failed = undefined;
 		activity = undefined;
-		// The server stops a turn after its timeout; give its answer a minute more to arrive.
+		// The server stops a turn at its timeout from when it arrives, waiting included; give its
+		// answer a minute more to arrive.
 		const limit = (view.timeoutSeconds + 60) * 1000;
 		const call = fetch(`/wizard/${view.id}`, {
 			method: 'POST',

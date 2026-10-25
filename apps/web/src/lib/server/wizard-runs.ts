@@ -1,9 +1,10 @@
 /**
  * Agent turns in progress, in this server process. A local model answers one request at a time,
- * so turns run one after another; each one's progress can be read while it runs, so the assistant
- * never sits silently, and a turn that runs too long is stopped.
+ * so with Ollama turns run one after another; a hosted model's turns run side by side. Each one's
+ * progress can be read while it runs, so the assistant never sits silently, and a turn still
+ * unfinished at the timeout, counted from when its request arrived, is stopped.
  */
-import { modelName } from '@casebook/wizard-agent';
+import { modelName, modelSpec } from '@casebook/wizard-agent';
 
 /** How long one agent turn may run before it is stopped, from CASEBOOK_WIZARD_TIMEOUT_SECONDS. */
 export function turnTimeoutSeconds(): number {
@@ -51,15 +52,16 @@ export function progressOf(sessionId: string, ownerId: string): RunProgress | un
 export const isRunning = (sessionId: string) => runs.has(sessionId);
 
 /**
- * Runs `work` once the turns before it have finished, with a signal that stops it after the
- * timeout and a callback that records its progress.
+ * Runs `work`, with Ollama once the turns before it have finished, with a signal that stops it at
+ * the timeout from now, waiting included, and a callback that records its progress.
  */
 export async function runTurn<T>(
 	sessionId: string,
 	ownerId: string,
 	work: (turn: { signal: AbortSignal; onProgress: (activity: string) => void }) => Promise<T>
 ): Promise<T> {
-	const ahead = queued;
+	const serial = modelSpec().provider === 'ollama';
+	const ahead = serial ? queued : 0;
 	const run: Run = {
 		ownerId,
 		activity:
@@ -70,17 +72,17 @@ export async function runTurn<T>(
 		startedAt: Date.now()
 	};
 	runs.set(sessionId, run);
-	queued++;
-	const start = tail.catch(() => undefined);
+	const controller = new AbortController();
+	const seconds = turnTimeoutSeconds();
+	const timer = setTimeout(
+		() => controller.abort(new TurnTimeout(`stopped after ${seconds} seconds`)),
+		seconds * 1000
+	);
+	const start = serial ? tail.catch(() => undefined) : Promise.resolve();
 	const result = start.then(async () => {
+		controller.signal.throwIfAborted();
 		run.waiting = false;
 		run.activity = 'Starting';
-		const controller = new AbortController();
-		const seconds = turnTimeoutSeconds();
-		const timer = setTimeout(
-			() => controller.abort(new TurnTimeout(`stopped after ${seconds} seconds`)),
-			seconds * 1000
-		);
 		try {
 			return await work({
 				signal: controller.signal,
@@ -89,15 +91,17 @@ export async function runTurn<T>(
 		} catch (error) {
 			if (controller.signal.aborted) throw controller.signal.reason;
 			throw error;
-		} finally {
-			clearTimeout(timer);
 		}
 	});
-	tail = result;
+	if (serial) {
+		queued++;
+		tail = result;
+	}
 	try {
 		return await result;
 	} finally {
-		queued--;
+		clearTimeout(timer);
+		if (serial) queued--;
 		runs.delete(sessionId);
 	}
 }

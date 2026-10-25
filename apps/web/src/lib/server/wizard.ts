@@ -20,6 +20,7 @@ import {
 	mergeProcesses,
 	modelName,
 	modelProblem,
+	modelSpec,
 	pendingTurn,
 	processOf,
 	renameProcess,
@@ -41,7 +42,7 @@ import type {
 import { getDb } from './db';
 import { isRunning, progressOf, runTurn, TurnTimeout, turnTimeoutSeconds } from './wizard-runs';
 
-/** Requests that run the agent, one at a time and with a timeout. */
+/** Requests that run the agent, with a timeout (one at a time on Ollama). */
 const AGENT_ACTIONS = new Set<WizardAction['action']>(['split', 'reply', 'draft']);
 
 /** Largest workbook accepted for import. */
@@ -257,7 +258,8 @@ export async function act(
 						drafts,
 						workbook: session.workbook,
 						signal,
-						onProgress
+						onProgress,
+						lenient: modelSpec().provider === 'ollama'
 					})
 				})
 			);

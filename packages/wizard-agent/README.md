@@ -12,7 +12,7 @@ The spreadsheet wizard ([ADR 0011](../../docs/decisions/0011-v1-wizard.md), [ADR
 - `model.ts`: the chat model, from `CASEBOOK_WIZARD_MODEL` as `provider:model` (`ollama:qwen2.5:7b` by default; `anthropic:…` and `openai:…` also work).
 - `sample.ts`: a synthetic newborn tracker, built in memory as `.xlsx` bytes ([ADR 0014](../../docs/decisions/0014-synthetic-sample-data.md)).
 
-Small local models get help: the agent sees only its own tools and instructions, operations and ranges written slightly wrong are tidied before they are checked, a model that repeats a refused call is told to stop and explain, and a turn that runs out of steps ends with what it already proposed.
+Small local models get help: the agent sees only its own tools and instructions, a model that repeats a refused call is told to stop and explain, and a turn that runs out of steps ends with what it already proposed. With `lenient` (set for Ollama), operations a model writes into its reply instead of calling `apply_operations` are read and checked the same way, and operations written slightly wrong (stray fields, core fields beside the core) are tidied before they are checked; who may do a step is never filled in or guessed, so a step without an actor is refused. Hosted models' operations are taken only from `apply_operations`, checked as sent.
 
 ## Tests
 

@@ -96,7 +96,7 @@ describe('operations as models write them', () => {
 		});
 		expect(
 			tidyOperation({ op: 'add_node', node: { core: { id: 'step.a', kind: 'step' } } })
-		).toEqual({ op: 'add_node', node: { core: { id: 'step.a', kind: 'step', actor: 'human' } } });
+		).toEqual({ op: 'add_node', node: { core: { id: 'step.a', kind: 'step' } } });
 		expect(
 			tidyOperation({
 				op: 'add_node',
@@ -115,8 +115,7 @@ describe('operations as models write them', () => {
 				core: {
 					id: 'step.a',
 					kind: 'step',
-					actor: 'human',
-					role: 'role.parent',
+					actor: { kind: 'role.parent' },
 					when: { text: 'Within 7 days' }
 				}
 			}
