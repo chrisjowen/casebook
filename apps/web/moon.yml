@@ -34,7 +34,6 @@ tasks:
       - 'vite.config.ts'
       - '/packages/model/fixtures/**/*'
       - 'tsconfig.json'
-      - '/packages/model/fixtures/**/*'
   lint:
     command: 'eslint .'
     inputs:

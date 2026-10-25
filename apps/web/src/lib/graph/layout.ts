@@ -55,6 +55,8 @@ export interface CardData extends Record<string, unknown> {
 	actor: string;
 	rows: { id: string; title: string; type: string; glyph: FactGlyph }[];
 	moreRows: number;
+	/** Plain names of every fact the item collects, including those past the visible rows. */
+	facts: string[];
 	badge?: string;
 	guard?: string;
 	repeat?: string;
@@ -115,6 +117,7 @@ export function cardData(ix: ProcessIndex, item: WorkItem, compact: boolean): Ca
 			return { id: fact, title: labelOf(ix, fact), type: t.label, glyph: t.glyph };
 		}),
 		moreRows: Math.max(0, collects.length - MAX_ROWS),
+		facts: collects.map(({ fact }) => labelOf(ix, fact)),
 		badge: item.core.kind === 'decision' ? 'Decision' : undefined,
 		guard: item.core.when?.text,
 		repeat: step?.repeat?.every

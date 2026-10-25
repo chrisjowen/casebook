@@ -66,7 +66,6 @@
 	let outline = $state(true);
 	let details = $state(false);
 	let focusId = $state<string | undefined>();
-	let toast = $state<string | undefined>();
 	const inspectorOpen = $derived(
 		!!selectedItem || !!selectedFact || selected === 'shared' || (details && !isMap)
 	);
@@ -90,16 +89,7 @@
 	}
 
 	const actions = {
-		inspect: (id: string) => nav({ sel: id }),
-		copyId: async (id: string) => {
-			try {
-				await navigator.clipboard.writeText(id);
-				toast = 'Node id copied';
-			} catch {
-				toast = 'Could not copy the node id';
-			}
-			setTimeout(() => (toast = undefined), 2000);
-		}
+		inspect: (id: string) => nav({ sel: id })
 	};
 
 	function onrail(item: RailItem) {
@@ -239,14 +229,6 @@
 					>
 						{#snippet legend()}{#if !isMap}<Legend facts={data.view === 'facts'} />{/if}{/snippet}
 					</GraphCanvas>
-					{#if toast}
-						<div
-							class="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-lg bg-foreground px-3 py-1.5 text-[12px] text-background shadow-md"
-							role="status"
-						>
-							{toast}
-						</div>
-					{/if}
 				</main>
 
 				<footer

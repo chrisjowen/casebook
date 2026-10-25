@@ -3,7 +3,6 @@ import { getContext, setContext } from 'svelte';
 /** Read-only actions nodes can trigger from their menu. */
 export interface GraphActions {
 	inspect: (id: string) => void;
-	copyId: (id: string) => void;
 }
 
 const KEY = Symbol('casebook-graph');

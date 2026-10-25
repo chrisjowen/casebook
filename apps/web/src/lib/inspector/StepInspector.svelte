@@ -180,7 +180,7 @@
 
 	{#if step?.evidence?.some((e) => !e.fact)}
 		<Group title="Evidence">
-			{#each step.evidence.filter((e) => !e.fact) as e (e.description)}
+			{#each step.evidence.filter((e) => !e.fact) as e, i (i)}
 				<div class="flex items-start gap-2 text-[12.5px]">
 					<FileText class="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />{e.description} · {describeEvidence(
 						e
@@ -234,7 +234,7 @@
 				</div>
 			{:else}
 				<p class="text-[11px] text-muted-foreground">
-					No expression yet, so the {labelOf(ix, core.role)} confirms it when the time comes (ADR 0004).
+					No expression yet, so the {labelOf(ix, core.role)} confirms it when the time comes.
 				</p>
 			{/if}
 		{/if}

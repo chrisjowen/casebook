@@ -43,7 +43,7 @@
 				match the schema, so the other checks did not run.
 			</p>
 			<ul class="flex flex-col gap-1.5 pl-5.5 text-[12px] text-muted-foreground">
-				{#each loaded.errors as e (e.path + e.keyword)}<li>{plainText(ix, e.message)}</li>{/each}
+				{#each loaded.errors as e, i (i)}<li>{plainText(ix, e.message)}</li>{/each}
 			</ul>
 		{:else if loaded.ok && !warnings.length}
 			<p class="flex items-center gap-2 text-[12.5px]">
@@ -58,7 +58,7 @@
 					{warnings.length === 1 ? 'warning' : 'warnings'}{/if}
 			</p>
 			<ul class="flex flex-col gap-2">
-				{#each [...errors, ...warnings] as issue (issue.path + issue.code)}
+				{#each [...errors, ...warnings] as issue, i (i)}
 					<li class="flex items-start gap-2 text-[12.5px]">
 						{#if issue.severity === 'error'}<CircleAlert
 								class="mt-0.5 size-3.5 shrink-0 text-destructive"

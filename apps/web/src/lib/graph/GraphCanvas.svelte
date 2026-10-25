@@ -41,7 +41,7 @@
 		legend?: Snippet;
 	} = $props();
 
-	setGraphActions({ inspect: (id) => actions.inspect(id), copyId: (id) => actions.copyId(id) });
+	setGraphActions({ inspect: (id) => actions.inspect(id) });
 
 	const nodeTypes = {
 		card: CardNode,
@@ -61,9 +61,14 @@
 	let width = $state(0);
 	let height = $state(0);
 
-	const nameOf = (n: Node) => String((n.data as { title?: string }).title ?? '');
+	const namesOf = (n: Node) => {
+		const d = n.data as { title?: string; facts?: string[] };
+		return [d.title ?? '', ...(d.facts ?? [])];
+	};
 	const matches = (n: Node, q: string) =>
-		n.type !== 'stage' && n.type !== 'lane' && nameOf(n).toLowerCase().includes(q);
+		n.type !== 'stage' &&
+		n.type !== 'lane' &&
+		namesOf(n).some((name) => name.toLowerCase().includes(q));
 
 	function restyle(b: Built, q: string, selected: string | undefined) {
 		const needle = q.trim().toLowerCase();
