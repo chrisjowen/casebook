@@ -233,7 +233,10 @@ describe('typed values', () => {
 						{ t: 'e', v: 7, w: '#DIV/0!' },
 						formulaCell('B1*2', 85),
 						formulaCell('A1&"!"', 'text!'),
-						{ t: 'n', v: 0.25, z: '0%' }
+						{ t: 'n', v: 0.25, z: '0%' },
+						dateCell(45352, 'mmmm'),
+						dateCell(45352, '[$-409]mmm;@'),
+						dateCell(0.75, '[h]:mm')
 					]
 				]
 			}
@@ -250,6 +253,14 @@ describe('typed values', () => {
 			['E1', { type: 'date', value: '2024-03-01T09:00:00' }, 45352.375],
 			['F1', { type: 'date', value: '12:00:00' }, 0.5],
 			['G1', { type: 'error', value: '#DIV/0!' }, '#DIV/0!']
+		]);
+	});
+
+	it('keeps the date for month-only formats and the time for elapsed-hour formats', () => {
+		expect(values.slice(10)).toEqual([
+			['K1', { type: 'date', value: '2024-03-01' }, 45352],
+			['L1', { type: 'date', value: '2024-03-01' }, 45352],
+			['M1', { type: 'date', value: '18:00:00' }, 0.75]
 		]);
 	});
 

@@ -281,15 +281,16 @@ interface DateCode {
 const pad = (n: number, width = 2) => String(n).padStart(width, '0');
 
 /**
- * Serial day number to a zone-less ISO string. Time-only formats (`hh:mm`) give
- * `HH:MM:SS`; otherwise whole days give `YYYY-MM-DD` and the rest both.
+ * Serial day number to a zone-less ISO string. Time-only formats (`hh:mm`, with
+ * no year, month or day) give `HH:MM:SS`; otherwise whole days give
+ * `YYYY-MM-DD` and the rest both.
  */
 function serialToIso(serial: number, format: string, date1904: boolean): string {
 	const code = XLSX.SSF.parse_date_code(serial, { date1904 }) as DateCode;
 	const time = `${pad(code.H)}:${pad(code.M)}:${pad(code.S)}`;
 	// Ignore quoted literals and [bracketed] parts such as colours and locales.
-	const tokens = format.replace(/"[^"]*"|\\.|\[[^\]]*\]/g, '');
-	if (!/[yd]/i.test(tokens)) return time;
+	const tokens = format.replace(/"[^"]*"|\\.|\[(?![hms]+\])[^\]]*\]/gi, '');
+	if (!/[yd]/i.test(tokens) && /[hs]/i.test(tokens)) return time;
 	const date = `${pad(code.y, 4)}-${pad(code.m)}-${pad(code.d)}`;
 	return code.H === 0 && code.M === 0 && code.S === 0 ? date : `${date}T${time}`;
 }

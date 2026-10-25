@@ -92,6 +92,23 @@ describe('renderSheetText', () => {
 			'[truncated: 1 cells clipped to 50 chars; 51 cells beyond 10 per row omitted]'
 		);
 	});
+
+	it('keeps wide headers and many regions inside the budget', () => {
+		const header = Array.from({ length: 300 }, (_, i) => `Week ${i + 1} label`);
+		const rows: (string | null)[][] = [];
+		for (let r = 0; r < 20; r++) rows.push(header.slice(0, 60), header.slice(0, 60), [], []);
+		const wide = readWorkbook(buildWorkbook([{ name: 'Wide', rows: [header, header] }])).sheets[0]!;
+		const wideText = renderSheetText(wide, { maxChars: 12_000 }).text;
+		expect(wideText.length).toBeLessThanOrEqual(12_000);
+		expect(wideText).toContain('Week 30 label, +270 more');
+
+		const many = readWorkbook(buildWorkbook([{ name: 'Many', rows }])).sheets[0]!;
+		expect(many.regions.length).toBeGreaterThan(5);
+		const { text, truncation } = renderSheetText(many, { maxChars: 2000 });
+		expect(text.length).toBeLessThanOrEqual(2000);
+		expect(truncation?.omittedHeaderLines).toBeGreaterThan(0);
+		expect(text.split('\n').at(-1)).toMatch(/^\[truncated: \d+ header lines omitted; /);
+	});
 });
 
 describe('renderWorkbookText', () => {
@@ -118,6 +135,18 @@ describe('renderWorkbookText', () => {
 		expect(result.omittedSheets.length).toBeGreaterThan(0);
 		expect(result.text.split('\n').at(-1)).toBe(
 			`[omitted sheets: ${result.omittedSheets.map((n) => `"${n}"`).join(', ')}]`
+		);
+	});
+
+	it('caps the omitted-sheets line so the workbook budget holds', () => {
+		const many = readWorkbook(
+			buildWorkbook(Array.from({ length: 60 }, (_, i) => ({ name: `Sheet number ${i + 1}`, rows })))
+		);
+		const result = renderWorkbookText(many, { maxTotalChars: 3000, maxChars: 1000 });
+		expect(result.text.length).toBeLessThanOrEqual(3000);
+		expect(result.omittedSheets.length).toBeGreaterThan(50);
+		expect(result.text.split('\n').at(-1)).toMatch(
+			/^\[omitted sheets: "Sheet number \d+", .* \+\d+ more\]$/
 		);
 	});
 });

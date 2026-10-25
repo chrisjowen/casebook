@@ -25,6 +25,8 @@ export interface Truncation {
 	clippedCells: number;
 	/** Cells left out of rows wider than `maxCellsPerRow`. */
 	omittedCells: number;
+	/** Sheet header lines (merges, regions) that did not fit the budget, when any. */
+	omittedHeaderLines?: number;
 }
 
 export interface SheetRendering {
@@ -49,6 +51,7 @@ export const DEFAULT_MAX_TOTAL_CHARS = 50_000;
 const TRAILER_RESERVE = 240;
 const MAX_REGION_LINES = 20;
 const MAX_MERGES_LISTED = 30;
+const MAX_LABELS_LISTED = 30;
 
 /**
  * Renders one sheet as compact, addressed text for an LLM:
@@ -70,9 +73,16 @@ export function renderSheetText(sheet: Sheet, options: RenderOptions = {}): Shee
 	const maxCellChars = options.maxCellChars ?? DEFAULT_MAX_CELL_CHARS;
 	const maxCellsPerRow = options.maxCellsPerRow ?? DEFAULT_MAX_CELLS_PER_ROW;
 
-	const lines = headerLines(sheet);
-	let used = lines.reduce((n, line) => n + line.length + 1, 0);
 	const budget = Math.max(0, maxChars - TRAILER_RESERVE);
+	const header = headerLines(sheet);
+	const lines: string[] = [];
+	let used = 0;
+	for (const line of header) {
+		if (used + line.length + 1 > budget) break;
+		lines.push(line);
+		used += line.length + 1;
+	}
+	const omittedHeaderLines = header.length - lines.length;
 
 	let clippedCells = 0;
 	let omittedCells = 0;
@@ -89,12 +99,21 @@ export function renderSheetText(sheet: Sheet, options: RenderOptions = {}): Shee
 
 	const rowsTotal = sheet.rows.length;
 	const omitted = sheet.rows.slice(rowsShown);
-	if (omitted.length === 0 && clippedCells === 0 && omittedCells === 0) {
+	if (
+		omitted.length === 0 &&
+		clippedCells === 0 &&
+		omittedCells === 0 &&
+		omittedHeaderLines === 0
+	) {
 		return { sheet: sheet.name, text: lines.join('\n') };
 	}
 
 	const truncation: Truncation = { rowsShown, rowsTotal, clippedCells, omittedCells };
 	const parts: string[] = [];
+	if (omittedHeaderLines > 0) {
+		truncation.omittedHeaderLines = omittedHeaderLines;
+		parts.push(`${omittedHeaderLines} header lines omitted`);
+	}
 	if (omitted.length > 0) {
 		const omittedRows = { sheet: sheet.name, ref: rowsRange(omitted) };
 		truncation.omittedRows = omittedRows;
@@ -139,10 +158,24 @@ export function renderWorkbookText(
 	}
 
 	const blocks = sheets.map((s) => s.text);
-	if (omittedSheets.length > 0) {
-		blocks.push(`[omitted sheets: ${omittedSheets.map((n) => JSON.stringify(n)).join(', ')}]`);
-	}
+	if (omittedSheets.length > 0) blocks.push(omittedSheetsLine(omittedSheets));
 	return { text: blocks.join('\n\n'), sheets, omittedSheets };
+}
+
+function omittedSheetsLine(names: string[]): string {
+	const listed: string[] = [];
+	let length = 0;
+	for (const [i, name] of names.entries()) {
+		const quoted = JSON.stringify(name);
+		const more = i + 1 < names.length ? ` +${names.length - i - 1} more`.length : 0;
+		if (length + quoted.length + 2 + more > TRAILER_RESERVE - 40) {
+			listed.push(`+${names.length - i} more`);
+			break;
+		}
+		listed.push(quoted);
+		length += quoted.length + 2;
+	}
+	return `[omitted sheets: ${listed.join(', ')}]`;
 }
 
 function headerLines(sheet: Sheet): string[] {
@@ -181,7 +214,9 @@ function headerLines(sheet: Sheet): string[] {
 function regionLine(region: Region): string {
 	const parts = [`region ${region.range}`];
 	if (region.header) {
-		const labels = Object.values(region.header.labels).map((l) => clip(escape(l), 40).text);
+		const all = Object.values(region.header.labels);
+		const labels = all.slice(0, MAX_LABELS_LISTED).map((l) => clip(escape(l), 40).text);
+		if (all.length > MAX_LABELS_LISTED) labels.push(`+${all.length - MAX_LABELS_LISTED} more`);
 		parts.push(`header row ${region.header.row}: ${labels.join(', ')}`);
 	}
 	if (region.rowLabelColumn) parts.push(`row labels in ${region.rowLabelColumn}`);
