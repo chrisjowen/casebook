@@ -1,4 +1,9 @@
-import type { DefinitionDocument, InvariantIssue, ValidationError } from '@casebook/model';
+import type {
+	DefinitionDocument,
+	InvariantIssue,
+	LookupValue,
+	ValidationError
+} from '@casebook/model';
 
 /** Whether the signed-in user may do something, with the reason either way. */
 export interface Permission {
@@ -36,11 +41,24 @@ export interface LoadedDefinition {
 	can: { edit: Permission; publish: Permission };
 }
 
+/** A shared lookup a workspace's processes can choose from (ADR 0025). */
+export interface SharedLookupRef {
+	id: string;
+	/** What facts call it. */
+	name: string;
+	title: string;
+	/** The namespace that keeps it: the workspace's own or one above it. */
+	namespace: string;
+	values: LookupValue[];
+}
+
 /** The definitions owned by one namespace (ADR 0007). Definition level only: no cases. */
 export interface Workspace {
 	id: string;
 	namespace: string;
 	label: string;
 	definitions: LoadedDefinition[];
+	/** The shared lookups its processes can choose from, nearest first by name. */
+	lookups: SharedLookupRef[];
 	can: { create: Permission };
 }

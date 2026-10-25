@@ -38,13 +38,22 @@ export const links = {
 		resolve('/i/[instance]/processes/[slug]/cases', { instance, slug }),
 	/**
 	 * A process's Edit tab: the board, opened on one definition's workspace, optionally with a
-	 * spreadsheet import's assistant. `slug` "map" opens the workspace's process map.
+	 * spreadsheet import's assistant or one node selected. `slug` "map" opens the workspace's
+	 * process map.
 	 */
-	editor: (instance: string, namespace?: string, slug?: string, opts: { wizard?: string } = {}) =>
+	editor: (
+		instance: string,
+		namespace?: string,
+		slug?: string,
+		opts: { wizard?: string; select?: string } = {}
+	) =>
 		resolve(
-			`/i/[instance]/processes/edit${search({ ws: namespace, p: slug, wizard: opts.wizard })}`,
+			`/i/[instance]/processes/edit${search({ ws: namespace, p: slug, wizard: opts.wizard, sel: opts.select })}`,
 			{ instance }
 		),
+	/** Shared lookups, inside Processes, opened on one when its id is given (ADR 0025). */
+	lookups: (instance: string, lookup?: string) =>
+		resolve(`/i/[instance]/processes/lookups${search({ l: lookup })}`, { instance }),
 	/** What the command palette searches: the user's cases and tasks in an instance. */
 	search: (instance: string) => resolve('/i/[instance]/search', { instance }),
 	requests: () => resolve('/requests'),

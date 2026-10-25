@@ -27,7 +27,26 @@
 	let demo = $state(false);
 	let keep = $state(true);
 	const shown = $derived(fileName || (demo ? 'A demo document' : ''));
-	const choices = $derived(field.kind === 'yesno' ? ['yes', 'no'] : (field.options ?? []));
+	const choices = $derived(
+		field.kind === 'yesno'
+			? [
+					{ value: 'yes', label: 'Yes' },
+					{ value: 'no', label: 'No' }
+				]
+			: (field.options ?? [])
+	);
+	// A long list, such as countries, is a menu or a list to filter rather than a row of chips.
+	const long = $derived(choices.length > 8);
+	let filter = $state('');
+	const shownChoices = $derived(
+		filter.trim()
+			? choices.filter((c) =>
+					`${c.label} ${'code' in c ? (c.code ?? '') : ''}`
+						.toLowerCase()
+						.includes(filter.trim().toLowerCase())
+				)
+			: choices
+	);
 	const datetime = (raw: string | undefined) => raw?.replace(/:\d{2}(\.\d+)?Z$/, '') ?? '';
 </script>
 
@@ -92,23 +111,48 @@
 			<input type="hidden" name="demo:fact:{field.fact}" value="yes" />
 			<input type="hidden" name="demo-name:fact:{field.fact}" value={field.title} />
 		{/if}
+	{:else if long && !field.multiple}
+		<label for={id} class="text-[13px] font-medium">{field.title}</label>
+		{#if field.hint}<span class="text-[12px] text-muted-foreground">{field.hint}</span>{/if}
+		<select {id} {name} class={[input, 'cursor-pointer']} value={current[0] ?? ''}>
+			<option value="" disabled>Choose one of {choices.length}</option>
+			{#each choices as option (option.value)}<option value={option.value}>{option.label}</option
+				>{/each}
+		</select>
 	{:else if field.kind === 'choice' || field.kind === 'yesno'}
 		<fieldset class="grid gap-1.5">
 			<legend class="mb-1.5 text-[13px] font-medium">{field.title}</legend>
 			{#if field.hint}<span class="-mt-1 text-[12px] text-muted-foreground">{field.hint}</span>{/if}
-			<div class="flex flex-wrap gap-2">
-				{#each choices as option (option)}
+			{#if long}
+				<input
+					type="search"
+					class={[input, 'h-9 text-[13px]']}
+					placeholder="Find one of {choices.length}"
+					aria-label="Find a choice for {field.title}"
+					bind:value={filter}
+				/>
+			{/if}
+			<div
+				class={[
+					'flex flex-wrap gap-2',
+					long && 'max-h-64 overflow-y-auto rounded-lg border bg-background p-2'
+				]}
+			>
+				{#each choices as option (option.value)}
 					<label
-						class="flex cursor-pointer items-center gap-2 rounded-lg border bg-background px-3 py-2 text-[13px] has-checked:border-brand has-checked:bg-brand-soft"
+						class={[
+							'flex cursor-pointer items-center gap-2 rounded-lg border bg-background px-3 py-2 text-[13px] has-checked:border-brand has-checked:bg-brand-soft',
+							!shownChoices.includes(option) && 'hidden'
+						]}
 					>
 						<input
-							type="radio"
+							type={field.multiple ? 'checkbox' : 'radio'}
 							{name}
-							value={option}
-							checked={current[0] === option}
+							value={option.value}
+							checked={current.includes(option.value)}
 							class="accent-brand"
 						/>
-						{option === 'yes' ? 'Yes' : option === 'no' ? 'No' : option}
+						{option.label}
 					</label>
 				{/each}
 			</div>

@@ -11,6 +11,7 @@ import type { Edge, Node } from '@xyflow/svelte';
 import type { FactNode } from '@casebook/model';
 import { branchChoices } from '$lib/conditions/conditions';
 import {
+	choiceValues,
 	collectorsByFact,
 	collectsOf,
 	factType,
@@ -121,7 +122,7 @@ export function boardRows(ix: ProcessIndex, item: WorkItem): BoardRow[] {
 	const core = item.core;
 	if (core.kind === 'decision') {
 		const outcome = ix.byId.get(core.outcome) as FactNode | undefined;
-		const choices = Array.isArray(outcome?.core.schema.enum) ? outcome.core.schema.enum : [];
+		const choices = choiceValues(ix, outcome?.core.id);
 		if (choices.length)
 			return choices.map((c) => ({
 				handle: `b:${String(c)}`,

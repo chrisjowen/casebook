@@ -381,10 +381,7 @@
 		addChoice: (decision, choice) => {
 			const d = ix.byId.get(decision) as WorkItem;
 			if (d.core.kind !== 'decision') return;
-			const outcome = ix.byId.get(d.core.outcome)?.core as { schema: { enum?: unknown[] } };
-			const list = Array.isArray(outcome.schema.enum) ? outcome.schema.enum.map(String) : [];
-			if (list.includes(choice)) return editor?.refuse(`${choice} is already a choice`);
-			void run(ops.setChoices(ix, d.core.outcome, [...list, choice]));
+			void run(ops.addChoice(ix, d.core.outcome, choice));
 		},
 		factTitles: () => ix.facts.map((f) => labelOf(ix, f.core.id)),
 		editHandOff: (h, x, y) => {

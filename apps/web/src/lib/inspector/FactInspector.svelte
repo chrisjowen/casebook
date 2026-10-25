@@ -1,10 +1,22 @@
 <script lang="ts">
 	// Definition inspector for a fact type: schema, lookup, evidence, sensitivity, producers,
-	// consumers. With `edit`, its name, simple kinds, options and guidance change the draft.
-	import type { FactNode, Operation } from '@casebook/model';
-	import { Trash2 } from '@lucide/svelte';
-	import { removeFact, rename } from '$lib/editor/ops';
+	// consumers. With `edit`, its name, simple kinds, choices and guidance change the draft. A
+	// choice's values are its own options or come from a lookup of the process or a shared one
+	// (ADR 0025), and switching between them is one edit.
+	import type { FactNode, LookupNode, Operation } from '@casebook/model';
+	import { ArrowUpRight, ChevronRight, Trash2 } from '@lucide/svelte';
+	import type { ResolvedPathname } from '$app/types';
+	import type { SharedLookupRef } from '$lib/definitions/types';
 	import {
+		changeValues,
+		chooseFrom,
+		lookupFromFact,
+		removeFact,
+		rename,
+		type Edit
+	} from '$lib/editor/ops';
+	import {
+		choicesOf,
 		collectsOf,
 		describeEvidence,
 		evidenceFor,
@@ -13,6 +25,7 @@
 		requiresOf,
 		type ProcessIndex
 	} from '$lib/graph/derive';
+	import LookupValues from '$lib/lookups/LookupValues.svelte';
 	import Field from './Field.svelte';
 	import EditText from './EditText.svelte';
 	import EditSelect from './EditSelect.svelte';
@@ -22,12 +35,23 @@
 		ix,
 		fact,
 		edit,
+		change,
+		shared = [],
+		manage,
+		onselect,
 		onremoved
 	}: {
 		ix: ProcessIndex;
 		fact: FactNode;
 		/** Saves operations as an edit of the draft; absent when it cannot be edited. */
 		edit?: (ops: Operation[]) => Promise<boolean>;
+		/** Saves a labelled edit, or shows why not; absent when the draft cannot be edited. */
+		change?: (e: Edit | string) => Promise<boolean>;
+		/** The shared lookups the workspace offers. */
+		shared?: SharedLookupRef[];
+		/** Where a shared lookup is managed. */
+		manage?: (id?: string) => ResolvedPathname;
+		onselect?: (id: string) => void;
 		onremoved?: () => void;
 	} = $props();
 	const schema = $derived(fact.core.schema);
@@ -45,8 +69,9 @@
 		sensitive: 'Sensitive personal data'
 	} as const;
 	const lookup = $derived(schema['x-lookup']);
+	const fromList = $derived(lookup?.kind === 'lookup' || lookup?.kind === 'dataset');
 
-	/** Kinds a person can pick here; others, such as lookups and documents, keep their schema. */
+	/** Kinds a person can pick here; others, such as people and documents, keep their schema. */
 	const KINDS = {
 		Text: { type: 'string' },
 		Number: { type: 'number' },
@@ -54,7 +79,7 @@
 		Date: { type: 'string', format: 'date' },
 		Choice: { type: 'string', enum: ['Yes', 'No'] }
 	} as const;
-	const simple = $derived(type.label in KINDS && !lookup && !schema['x-evidence']);
+	const simple = $derived(type.label in KINDS && (!lookup || fromList) && !schema['x-evidence']);
 	const id = $derived(fact.core.id);
 	const setSchema = (changes: Record<string, unknown>): Operation => ({
 		op: 'update_core',
@@ -62,7 +87,64 @@
 		changes: { schema: changes }
 	});
 	const toKind = (label: string) =>
-		setSchema({ format: null, enum: null, ...KINDS[label as keyof typeof KINDS] });
+		setSchema({
+			format: null,
+			enum: null,
+			'x-lookup': null,
+			...KINDS[label as keyof typeof KINDS]
+		});
+
+	// Where the choices come from, as the select below names it: "own", "lookup.x" or "shared:name".
+	const isChoice = $derived(type.glyph === 'choice');
+	const source = $derived(
+		lookup?.kind === 'lookup'
+			? lookup.lookup
+			: lookup?.kind === 'dataset'
+				? `shared:${lookup.dataset}`
+				: 'own'
+	);
+	const list = $derived(
+		lookup?.kind === 'lookup' ? (ix.byId.get(lookup.lookup) as LookupNode | undefined) : undefined
+	);
+	const sharedList = $derived(
+		lookup?.kind === 'dataset' ? shared.find((l) => l.name === lookup.dataset) : undefined
+	);
+	const othersUsing = $derived(
+		list
+			? ix.facts.filter((f) => {
+					const l = f.core.schema['x-lookup'];
+					return f.core.id !== id && l?.kind === 'lookup' && l.lookup === list.core.id;
+				})
+			: []
+	);
+	const sources = $derived([
+		{ value: 'own', label: 'Its own options' },
+		...ix.lookups.map((l) => ({
+			value: l.core.id,
+			label: `${labelOf(ix, l.core.id)} (this process)`
+		})),
+		...shared.map((l) => ({ value: `shared:${l.name}`, label: `${l.title} (shared)` })),
+		...(lookup?.kind === 'dataset' && !sharedList
+			? [{ value: source, label: `${lookup.dataset} (shared, not found)` }]
+			: [])
+	]);
+	const pick = (value: string) => {
+		if (!change) return Promise.resolve(false);
+		if (value === 'own') {
+			return change(
+				chooseFrom(ix, id, {
+					kind: 'own',
+					options: choicesOf(ix, id)
+						.filter((c) => !c.disabled)
+						.map((c) => c.label)
+				})
+			);
+		}
+		if (value.startsWith('shared:')) {
+			return change(chooseFrom(ix, id, { kind: 'shared', name: value.slice(7) }));
+		}
+		return change(chooseFrom(ix, id, { kind: 'lookup', lookup: value as `lookup.${string}` }));
+	};
 </script>
 
 <div class="flex flex-col">
@@ -76,7 +158,10 @@
 			<EditSelect
 				label="Kind"
 				value={type.label}
-				options={Object.keys(KINDS).map((k) => ({ value: k, label: k }))}
+				options={(type.label in KINDS ? Object.keys(KINDS) : [type.label]).map((k) => ({
+					value: k,
+					label: k
+				}))}
 				onsave={edit && simple ? (kind) => edit([toKind(kind)]) : undefined}
 			/>
 			<Field label="Sensitivity">{sensitivity[schema['x-sensitivity'] ?? 'none']}</Field>
@@ -92,36 +177,11 @@
 			onsave={edit &&
 				((content) => edit([{ op: 'set_content', id, content: content === '' ? null : content }]))}
 		/>
-		{#if edit && simple && type.label === 'Choice'}
-			<EditText
-				label="Options"
-				value={options.join(', ')}
-				hint="Separate options with commas."
-				onsave={(text) =>
-					edit([
-						setSchema({
-							enum: text
-								.split(',')
-								.map((o) => o.trim())
-								.filter(Boolean)
-						})
-					])}
-			/>
-		{:else if options.length}
-			<div class="flex flex-col gap-1.5">
-				<div class="text-[12px] text-muted-foreground">Options</div>
-				<div class="flex flex-wrap gap-1.5">
-					{#each options as o (o)}<span class="rounded-md border px-2 py-0.5 text-[12px]">{o}</span
-						>{/each}
-				</div>
-			</div>
-		{/if}
-		{#if lookup}
+		{#if lookup && !fromList}
 			<Field label="Chosen from">
 				{#if lookup.kind === 'principal'}People{lookup.role
 						? ` with the ${labelOf(ix, lookup.role)} role`
 						: ''}
-				{:else if lookup.kind === 'dataset'}The {lookup.dataset.replaceAll('-', ' ')} list
 				{:else if lookup.kind === 'fact'}The values of “{labelOf(ix, lookup.fact)}”
 				{:else}Another case{/if}
 			</Field>
@@ -132,6 +192,75 @@
 			>
 		{/if}
 	</div>
+	{#if isChoice}
+		<Group title="Choices">
+			<EditSelect label="Come from" value={source} options={sources} onsave={change && pick}>
+				{#if list}{labelOf(ix, list.core.id)}, a lookup of this process{:else if lookup?.kind === 'dataset'}{sharedList?.title ??
+						lookup.dataset}, a shared lookup{:else}Its own options{/if}
+			</EditSelect>
+			{#if list}
+				<LookupValues
+					values={list.core.values}
+					onchange={change && ((next) => change(changeValues(ix, list.core.id, next)))}
+				/>
+				<div class="flex items-center gap-3 text-[11.5px] text-muted-foreground">
+					<span class="min-w-0 flex-1"
+						>{othersUsing.length
+							? `Also used by ${othersUsing.map((f) => labelOf(ix, f.core.id)).join(', ')}; changes apply there too.`
+							: `Values of the ${labelOf(ix, list.core.id)} lookup.`}</span
+					>
+					{#if onselect}<button
+							class="inline-flex shrink-0 cursor-pointer items-center gap-0.5 hover:text-foreground"
+							onclick={() => onselect(list.core.id)}
+							>Open lookup<ChevronRight class="size-3" /></button
+						>{/if}
+				</div>
+			{:else if lookup?.kind === 'dataset'}
+				{#if sharedList}
+					<LookupValues values={sharedList.values} dense />
+				{:else}
+					<p class="text-[12px] text-amber-700">
+						No shared lookup called {lookup.dataset} is kept for this workspace yet, so it is asked as
+						free text.
+					</p>
+				{/if}
+				{#if manage}<a
+						href={manage(sharedList?.id)}
+						class="inline-flex items-center gap-0.5 self-start text-[11.5px] text-muted-foreground hover:text-foreground"
+						>{sharedList
+							? 'Change it on the Lookups page'
+							: 'Make it on the Lookups page'}<ArrowUpRight class="size-3" /></a
+					>{/if}
+			{:else if edit}
+				<EditText
+					label="Options"
+					value={options.join(', ')}
+					hint="Separate options with commas."
+					onsave={(text) =>
+						edit([
+							setSchema({
+								enum: text
+									.split(',')
+									.map((o) => o.trim())
+									.filter(Boolean)
+							})
+						])}
+				/>
+				{#if change}
+					<button
+						class="self-start text-[11.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+						title="Keep these options as a named list, to reuse, reorder, give codes and turn off"
+						onclick={() => change(lookupFromFact(ix, id))}>Make these a lookup</button
+					>
+				{/if}
+			{:else if options.length}
+				<div class="flex flex-wrap gap-1.5">
+					{#each options as o (o)}<span class="rounded-md border px-2 py-0.5 text-[12px]">{o}</span
+						>{/each}
+				</div>
+			{/if}
+		</Group>
+	{/if}
 	<Group title="Collected by" count={collectedBy.length}>
 		{#each collectedBy as w (w.core.id)}<div class="rounded-lg border px-3 py-2 text-[12.5px]">
 				{labelOf(ix, w.core.id)}

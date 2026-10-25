@@ -29,6 +29,7 @@
 		X
 	} from '@lucide/svelte';
 	import {
+		choiceValues,
 		describeEvidence,
 		humanizeDuration,
 		labelOf,
@@ -88,9 +89,7 @@
 	const outcome = $derived(
 		decision ? (ix.byId.get(decision.core.outcome) as FactNode | undefined) : undefined
 	);
-	const choices = $derived(
-		Array.isArray(outcome?.core.schema.enum) ? outcome.core.schema.enum.map(String) : []
-	);
+	const choices = $derived(choiceValues(ix, outcome?.core.id));
 	const actors = [
 		{ value: 'human', label: 'Person' },
 		{ value: 'agent', label: 'Agent' },

@@ -7,7 +7,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
-	import type { FactNode, Operation, StageId } from '@casebook/model';
+	import type { FactNode, LookupNode, Operation, StageId } from '@casebook/model';
 	import { Editor, setEditor } from '$lib/editor/editing.svelte';
 	import type { Edit } from '$lib/editor/ops';
 	import { draftStatus, publishBlocked } from '$lib/editor/status';
@@ -24,6 +24,9 @@
 	import FactInspector from '$lib/inspector/FactInspector.svelte';
 	import ProcessInspector from '$lib/inspector/ProcessInspector.svelte';
 	import SharedFactsInspector from '$lib/inspector/SharedFactsInspector.svelte';
+	import LookupInspector from '$lib/inspector/LookupInspector.svelte';
+	import LookupsInspector from '$lib/inspector/LookupsInspector.svelte';
+	import { links } from '$lib/runner/links';
 	import Assistant from '$lib/wizard/Assistant.svelte';
 	import { inspector } from '$lib/conditions/layout.svelte';
 	import * as Select from '$lib/components/ui/select';
@@ -62,9 +65,14 @@
 	const workspace = $derived(
 		data.workspaces.find((w) => w.namespace === data.namespace) ?? data.workspaces[0]
 	);
-	const indexes = $derived(
-		workspace ? workspace.definitions.map((d) => indexDocument(d.document)) : []
+	// The shared lookups the workspace's processes choose from, by the name facts use (ADR 0025).
+	const sharedLookups = $derived(
+		new Map(workspace?.lookups.map((l) => [l.name, { title: l.title, values: l.values }]) ?? [])
 	);
+	const indexes = $derived(
+		workspace ? workspace.definitions.map((d) => indexDocument(d.document, sharedLookups)) : []
+	);
+	const manageLookups = (id?: string) => links.lookups(data.instance.slug, id);
 	const shared = $derived(sharedFactTypes(indexes.map((ix) => ix.document)));
 	const isMap = $derived(!data.slug);
 	const active = $derived(indexes.find((ix) => ix.document.slug === data.slug) ?? indexes[0]);
@@ -85,6 +93,9 @@
 	);
 	const selectedStage = $derived(
 		selectedNode?.core.kind === 'stage' ? (selectedNode.core.id as StageId) : undefined
+	);
+	const selectedLookup = $derived(
+		selectedNode?.core.kind === 'lookup' ? (selectedNode as LookupNode) : undefined
 	);
 
 	// A spreadsheet import in progress: its assistant, and its pending proposal on the open process,
@@ -123,6 +134,8 @@
 		!!selectedItem ||
 			!!selectedFact ||
 			!!selectedStage ||
+			!!selectedLookup ||
+			selected === 'lookups' ||
 			selected === 'shared' ||
 			(details && !isMap)
 	);
@@ -468,6 +481,13 @@
 								count(active.roles.length, 'role')
 							].join(' · ')}</span
 						>
+						<button
+							class="cursor-pointer hover:text-foreground"
+							title="Lists of values that choices are made from"
+							onclick={() => nav({ sel: 'lookups' })}
+							>{active.lookups.length}
+							{active.lookups.length === 1 ? 'lookup' : 'lookups'}</button
+						>
 						{#if failing}<button
 								class="inline-flex cursor-pointer items-center gap-1 text-destructive"
 								onclick={() => {
@@ -509,16 +529,20 @@
 									? 'Fact type'
 									: selectedStage
 										? 'Stage'
-										: selected === 'shared'
-											? 'Workspace'
-											: 'Process'}
+										: selectedLookup
+											? 'Lookup'
+											: selected === 'shared'
+												? 'Workspace'
+												: 'Process'}
 						</span>
 						<h2 class="truncate text-[13.5px] font-semibold">
 							{selectedNode
 								? labelOf(active, selectedNode.core.id)
 								: selected === 'shared'
 									? 'Shared fact types'
-									: labelOf(active, active.process?.core.id)}
+									: selected === 'lookups'
+										? 'Lookups'
+										: labelOf(active, active.process?.core.id)}
 						</h2>
 						<button
 							class="ml-auto flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -557,7 +581,29 @@
 								ix={active}
 								fact={selectedFact}
 								{edit}
+								{change}
+								shared={workspace.lookups}
+								manage={manageLookups}
+								onselect={(id) => nav({ sel: id })}
 								onremoved={() => nav({ sel: undefined })}
+							/>
+						{:else if selectedLookup}
+							{#key selectedLookup.core.id}
+								<LookupInspector
+									ix={active}
+									lookup={selectedLookup}
+									edit={change}
+									onselect={(id) => nav({ sel: id })}
+									onremoved={() => nav({ sel: 'lookups' })}
+								/>
+							{/key}
+						{:else if selected === 'lookups'}
+							<LookupsInspector
+								ix={active}
+								shared={workspace.lookups}
+								edit={change}
+								onselect={(id) => nav({ sel: id })}
+								manage={manageLookups}
 							/>
 						{:else if selected === 'shared'}
 							<SharedFactsInspector {shared} />

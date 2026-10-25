@@ -7,6 +7,7 @@
 	import { branchChoices } from '$lib/conditions/conditions';
 	import type { PickerState } from '$lib/graph/board-context.svelte';
 	import {
+		choiceValues,
 		collectsOf,
 		factType,
 		labelOf,
@@ -40,7 +41,7 @@
 		const outcome = decision
 			? (ix.byId.get(decision.core.outcome) as FactNode | undefined)
 			: undefined;
-		return Array.isArray(outcome?.core.schema.enum) ? outcome.core.schema.enum.map(String) : [];
+		return choiceValues(ix, outcome?.core.id);
 	});
 	const branch = $derived(decision && to ? branchChoices(ix, decision, to) : []);
 

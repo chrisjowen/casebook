@@ -2,8 +2,15 @@
  * The one place the web app gets process definitions from: the store, read as the signed-in
  * user, so only namespaces they can read appear, each with what they may do there.
  */
-import { listDefinitions, type Actor, type DefinitionForActor } from '@casebook/store';
-import type { LoadedDefinition, Workspace } from '$lib/definitions/types';
+import {
+	listDefinitions,
+	listSharedLookups,
+	namespacePathPrefixes,
+	type Actor,
+	type DefinitionForActor,
+	type SharedLookup
+} from '@casebook/store';
+import type { LoadedDefinition, SharedLookupRef, Workspace } from '$lib/definitions/types';
 import { getDb } from './db';
 
 /**
@@ -14,13 +21,39 @@ export async function loadWorkspaces(actor: Actor, accountSlug?: string): Promis
 	const namespaces = (await listDefinitions(getDb(), actor)).filter(
 		(n) => accountSlug === undefined || n.namespace.accountSlug === accountSlug
 	);
+	const lookups = new Map<string, SharedLookup[]>();
+	for (const slug of new Set(namespaces.map((n) => n.namespace.accountSlug))) {
+		lookups.set(
+			slug,
+			(await listSharedLookups(getDb(), actor, slug)).flatMap((n) => n.lookups)
+		);
+	}
 	return namespaces.map(({ namespace, can, definitions }) => ({
 		id: namespace.id,
 		namespace: namespace.path,
 		label: namespaceLabel(namespace.path),
 		definitions: definitions.filter((d) => d.draft ?? d.published).map(toLoaded),
+		lookups: visibleLookups(lookups.get(namespace.accountSlug) ?? [], namespace.path),
 		can
 	}));
+}
+
+/** The shared lookups a namespace's processes see: its own and its ancestors', nearest winning. */
+function visibleLookups(all: SharedLookup[], path: string): SharedLookupRef[] {
+	const seen = new Map<string, SharedLookupRef>();
+	for (const prefix of namespacePathPrefixes(path)) {
+		for (const l of all.filter((x) => x.namespace.path === prefix)) {
+			if (seen.has(l.name)) continue;
+			seen.set(l.name, {
+				id: l.id,
+				name: l.name,
+				title: l.title,
+				namespace: l.namespace.path,
+				values: l.values
+			});
+		}
+	}
+	return [...seen.values()].sort((a, b) => a.title.localeCompare(b.title));
 }
 
 function toLoaded(d: DefinitionForActor): LoadedDefinition {

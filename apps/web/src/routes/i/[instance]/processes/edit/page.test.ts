@@ -59,6 +59,7 @@ function workspaces(can: Permission): Workspace[] {
 		namespace: 'acme',
 		label: namespaceLabel('acme'),
 		definitions: [],
+		lookups: [],
 		can: { create: can }
 	};
 	return [
@@ -71,6 +72,7 @@ function workspaces(can: Permission): Workspace[] {
 			namespace: document.namespace,
 			label: namespaceLabel(document.namespace),
 			definitions: [loaded(document, policy)],
+			lookups: [],
 			can: { create: can }
 		}))
 	];
