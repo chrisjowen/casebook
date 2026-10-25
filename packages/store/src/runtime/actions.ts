@@ -5,6 +5,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import {
 	collectedBy,
+	factChoices,
 	factValueProblem,
 	fileReference,
 	isFileFact,
@@ -735,7 +736,12 @@ export function completeItem(
 				values.set(factId, value);
 				continue;
 			}
-			const problem = factValueProblem(fact, value);
+			const problem = factValueProblem(
+				fact,
+				value,
+				factChoices(a.document, fact.core.schema, a.shared),
+				existing?.value
+			);
 			if (problem) {
 				problems.push({ field: factId, message: problem });
 				continue;

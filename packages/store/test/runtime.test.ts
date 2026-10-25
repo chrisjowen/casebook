@@ -380,7 +380,7 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 					{ files }
 				),
 				'invalid-input',
-				/Severity: must be one of SEV1, SEV2, SEV3, SEV4/
+				/Severity: must be one of SEV1 · Full outage, SEV2 · Major, SEV3 · Minor, SEV4 · Cosmetic/
 			);
 			await completeItem(
 				db,

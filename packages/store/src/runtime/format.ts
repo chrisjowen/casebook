@@ -1,6 +1,6 @@
 // Recorded values in words, as people read them on a case: names for principals, amounts with
 // their currency, dates written out, and files by name.
-import { referencedFile, type FactNode } from '@casebook/model';
+import { referencedFile, type Choice, type FactNode } from '@casebook/model';
 import type { FileRecord, Person } from './load.js';
 
 const DATE = new Intl.DateTimeFormat('en-GB', {
@@ -24,12 +24,16 @@ export function displayValue(
 	fact: FactNode | undefined,
 	value: unknown,
 	people: ReadonlyMap<string, Person>,
-	files: readonly FileRecord[]
+	files: readonly FileRecord[],
+	/** The fact's choices, when it has any, so a stored value reads as its label. */
+	choices?: readonly Choice[]
 ): string {
 	const schema = fact?.core.schema ?? {};
 	const one = (v: unknown, itemSchema = schema): string => {
 		const fileId = referencedFile(v);
 		if (fileId) return files.find((f) => f.id === fileId)?.name ?? 'a file';
+		const choice = typeof v === 'string' ? choices?.find((c) => c.value === v) : undefined;
+		if (choice) return choice.label;
 		if (schema['x-lookup']?.kind === 'principal' && typeof v === 'string') {
 			return people.get(v)?.name ?? 'someone';
 		}

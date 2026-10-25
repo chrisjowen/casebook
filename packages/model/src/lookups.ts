@@ -145,7 +145,13 @@ export function choiceProblem(
 	);
 	for (const v of Array.isArray(value) ? value : [value]) {
 		const choice = choices.find((c) => c.value === v);
-		if (!choice) return `${name}: "${String(v)}" is not one of the choices`;
+		if (!choice) {
+			// a short list is worth naming; a long one, such as countries, is not
+			const offered = choices.filter((c) => !c.disabled).map((c) => c.label);
+			return offered.length <= 8
+				? `${name}: must be one of ${offered.join(', ')}`
+				: `${name}: "${String(v)}" is not one of the choices`;
+		}
 		if (choice.disabled && !kept.has(choice.value)) {
 			return `${name}: ${choice.label} is no longer offered; choose another`;
 		}
@@ -353,6 +359,40 @@ export function choicesPatch(schema: FactSchema, to: ChoicesFrom): Record<string
 		case 'shared':
 			return { 'x-lookup': { ...cleared, kind: 'dataset', dataset: to.name }, ...options(null) };
 	}
+}
+
+/**
+ * Why a value is not a valid shared lookup body, in plain language, or undefined when it is: it
+ * needs a title and values shaped as a lookup node's, each stored value listed once.
+ */
+export function lookupListProblem(list: unknown): string | undefined {
+	const isText = (v: unknown) => typeof v === 'string' && v.trim() !== '';
+	if (typeof list !== 'object' || list === null || Array.isArray(list)) {
+		return 'A lookup needs a title and values';
+	}
+	const { title, values, content, ...rest } = list as Record<string, unknown>;
+	const unknown = Object.keys(rest);
+	if (unknown.length) return `A lookup has no field "${unknown[0]}"`;
+	if (!isText(title)) return 'A lookup needs a name';
+	if (content !== undefined && typeof content !== 'string') return 'Its guidance must be text';
+	if (!Array.isArray(values)) return 'A lookup needs a list of values';
+	const seen = new Set<string>();
+	for (const v of values as unknown[]) {
+		if (typeof v !== 'object' || v === null || Array.isArray(v))
+			return 'Each value must be an object';
+		const { value, label, code, disabled, ...extra } = v as Record<string, unknown>;
+		if (Object.keys(extra).length) return `A value has no field "${Object.keys(extra)[0]}"`;
+		if (!isText(value)) return 'Every value needs a name';
+		if (label !== undefined && !isText(label))
+			return `The label of ${String(value)} cannot be empty`;
+		if (code !== undefined && !isText(code)) return `The code of ${String(value)} cannot be empty`;
+		if (disabled !== undefined && typeof disabled !== 'boolean') {
+			return `Whether ${String(value)} is turned off must be true or false`;
+		}
+		if (seen.has(value as string)) return `${String(value)} is in the list twice`;
+		seen.add(value as string);
+	}
+	return undefined;
 }
 
 function omit<T extends object, K extends keyof T>(value: T, key: K): Omit<T, K> {

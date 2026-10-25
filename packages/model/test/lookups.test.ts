@@ -13,6 +13,7 @@ import {
 	factsUsingLookup,
 	factsUsingShared,
 	freshLookupId,
+	lookupListProblem,
 	moveValue,
 	newLookupNode,
 	readValueLines,
@@ -126,9 +127,9 @@ describe('choiceProblem', () => {
 		expect(choiceProblem('Fruit', choices, ['a', 'b'], ['b'])).toBeUndefined();
 	});
 	it('refuses a value that is not a choice', () => {
-		expect(choiceProblem('Fruit', choices, ['a', 'kiwi'])).toBe(
-			'Fruit: "kiwi" is not one of the choices'
-		);
+		expect(choiceProblem('Fruit', choices, ['a', 'kiwi'])).toBe('Fruit: must be one of Apple');
+		const many = Array.from({ length: 9 }, (_, i) => ({ value: `v${i}`, label: `V${i}` }));
+		expect(choiceProblem('Fruit', many, 'kiwi')).toBe('Fruit: "kiwi" is not one of the choices');
 	});
 });
 
@@ -188,6 +189,26 @@ describe('editing values', () => {
 		expect(
 			describeValueChanges(values, [{ value: 'SEV2', disabled: true }, { value: 'SEV3' }])
 		).toEqual(['added SEV3', 'removed Critical', 'turned off SEV2']);
+	});
+});
+
+describe('lookupListProblem', () => {
+	it('accepts a titled list of values', () => {
+		expect(
+			lookupListProblem({ title: 'Countries', values: [{ value: 'GB', label: 'United Kingdom' }] })
+		).toBeUndefined();
+	});
+	it('explains what is wrong', () => {
+		expect(lookupListProblem({ title: ' ', values: [] })).toBe('A lookup needs a name');
+		expect(lookupListProblem({ title: 'A', values: [{ value: 'x' }, { value: 'x' }] })).toBe(
+			'x is in the list twice'
+		);
+		expect(lookupListProblem({ title: 'A', values: [{ value: 'x', colour: 'red' }] })).toBe(
+			'A value has no field "colour"'
+		);
+		expect(lookupListProblem({ title: 'A', values: [{ value: 'x', code: '' }] })).toBe(
+			'The code of x cannot be empty'
+		);
 	});
 });
 

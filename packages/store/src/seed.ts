@@ -14,6 +14,7 @@ import type { Actor } from './authz.js';
 import type { Db } from './client.js';
 import { contentHash, editDefinition } from './definitions.js';
 import { memoryFileStore, type FileStore } from './files.js';
+import { createSharedLookup } from './lookups.js';
 import {
 	appendDraftRevision,
 	bindRole,
@@ -47,6 +48,28 @@ export const DEMO_FAMILY_ACCOUNT = 'example-family';
 
 const ACME_NAMESPACES = ['acme', 'acme/eng', 'acme/eng/sre'];
 const FAMILY_NAMESPACES = ['personal', 'personal/example-user', 'personal/example-user/family'];
+
+/** Acme's services: what an incident's affected services are chosen from. */
+const SERVICES = [
+	['api', 'Public API', 'API'],
+	['auth-proxy', 'Sign-in proxy', 'AUTH'],
+	['checkout-api', 'Checkout API', 'CHK'],
+	['payments-gateway', 'Payments gateway', 'PAY'],
+	['search-indexer', 'Search indexer', 'SRCH'],
+	['status-page', 'Status page', 'STAT']
+] as const;
+
+/** The ISO 3166-1 alpha-2 codes, each read in English with `Intl.DisplayNames`. */
+const COUNTRY_CODES =
+	'AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW';
+
+/** Every country, stored by its English name with its code, A to Z. */
+function countries() {
+	const names = new Intl.DisplayNames(['en'], { type: 'region' });
+	return COUNTRY_CODES.split(' ')
+		.map((code) => ({ value: names.of(code) ?? code, code }))
+		.sort((a, b) => a.value.localeCompare(b.value, 'en'));
+}
 
 const DEFINITIONS: {
 	account: 'acme' | 'family';
@@ -164,6 +187,26 @@ export async function seedDemo(db: Db, options: SeedOptions = {}): Promise<Seede
 	await bind(wren.id, 'role.incident-commander', acme.id, sre);
 	await bind(alex.id, 'role.communications-lead', acme.id, sre);
 	await bind(insurer.id, 'role.insurer', family.id, home);
+
+	// Shared lookups (ADR 0025), which the fixtures' countries and services are chosen from.
+	await createSharedLookup(
+		db,
+		{ id: olive.id },
+		{
+			namespaceId: ns.get('acme/eng')!,
+			title: 'Service catalog',
+			values: SERVICES.map(([value, label, code]) => ({ value, label, code }))
+		}
+	);
+	await createSharedLookup(
+		db,
+		{ id: alex.id },
+		{
+			namespaceId: ns.get('personal/example-user')!,
+			title: 'ISO 3166 countries',
+			values: countries()
+		}
+	);
 
 	// Definitions
 	const definitions = new Map<string, string>();

@@ -46,7 +46,7 @@ describe('factValueProblem', () => {
 
 	it('explains invalid values in words, naming the fact', () => {
 		expect(factValueProblem(fact('fact.severity'), 'SEV9', severities)).toBe(
-			'Severity: "SEV9" is not one of the choices'
+			'Severity: must be one of SEV1 · Full outage, SEV2 · Major, SEV3 · Minor, SEV4 · Cosmetic'
 		);
 		expect(factValueProblem(fact('fact.date-of-birth'), '15/01/2026')).toBe(
 			'Date of birth: must be a date such as 2026-01-15'

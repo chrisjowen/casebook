@@ -595,3 +595,52 @@ export const wizardSessions = pgTable(
 	},
 	(t) => [index('wizard_sessions_owner_id_idx').on(t.ownerId)]
 );
+
+/**
+ * A shared lookup (ADR 0025): a named list of values a namespace offers the choice facts of its
+ * processes and those of its descendants, such as countries or insurers. Facts name it with
+ * `x-lookup: { kind: 'dataset', dataset: <name> }`. Its content lives in numbered versions.
+ */
+export const sharedLookups = pgTable(
+	'shared_lookups',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		namespaceId: uuid('namespace_id')
+			.notNull()
+			.references(() => namespaces.id),
+		/** What facts call it: lowercase words joined by hyphens, unique in the namespace. */
+		name: text('name').notNull(),
+		createdById: uuid('created_by_id')
+			.notNull()
+			.references(() => principals.id),
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+	},
+	(t) => [unique('shared_lookups_namespace_name_key').on(t.namespaceId, t.name)]
+);
+
+/**
+ * The versions of a shared lookup, one per saved change, never changed afterwards. The newest is
+ * what processes choose from; an undo adds a version restoring an earlier body. The body is a
+ * `LookupList` from `@casebook/model`, checked by the store before it is written.
+ */
+export const sharedLookupVersions = pgTable(
+	'shared_lookup_versions',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		lookupId: uuid('lookup_id')
+			.notNull()
+			.references(() => sharedLookups.id, { onDelete: 'cascade' }),
+		version: integer('version').notNull(),
+		body: jsonb('body').notNull(),
+		/** The earlier version whose body this one restores, as undo does. */
+		revertedTo: integer('reverted_to'),
+		authorId: uuid('author_id')
+			.notNull()
+			.references(() => principals.id),
+		/** The principal an agent or service author acted for. */
+		onBehalfOfId: uuid('on_behalf_of_id').references(() => principals.id),
+		createdAt: createdAt()
+	},
+	(t) => [unique('shared_lookup_versions_lookup_version_key').on(t.lookupId, t.version)]
+);
