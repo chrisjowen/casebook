@@ -19,10 +19,31 @@ function summaryOf(document: DefinitionDocument, ops: Operation[]): string[] {
 }
 
 describe('diff', () => {
-	it('finds nothing between a document and itself, or a reordered copy', () => {
+	it('finds nothing between a document and itself, or a copy with other nodes reordered', () => {
 		expect(diff(incidentManagement, incidentManagement)).toEqual([]);
-		const reordered = { ...incidentManagement, nodes: [...incidentManagement.nodes].reverse() };
+		const isStage = (n: { core: { kind: string } }) => n.core.kind === 'stage';
+		const reordered = {
+			...incidentManagement,
+			nodes: [
+				...incidentManagement.nodes.filter(isStage),
+				...incidentManagement.nodes.filter((n) => !isStage(n)).reverse()
+			]
+		};
 		expect(diff(incidentManagement, reordered)).toEqual([]);
+	});
+
+	it('reports a change of stage order, since stages run in that order', () => {
+		const moved = edited(incidentManagement, [
+			{ op: 'move_stage', id: 'stage.review', before: 'stage.respond' }
+		]);
+		expect(diff(incidentManagement, moved)).toEqual([
+			{
+				type: 'stages-reordered',
+				before: ['stage.detect', 'stage.respond', 'stage.resolve', 'stage.review'],
+				after: ['stage.detect', 'stage.review', 'stage.respond', 'stage.resolve'],
+				summary: 'Reordered stages: Detect, Review, Respond, Resolve'
+			}
+		]);
 	});
 
 	it('tells apart required and collected facts that share a title', () => {

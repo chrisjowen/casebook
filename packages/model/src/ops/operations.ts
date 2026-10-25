@@ -87,8 +87,26 @@ export interface MoveToStage {
 	stage: StageId;
 }
 
+/**
+ * Moves a stage so it comes just before `before`, or last when `before` is null. Stages run in
+ * the order they appear, so this is how a process's stages are reordered.
+ */
+export interface MoveStage {
+	op: 'move_stage';
+	id: StageId;
+	before: StageId | null;
+}
+
 export type Operation =
-	AddNode | RemoveNode | UpdateCore | SetContent | SetData | Link | Unlink | MoveToStage;
+	| AddNode
+	| RemoveNode
+	| UpdateCore
+	| SetContent
+	| SetData
+	| Link
+	| Unlink
+	| MoveToStage
+	| MoveStage;
 
 export type OperationName = Operation['op'];
 
@@ -100,7 +118,8 @@ export const OPERATION_NAMES = [
 	'set_data',
 	'link',
 	'unlink',
-	'move_to_stage'
+	'move_to_stage',
+	'move_stage'
 ] as const satisfies readonly OperationName[];
 
 type JsonSchema = Record<string, unknown>;
@@ -205,7 +224,18 @@ function operationSchemas(node: JsonSchema): Record<OperationName, JsonSchema> {
 				description: 'The step or decision to move.'
 			},
 			stage: { $ref: '#/$defs/stageId', description: 'The stage to move it to.' }
-		})
+		}),
+		move_stage: define(
+			'move_stage',
+			'Reorder stages: move a stage so it comes just before another, or last when before is null. Stages run in this order.',
+			{
+				id: { $ref: '#/$defs/stageId', description: 'The stage to move.' },
+				before: {
+					oneOf: [{ $ref: '#/$defs/stageId' }, { type: 'null' }],
+					description: 'The stage it should come just before, or null to make it the last stage.'
+				}
+			}
+		)
 	};
 }
 
