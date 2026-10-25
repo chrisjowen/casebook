@@ -2,12 +2,13 @@
 	// Read-only sketch of the input a fact type will produce at run time. Never an input itself.
 	import type { FactNode } from '@casebook/model';
 	import { Upload, Lock, ChevronDown, Users, Search, Plus } from '@lucide/svelte';
-	import { describeEvidence, labelOf, type ProcessIndex } from '$lib/graph/derive';
+	import { choicesOf, describeEvidence, labelOf, type ProcessIndex } from '$lib/graph/derive';
 	let { ix, fact }: { ix: ProcessIndex; fact: FactNode } = $props();
 	const schema = $derived(fact.core.schema);
-	const options = $derived(
-		Array.isArray(schema.enum) ? (schema.enum as unknown[]).map(String) : undefined
-	);
+	const options = $derived.by(() => {
+		const choices = choicesOf(ix, fact.core.id).filter((c) => !c.disabled);
+		return choices.length || Array.isArray(schema.enum) ? choices.map((c) => c.label) : undefined;
+	});
 	const box =
 		'flex h-9 w-full items-center rounded-md border border-input bg-background px-3 text-[13px] text-muted-foreground/80';
 </script>

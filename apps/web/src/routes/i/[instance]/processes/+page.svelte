@@ -2,7 +2,7 @@
 	// Processes: the definitions in this instance, with status, version, change policy and live
 	// cases. Each opens on its own home, with Overview, Edit (the board) and Cases tabs; each row
 	// has the same actions menu as the process's own page.
-	import { FileSpreadsheet, FolderTree, Network, Plus } from '@lucide/svelte';
+	import { FileSpreadsheet, FolderTree, ListChecks, Network, Plus } from '@lucide/svelte';
 	import Frame from '$lib/runner/Frame.svelte';
 	import DefinitionMeta from '$lib/runner/DefinitionMeta.svelte';
 	import { day } from '$lib/runner/format';
@@ -37,8 +37,14 @@
 				</p>
 				<p class="mt-2 text-[12px] text-muted-foreground">{access}</p>
 			</div>
-			{#if writable.length}
-				<div class="flex items-center gap-2">
+			<div class="flex items-center gap-2">
+				<a
+					href={links.lookups(slug)}
+					class="flex h-9 items-center gap-1.5 rounded-lg border bg-background px-3.5 text-[13px] font-medium hover:bg-muted"
+					title="Lists of values that choices are made from, shared by a workspace's processes"
+					><ListChecks class="size-4" />Lookups</a
+				>
+				{#if writable.length}
 					<button
 						class="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border bg-background px-3.5 text-[13px] font-medium hover:bg-muted"
 						onclick={() => (shellUi.importing = true)}
@@ -48,8 +54,8 @@
 						class="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-foreground px-3.5 text-[13px] font-medium text-background hover:bg-foreground/90"
 						onclick={() => (shellUi.newProcess = true)}><Plus class="size-4" />New process</button
 					>
-				</div>
-			{/if}
+				{/if}
+			</div>
 		</header>
 
 		{#each data.groups.filter((g) => g.definitions.length) as group (group.namespace)}

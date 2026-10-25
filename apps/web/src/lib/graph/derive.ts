@@ -3,19 +3,23 @@
  * step or decision that collects a fact to every step, decision or approval that requires it
  * (ADR 0003). Everything here is pure so it can be tested without a browser.
  */
-import type {
-	ApprovalNode,
-	DecisionNode,
-	DefinitionDocument,
-	EvidenceRequirement,
-	FactId,
-	FactNode,
-	FactSchema,
-	Node,
-	ProcessNode,
-	RoleNode,
-	StageNode,
-	StepNode
+import {
+	factChoices,
+	type ApprovalNode,
+	type Choice,
+	type DecisionNode,
+	type DefinitionDocument,
+	type EvidenceRequirement,
+	type FactId,
+	type FactNode,
+	type FactSchema,
+	type LookupNode,
+	type Node,
+	type ProcessNode,
+	type RoleNode,
+	type SharedLookups,
+	type StageNode,
+	type StepNode
 } from '@casebook/model';
 
 /** Steps and decisions are the work items placed in stages and drawn as cards. */
@@ -30,9 +34,15 @@ export interface ProcessIndex {
 	facts: FactNode[];
 	work: WorkItem[];
 	approvals: ApprovalNode[];
+	lookups: LookupNode[];
+	/** The shared lookups its facts can choose from, by name (ADR 0025). */
+	shared: SharedLookups;
 }
 
-export function indexDocument(document: DefinitionDocument): ProcessIndex {
+export function indexDocument(
+	document: DefinitionDocument,
+	shared: SharedLookups = new Map()
+): ProcessIndex {
 	const byId = new Map<string, Node>();
 	const ix: ProcessIndex = {
 		document,
@@ -42,7 +52,9 @@ export function indexDocument(document: DefinitionDocument): ProcessIndex {
 		roles: [],
 		facts: [],
 		work: [],
-		approvals: []
+		approvals: [],
+		lookups: [],
+		shared
 	};
 	for (const node of document.nodes) {
 		byId.set(node.core.id, node);
@@ -66,9 +78,32 @@ export function indexDocument(document: DefinitionDocument): ProcessIndex {
 			case 'approval':
 				ix.approvals.push(node as ApprovalNode);
 				break;
+			case 'lookup':
+				ix.lookups.push(node as LookupNode);
+				break;
 		}
 	}
 	return ix;
+}
+
+/** Every choice of a fact, turned-off ones included: from its lookup or its own options. */
+export function choicesOf(ix: ProcessIndex, fact: string | undefined): Choice[] {
+	const node = fact ? ix.byId.get(fact) : undefined;
+	return node?.core.kind === 'fact'
+		? (factChoices(ix.document, node.core.schema, ix.shared) ?? [])
+		: [];
+}
+
+/** How a choice of a fact reads: its lookup label, or the stored value itself. */
+export function choiceLabel(ix: ProcessIndex, fact: string | undefined, value: string): string {
+	return choicesOf(ix, fact).find((c) => c.value === value)?.label ?? value;
+}
+
+/** The values a fact can be given now, such as a decision's outcomes for its branches. */
+export function choiceValues(ix: ProcessIndex, fact: string | undefined): string[] {
+	return choicesOf(ix, fact)
+		.filter((c) => !c.disabled)
+		.map((c) => c.value);
 }
 
 /** "step.form-working-group" reads as "Form working group". */
@@ -290,7 +325,7 @@ export interface SharedFactType {
 /** Fact types declared by more than one definition in a workspace. */
 export function sharedFactTypes(documents: DefinitionDocument[]): SharedFactType[] {
 	const out = new Map<FactId, SharedFactType>();
-	const indexes = documents.map(indexDocument);
+	const indexes = documents.map((d) => indexDocument(d));
 	for (const ix of indexes)
 		for (const fact of ix.facts) {
 			const entry = out.get(fact.core.id) ?? {
@@ -322,7 +357,7 @@ export interface ProcessLink {
 
 /** Definition A links to B when A collects a fact type that B requires but does not collect. */
 export function processLinks(documents: DefinitionDocument[]): ProcessLink[] {
-	const indexes = documents.map(indexDocument);
+	const indexes = documents.map((d) => indexDocument(d));
 	const links = new Map<string, ProcessLink>();
 	for (const consumer of indexes) {
 		const own = collectorsByFact(consumer);
@@ -370,8 +405,16 @@ export function factType(schema: FactSchema | undefined): { label: string; glyph
 	const lookup = schema['x-lookup'];
 	if (schema['x-evidence']) return { label: 'Document', glyph: 'document' };
 	if (lookup?.kind === 'principal') return { label: 'People', glyph: 'people' };
+	if (lookup?.kind === 'lookup' || lookup?.kind === 'dataset') {
+		return schema.type === 'array'
+			? { label: 'Choices', glyph: 'choice' }
+			: { label: 'Choice', glyph: 'choice' };
+	}
 	if (lookup) return { label: 'Lookup', glyph: 'lookup' };
 	if (Array.isArray(schema.enum)) return { label: 'Choice', glyph: 'choice' };
+	if (schema.type === 'array' && Array.isArray((schema.items as FactSchema | undefined)?.enum)) {
+		return { label: 'Choices', glyph: 'choice' };
+	}
 	if (schema.format === 'date') return { label: 'Date', glyph: 'date' };
 	if (schema.format === 'date-time') return { label: 'Date & time', glyph: 'date' };
 	if (schema.format === 'uri') return { label: 'Link', glyph: 'link' };
@@ -431,7 +474,8 @@ export function evidenceFor(
 	return node?.core.schema['x-evidence'];
 }
 
-const NODE_ID = /\b(?:process|stage|step|fact|role|decision|approval)\.[a-z0-9]+(?:-[a-z0-9]+)*/g;
+const NODE_ID =
+	/\b(?:process|stage|step|fact|role|decision|approval|lookup)\.[a-z0-9]+(?:-[a-z0-9]+)*/g;
 
 /** Replaces node ids in a model message with the nodes' plain names. */
 export function plainText(ix: ProcessIndex, message: string): string {

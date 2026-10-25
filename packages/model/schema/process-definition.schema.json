@@ -47,6 +47,7 @@
 		"roleId": { "type": "string", "pattern": "^role\\.[a-z0-9]+(-[a-z0-9]+)*$" },
 		"decisionId": { "type": "string", "pattern": "^decision\\.[a-z0-9]+(-[a-z0-9]+)*$" },
 		"approvalId": { "type": "string", "pattern": "^approval\\.[a-z0-9]+(-[a-z0-9]+)*$" },
+		"lookupId": { "type": "string", "pattern": "^lookup\\.[a-z0-9]+(-[a-z0-9]+)*$" },
 		"factIds": {
 			"type": "array",
 			"uniqueItems": true,
@@ -110,7 +111,7 @@
 			"type": "object",
 			"required": ["kind"],
 			"properties": {
-				"kind": { "enum": ["dataset", "principal", "fact", "case"] }
+				"kind": { "enum": ["dataset", "principal", "fact", "case", "lookup"] }
 			},
 			"allOf": [
 				{
@@ -153,6 +154,17 @@
 						"properties": {
 							"kind": true,
 							"process": { "$ref": "#/$defs/kebab" }
+						}
+					}
+				},
+				{
+					"if": { "required": ["kind"], "properties": { "kind": { "const": "lookup" } } },
+					"then": {
+						"required": ["lookup"],
+						"additionalProperties": false,
+						"properties": {
+							"kind": true,
+							"lookup": { "$ref": "#/$defs/lookupId" }
 						}
 					}
 				}
@@ -333,11 +345,40 @@
 				"invariants": { "$ref": "#/$defs/invariants" }
 			}
 		},
+		"lookupValue": {
+			"description": "One value of a lookup: what cases store, how people read it when that differs, an optional code, and whether it is turned off for new entries.",
+			"type": "object",
+			"required": ["value"],
+			"additionalProperties": false,
+			"properties": {
+				"value": { "$ref": "#/$defs/text" },
+				"label": { "$ref": "#/$defs/text" },
+				"code": { "$ref": "#/$defs/text" },
+				"description": { "$ref": "#/$defs/text" },
+				"disabled": { "type": "boolean" }
+			}
+		},
+		"lookupCore": {
+			"description": "A named list of values that choice facts are chosen from (ADR 0025).",
+			"type": "object",
+			"required": ["id", "kind", "values"],
+			"additionalProperties": false,
+			"properties": {
+				"id": { "$ref": "#/$defs/lookupId" },
+				"kind": { "const": "lookup" },
+				"title": { "$ref": "#/$defs/text" },
+				"values": { "type": "array", "items": { "$ref": "#/$defs/lookupValue" } },
+				"source": { "$ref": "#/$defs/source" },
+				"invariants": { "$ref": "#/$defs/invariants" }
+			}
+		},
 		"core": {
 			"type": "object",
 			"required": ["id", "kind"],
 			"properties": {
-				"kind": { "enum": ["process", "stage", "step", "fact", "role", "decision", "approval"] }
+				"kind": {
+					"enum": ["process", "stage", "step", "fact", "role", "decision", "approval", "lookup"]
+				}
 			},
 			"allOf": [
 				{
@@ -367,6 +408,10 @@
 				{
 					"if": { "required": ["kind"], "properties": { "kind": { "const": "approval" } } },
 					"then": { "$ref": "#/$defs/approvalCore" }
+				},
+				{
+					"if": { "required": ["kind"], "properties": { "kind": { "const": "lookup" } } },
+					"then": { "$ref": "#/$defs/lookupCore" }
 				}
 			]
 		},

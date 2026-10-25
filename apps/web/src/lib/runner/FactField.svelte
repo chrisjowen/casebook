@@ -27,7 +27,26 @@
 	let demo = $state(false);
 	let keep = $state(true);
 	const shown = $derived(fileName || (demo ? 'A demo document' : ''));
-	const choices = $derived(field.kind === 'yesno' ? ['yes', 'no'] : (field.options ?? []));
+	const choices = $derived(
+		field.kind === 'yesno'
+			? [
+					{ value: 'yes', label: 'Yes' },
+					{ value: 'no', label: 'No' }
+				]
+			: (field.options ?? [])
+	);
+	// A long list, such as countries, is a list to find in, by name or code, not a row of chips.
+	const long = $derived(choices.length > 8);
+	let filter = $state('');
+	const shownChoices = $derived(
+		filter.trim()
+			? choices.filter((c) =>
+					`${c.label} ${'code' in c ? (c.code ?? '') : ''}`
+						.toLowerCase()
+						.includes(filter.trim().toLowerCase())
+				)
+			: choices
+	);
 	const datetime = (raw: string | undefined) => raw?.replace(/:\d{2}(\.\d+)?Z$/, '') ?? '';
 </script>
 
@@ -96,19 +115,42 @@
 		<fieldset class="grid gap-1.5">
 			<legend class="mb-1.5 text-[13px] font-medium">{field.title}</legend>
 			{#if field.hint}<span class="-mt-1 text-[12px] text-muted-foreground">{field.hint}</span>{/if}
-			<div class="flex flex-wrap gap-2">
-				{#each choices as option (option)}
+			{#if long}
+				<input
+					type="search"
+					class={[input, 'h-9 text-[13px]']}
+					placeholder="Find one of {choices.length}"
+					aria-label="Find a choice for {field.title}"
+					bind:value={filter}
+					onkeydown={(e) => e.key === 'Enter' && e.preventDefault()}
+				/>
+			{/if}
+			<div
+				class={[
+					'flex flex-wrap gap-2',
+					long && 'max-h-64 overflow-y-auto rounded-lg border bg-background p-2'
+				]}
+			>
+				{#each choices as option (option.value)}
 					<label
-						class="flex cursor-pointer items-center gap-2 rounded-lg border bg-background px-3 py-2 text-[13px] has-checked:border-brand has-checked:bg-brand-soft"
+						class={[
+							'flex cursor-pointer items-center gap-2 rounded-lg border bg-background px-3 py-2 text-[13px] has-checked:border-brand has-checked:bg-brand-soft',
+							!shownChoices.includes(option) && 'hidden'
+						]}
 					>
 						<input
-							type="radio"
+							type={field.multiple ? 'checkbox' : 'radio'}
 							{name}
-							value={option}
-							checked={current[0] === option}
+							value={option.value}
+							checked={current.includes(option.value)}
 							class="accent-brand"
 						/>
-						{option === 'yes' ? 'Yes' : option === 'no' ? 'No' : option}
+						<span class="flex flex-col">
+							<span>{option.label}</span>
+							{#if 'description' in option && option.description}<span
+									class="text-[11.5px] text-muted-foreground">{option.description}</span
+								>{/if}
+						</span>
 					</label>
 				{/each}
 			</div>

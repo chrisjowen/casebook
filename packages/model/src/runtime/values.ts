@@ -1,4 +1,5 @@
 import { Ajv2020, type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
+import { choiceProblem, type Choice } from '../lookups.js';
 import type { FactNode, FactSchema } from '../node.js';
 
 /**
@@ -87,11 +88,21 @@ const FORMAT_WORDS: Record<string, string> = {
 
 /**
  * Explains why `value` is not a valid value of the fact, or returns undefined when it is. The
- * message names the fact by its title.
+ * message names the fact by its title. For a fact chosen from a lookup, `choices` are the lookup's
+ * values (`factChoices`); a turned-off one is accepted only when it is the `current` value.
  */
-export function factValueProblem(fact: FactNode, value: unknown): string | undefined {
+export function factValueProblem(
+	fact: FactNode,
+	value: unknown,
+	choices?: readonly Choice[],
+	current?: unknown
+): string | undefined {
 	const { schema } = fact.core;
 	const name = fact.core.title ?? fact.core.id;
+	if (choices && schema['x-lookup'] && value !== undefined) {
+		const problem = choiceProblem(name, choices, value, current);
+		if (problem) return problem;
+	}
 	const key = JSON.stringify(schema);
 	let validate = compiled.get(key);
 	if (!validate) {

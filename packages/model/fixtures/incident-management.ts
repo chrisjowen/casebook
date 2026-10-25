@@ -92,7 +92,7 @@ export const incidentManagement: DefinitionDocument = {
 				id: 'fact.severity',
 				kind: 'fact',
 				title: 'Severity',
-				schema: { type: 'string', enum: ['SEV1', 'SEV2', 'SEV3', 'SEV4'] }
+				schema: { type: 'string', 'x-lookup': { kind: 'lookup', lookup: 'lookup.severity-levels' } }
 			},
 			content: 'SEV1 is a full outage of a customer-facing service; SEV4 is cosmetic.'
 		},
@@ -281,6 +281,22 @@ export const incidentManagement: DefinitionDocument = {
 				collects: [{ fact: 'fact.downstream-notified' }]
 			},
 			data: { 'hooks.on_completed': ['post-to-status-page'] }
+		},
+
+		{
+			core: {
+				id: 'lookup.severity-levels',
+				kind: 'lookup',
+				title: 'Severity levels',
+				values: [
+					{ value: 'SEV1', description: 'A customer-facing service is down' },
+					{ value: 'SEV2', description: 'A major feature is broken or badly slow' },
+					{ value: 'SEV3', description: 'A minor feature is degraded; there is a workaround' },
+					{ value: 'SEV4', description: 'Cosmetic, or affects very few people' }
+				]
+			},
+			content:
+				'How bad an incident is, from a full outage of a customer-facing service to cosmetic.'
 		}
 	]
 };

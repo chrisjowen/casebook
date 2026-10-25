@@ -6,9 +6,11 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import {
 	collectedBy,
+	factChoices,
 	isFileFact,
 	isOpen,
 	referencedFile,
+	type Choice,
 	type DefinitionDocument,
 	type FactNode,
 	type FactSchema,
@@ -645,6 +647,15 @@ function factNode(c: LoadedCase, factId: string): FactNode | undefined {
 	return undefined;
 }
 
+/** The choices of a fact on the case, from the first attached process that has the fact. */
+function choicesOn(c: LoadedCase, factId: string): Choice[] | undefined {
+	for (const a of c.attachments) {
+		const fact = a.process.facts.get(factId);
+		if (fact) return factChoices(a.document, fact.core.schema, a.shared);
+	}
+	return undefined;
+}
+
 function fileView(f: FileRecord) {
 	return { id: f.id, name: f.name, size: f.size, contentType: f.contentType };
 }
@@ -699,7 +710,7 @@ function caseRecord(c: LoadedCase, people: ReadonlyMap<string, Person>): RecordE
 			return {
 				fact: f.fact,
 				title: node?.core.title ?? f.fact,
-				display: displayValue(node, f.value, people, c.files),
+				display: displayValue(node, f.value, people, c.files, choicesOn(c, f.fact)),
 				at: iso(f.at),
 				by: p(f.by),
 				sharedBy: sharedBy(c, f.fact),
@@ -733,7 +744,8 @@ export interface FormField {
 	kind: FieldKind;
 	/** Guidance from the fact's description or content. */
 	hint?: string;
-	options?: string[];
+	/** For a choice: what can be chosen, each stored as its value and read as its label. */
+	options?: { value: string; label: string; code?: string; description?: string }[];
 	people?: PersonView[];
 	/** Whether more than one value can be given. */
 	multiple: boolean;
@@ -884,13 +896,30 @@ async function taskView(
 	};
 }
 
-function fieldKind(schema: FactSchema): { kind: FieldKind; multiple: boolean; options?: string[] } {
+function fieldKind(
+	schema: FactSchema,
+	choices: readonly Choice[] | undefined,
+	current: unknown
+): Pick<FormField, 'kind' | 'multiple' | 'options'> {
 	if (isFileFact(schema)) return { kind: 'file', multiple: false };
 	if (schema['x-lookup']?.kind === 'principal') {
 		return { kind: 'people', multiple: schema.type === 'array' };
 	}
-	if (Array.isArray(schema.enum)) {
-		return { kind: 'choice', multiple: false, options: schema.enum.map(String) };
+	if (choices) {
+		// a turned-off value is offered only to keep what the case already holds
+		const held = new Set((Array.isArray(current) ? current : [current]).map(String));
+		return {
+			kind: 'choice',
+			multiple: schema.type === 'array',
+			options: choices
+				.filter((c) => !c.disabled || held.has(c.value))
+				.map((c) => ({
+					value: c.value,
+					label: c.label,
+					...(c.code ? { code: c.code } : {}),
+					...(c.description ? { description: c.description } : {})
+				}))
+		};
 	}
 	switch (schema.type) {
 		case 'boolean':
@@ -920,8 +949,8 @@ async function formFields(
 		const fact = a.process.facts.get(factId);
 		if (!fact) continue;
 		const { schema } = fact.core;
-		const shape = fieldKind(schema);
 		const existing = c.facts.get(factId);
+		const shape = fieldKind(schema, factChoices(a.document, schema, a.shared), existing?.value);
 		const entry = record.find((r) => r.fact === factId && !r.evidence);
 		const evidence = schema['x-evidence'];
 		const hint = typeof schema.description === 'string' ? schema.description : fact.content;

@@ -2,6 +2,7 @@ export * from './authz.js';
 export { createDb, type Db, type Queryable, type Tx } from './client.js';
 export * from './definitions.js';
 export * from './files.js';
+export * from './lookups.js';
 export { migrationsFolder, runMigrations } from './migrate.js';
 export * from './people.js';
 export * from './repository.js';

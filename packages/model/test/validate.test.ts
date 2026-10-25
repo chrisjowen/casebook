@@ -78,7 +78,7 @@ describe('validate', () => {
 		const { document, node } = incident();
 		node('stage.detect').node.core.kind = 'phase';
 		expect(errorsOf(document).map((e) => e.message)).toEqual([
-			'core.kind must be one of "process", "stage", "step", "fact", "role", "decision" or "approval"'
+			'core.kind must be one of "process", "stage", "step", "fact", "role", "decision", "approval" or "lookup"'
 		]);
 	});
 

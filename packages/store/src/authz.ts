@@ -49,6 +49,7 @@ export const ACTIONS = [
 	'definition.publish',
 	'definition.approve',
 	'definition.retire',
+	'lookup.edit',
 	'case.start',
 	'case.read',
 	'case.bind_version',
@@ -175,6 +176,11 @@ const RULES: { readonly [A in Action]: ActionRule } = {
 		resources: ['definition'],
 		verb: () => 'retire versions of',
 		permission: 'namespace-admin'
+	},
+	'lookup.edit': {
+		resources: ['namespace'],
+		verb: () => 'change the shared lookups of',
+		permission: 'write'
 	},
 	'case.start': {
 		resources: ['definition'],

@@ -127,6 +127,11 @@ The **Code** tab is the same condition as an expression, with suggestions of fac
 The expression language and its helpers (`today()`, `days_since`, `days_between`, `add_days`, `contains`, `count`, `is_set`, `is_empty`) are in `packages/model/src/runtime/expression.ts`; a condition whose code does not parse is a publish warning, and people decide it by hand until it is fixed.
 Conditions count calendar days in one time zone, `CASEBOOK_TIMEZONE` (an IANA name such as `Asia/Singapore`, UTC when unset): `today()`, the day helpers and the day a date-time falls on read it on cases and in **Test** alike, and a date-time compared with a date is compared by its day.
 
+**Lookups** are the lists of values a choice is made from, such as severities, countries or document types (ADR 0025).
+A process keeps its own lookups: the footer's lookup count, or a fact's kind menu in **Records** ("New lookup…" or a lookup's name), opens them to rename, reorder, add, paste a list, give values codes and turn values off, with the facts each one is used by.
+Turning a value off stops offering it without changing cases that hold it, and renaming keeps what cases store.
+**Processes → Lookups** keeps shared lookups for a whole workspace, such as countries, which every process in it and below it can choose from; each change is a new version with its history and Undo, and the page lists the processes and facts that use it.
+
 Definitions are read from and saved to Postgres through `packages/store` (`apps/web/src/lib/server/definitions.ts` and the form actions in `apps/web/src/routes/i/[instance]/processes/edit/+page.server.ts`).
 Each workspace is a namespace the signed-in user can read.
 Every gesture changes the draft through the model's node operations and is saved as one draft revision, with a notice that offers Undo (`⌘Z` too).
@@ -160,7 +165,7 @@ The assistant runs one turn at a time on Ollama (turns on a hosted model run sid
 Sign-in is a dev-only stand-in for OIDC: pick one of the seeded users at `/signin`, with no password.
 It is on only in `pnpm dev`, never in a production build.
 Every read and write acts as that user and goes through `can()`, and actions they cannot take are disabled with the reason.
-The seed (`packages/store/src/seed.ts`) creates two accounts, `acme` ("Acme") and `example-family` ("Example family"), with these users, loads the model's synthetic fixtures as published definitions, and starts five cases:
+The seed (`packages/store/src/seed.ts`) creates two accounts, `acme` ("Acme") and `example-family` ("Example family"), with these users, loads the model's synthetic fixtures as published definitions, adds two shared lookups (Acme's service catalog and the family's ISO countries), and starts five cases:
 
 | User                     | Access                                                      | In the demo cases                                                        |
 | ------------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------------ |

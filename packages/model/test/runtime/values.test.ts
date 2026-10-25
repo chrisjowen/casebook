@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	factChoices,
 	factValueProblem,
 	fileReference,
 	isFileFact,
@@ -14,6 +15,7 @@ const fact = (id: string) =>
 	[...incidentManagement.nodes, ...birthRegistrationAbroad.nodes].find(
 		(n) => n.core.id === id
 	) as FactNode;
+const severities = factChoices(incidentManagement, fact('fact.severity').core.schema)!;
 
 describe('readFactInput', () => {
 	it('reads text into the fact’s type', () => {
@@ -37,13 +39,13 @@ describe('readFactInput', () => {
 
 describe('factValueProblem', () => {
 	it('accepts valid values', () => {
-		expect(factValueProblem(fact('fact.severity'), 'SEV2')).toBeUndefined();
+		expect(factValueProblem(fact('fact.severity'), 'SEV2', severities)).toBeUndefined();
 		expect(factValueProblem(fact('fact.date-of-birth'), '2026-01-15')).toBeUndefined();
 		expect(factValueProblem(fact('fact.parent-passport-numbers'), ['X0000001'])).toBeUndefined();
 	});
 
 	it('explains invalid values in words, naming the fact', () => {
-		expect(factValueProblem(fact('fact.severity'), 'SEV9')).toBe(
+		expect(factValueProblem(fact('fact.severity'), 'SEV9', severities)).toBe(
 			'Severity: must be one of SEV1, SEV2, SEV3, SEV4'
 		);
 		expect(factValueProblem(fact('fact.date-of-birth'), '15/01/2026')).toBe(

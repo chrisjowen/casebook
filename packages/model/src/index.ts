@@ -2,6 +2,7 @@ export * from './events.js';
 export * from './condition.js';
 export * from './guard.js';
 export * from './invariants.js';
+export * from './lookups.js';
 export * from './node.js';
 export * from './ops/index.js';
 export * from './references.js';

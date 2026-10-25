@@ -10,10 +10,12 @@ import {
 	type DefinitionDocument,
 	type ItemEvent,
 	type ProcessState,
-	type RunnableProcess
+	type RunnableProcess,
+	type SharedLookups
 } from '@casebook/model';
 import { ACCOUNT_ROLES, NAMESPACE_PERMISSIONS, namespacePathPrefixes } from '../authz.js';
 import type { Queryable } from '../client.js';
+import { sharedLookupsAlong } from '../lookups.js';
 import type { CaseBinding, PrincipalKind } from '../repository.js';
 import {
 	accounts,
@@ -93,6 +95,8 @@ export interface LoadedAttachment {
 	completedAt?: Date;
 	document: DefinitionDocument;
 	process: RunnableProcess;
+	/** The shared lookups its facts can choose from, seen from the definition's namespace. */
+	shared: SharedLookups;
 	state: ProcessState;
 	/** The principals who hold each process role on the case, groups expanded to their members. */
 	holders: Map<string, string[]>;
@@ -284,6 +288,12 @@ export async function loadCases(db: Queryable, caseIds: string[], now: Date): Pr
 	};
 
 	const holders = await roleHolders(db, caseRows);
+	const shared = new Map<string, Map<string, SharedLookups>>();
+	for (const accountId of new Set(caseRows.map((c) => c.accountId))) {
+		const ids = new Set(caseRows.filter((c) => c.accountId === accountId).map((c) => c.id));
+		const paths = attachmentRows.filter((a) => ids.has(a.caseId)).map((a) => a.namespace);
+		shared.set(accountId, await sharedLookupsAlong(db, accountId, paths));
+	}
 	const people = new Set<string>();
 	const loaded = new Map<string, LoadedCase>();
 	for (const c of caseRows) {
@@ -332,6 +342,7 @@ export async function loadCases(db: Queryable, caseIds: string[], now: Date): Pr
 					createdAt: a.createdAt,
 					document,
 					process,
+					shared: shared.get(c.accountId)?.get(a.namespace) ?? new Map(),
 					state,
 					holders: roles,
 					events: own,

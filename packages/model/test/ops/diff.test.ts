@@ -242,15 +242,44 @@ describe('diff', () => {
 			]
 		],
 		[
-			'a changed fact schema',
+			'a fact given its own choices instead of a lookup',
 			[
 				{
 					op: 'update_core',
 					id: 'fact.severity',
-					changes: { schema: { enum: ['SEV1', 'SEV2', 'SEV3'] } }
+					changes: { schema: { enum: ['SEV1', 'SEV2', 'SEV3'], 'x-lookup': null } }
 				}
 			],
-			['Changed the value type of fact Severity']
+			['Fact Severity is no longer chosen from lookup Severity levels']
+		],
+		[
+			'changed lookup values',
+			[
+				{
+					op: 'update_core',
+					id: 'lookup.severity-levels',
+					changes: {
+						values: [
+							{ value: 'SEV2', description: 'A major feature is broken or badly slow' },
+							{
+								value: 'SEV1',
+								label: 'Critical',
+								description: 'A customer-facing service is down'
+							},
+							{
+								value: 'SEV3',
+								code: 'S3',
+								description: 'A minor feature is degraded; there is a workaround'
+							},
+							{ value: 'SEV4', description: 'Anything else', disabled: true },
+							{ value: 'SEV5' }
+						]
+					}
+				}
+			],
+			[
+				'Changed the values of lookup Severity levels: added SEV5; renamed SEV1 to Critical; set the code of SEV3 to S3; changed what SEV4 means; turned off SEV4; reordered the values'
+			]
 		],
 		[
 			'a repeat removed',

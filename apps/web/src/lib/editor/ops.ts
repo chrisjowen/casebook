@@ -17,8 +17,24 @@ import type {
 	RoleId,
 	StageId
 } from '@casebook/model';
-import { nodeReferences } from '@casebook/model';
 import {
+	addValues,
+	choicesPatch,
+	describeValueChanges,
+	factsUsingLookup,
+	freshLookupId,
+	newLookupNode,
+	nodeReferences,
+	removeValue,
+	type ChoicesFrom,
+	type LookupId,
+	type LookupNode,
+	type LookupValue,
+	type ValuesEdit
+} from '@casebook/model';
+import {
+	choiceLabel,
+	choicesOf,
 	collectsOf,
 	indexDocument,
 	labelOf,
@@ -290,11 +306,228 @@ export function setFactKind(ix: ProcessIndex, fact: FactId, kind: number): Edit 
 	};
 }
 
+/**
+ * Adds a choice to a choice fact, such as a decision's outcome: to the lookup it is chosen from,
+ * or to its own options. Returns the reason instead when it is already there.
+ */
+export function addChoice(ix: ProcessIndex, fact: FactId, choice: string): Edit | string {
+	const node = ix.byId.get(fact) as FactNode;
+	const lookup = node.core.schema['x-lookup'];
+	if (lookup?.kind === 'lookup') {
+		const list = ix.byId.get(lookup.lookup) as LookupNode;
+		return changeValues(ix, list.core.id, addValues(list.core.values, [{ label: choice }]));
+	}
+	if (lookup?.kind === 'dataset') {
+		return `${labelOf(ix, fact)} is chosen from a shared lookup; add the value there`;
+	}
+	const list = choicesOf(ix, fact).map((c) => c.value);
+	if (list.includes(choice)) return `${choice} is already a choice`;
+	return setChoices(ix, fact, [...list, choice]);
+}
+
+/**
+ * Takes a choice off a choice fact: out of the lookup it is chosen from, or out of its own
+ * options. Cases that hold it keep it.
+ */
+export function removeChoice(ix: ProcessIndex, fact: FactId, choice: string): Edit | string {
+	const node = ix.byId.get(fact) as FactNode;
+	const lookup = node.core.schema['x-lookup'];
+	if (lookup?.kind === 'lookup') {
+		const list = ix.byId.get(lookup.lookup) as LookupNode;
+		return changeValues(ix, list.core.id, removeValue(list.core.values, choice));
+	}
+	if (lookup?.kind === 'dataset') {
+		return `${labelOf(ix, fact)} is chosen from a shared lookup; change the value there`;
+	}
+	return setChoices(
+		ix,
+		fact,
+		choicesOf(ix, fact)
+			.map((c) => c.value)
+			.filter((c) => c !== choice)
+	);
+}
+
+// Lookups (ADR 0025): named lists of values that choice facts are chosen from.
+
+/** A new lookup, named and with these values, in one edit. */
+export function newLookup(
+	ix: ProcessIndex,
+	title: string,
+	values: LookupValue[] = []
+): Edit & { id: LookupId } {
+	const name = title.trim() || 'New lookup';
+	const id = freshLookupId(ix.document, name);
+	return {
+		id,
+		ops: [{ op: 'add_node', node: newLookupNode(id, name, values) }],
+		label: `Added lookup ${name}`,
+		select: id
+	};
+}
+
+/**
+ * Saves a lookup's new values, labelled with what changed, or returns why not: the reason a
+ * value edit gave, or that nothing changed.
+ */
+export function changeValues(ix: ProcessIndex, lookup: string, next: ValuesEdit): Edit | string {
+	if (typeof next === 'string') return next;
+	const node = ix.byId.get(lookup) as LookupNode;
+	const parts = describeValueChanges(node.core.values, next);
+	if (parts.length === 0) return 'Nothing changed';
+	const text = parts.join('; ');
+	return {
+		ops: [{ op: 'update_core', id: node.core.id, changes: { values: next } }],
+		label: `${labelOf(ix, lookup)}: ${text.charAt(0).toUpperCase()}${text.slice(1)}`
+	};
+}
+
+/**
+ * Makes a fact's choices come from `to`: its own options, a lookup of the process or a shared
+ * lookup. A fact that was not a choice becomes one, keeping a list fact a list.
+ */
+export function chooseFrom(ix: ProcessIndex, fact: FactId, to: ChoicesFrom): Edit {
+	const node = ix.byId.get(fact) as FactNode;
+	const schema = node.core.schema;
+	const list = schema.type === 'array';
+	const kind = list
+		? {}
+		: {
+				type: 'string',
+				...Object.fromEntries(
+					[
+						'format',
+						'x-evidence',
+						'items',
+						'minItems',
+						'maxItems',
+						'pattern',
+						'minLength',
+						'maxLength'
+					]
+						.filter((k) => k in schema)
+						.map((k) => [k, null])
+				)
+			};
+	const source =
+		to.kind === 'own'
+			? 'its own options'
+			: to.kind === 'lookup'
+				? labelOf(ix, to.lookup)
+				: (ix.shared.get(to.name)?.title ?? to.name);
+	return {
+		ops: [
+			{ op: 'update_core', id: fact, changes: { schema: { ...kind, ...choicesPatch(schema, to) } } }
+		],
+		label: `${labelOf(ix, fact)} is now chosen from ${source}`
+	};
+}
+
+/**
+ * A new lookup named after a fact, holding the fact's current choices, which the fact is then
+ * chosen from: one edit, so one undo takes it back.
+ */
+export function lookupFromFact(
+	ix: ProcessIndex,
+	fact: FactId,
+	title?: string
+): Edit & { id: LookupId } {
+	const name = title?.trim() || labelOf(ix, fact);
+	const values = choicesOf(ix, fact).map((c) =>
+		c.label === c.value ? { value: c.value } : { value: c.value, label: c.label }
+	);
+	const made = newLookup(ix, name, values);
+	const used = chooseFrom(ix, fact, { kind: 'lookup', lookup: made.id });
+	return {
+		id: made.id,
+		ops: [...made.ops, ...used.ops],
+		label: `Made lookup ${name}${values.length ? ` from the choices of ${labelOf(ix, fact)}` : ''}; ${labelOf(ix, fact)} is chosen from it`
+	};
+}
+
+/**
+ * Points every fact chosen from a process lookup at the shared lookup `name` made from it, and
+ * deletes the process's own copy, as one edit.
+ */
+export function shareLookup(ix: ProcessIndex, id: string, name: string): Edit {
+	const ops: Operation[] = factsUsingLookup(ix.document, id).flatMap(
+		(fact) => chooseFrom(ix, fact, { kind: 'shared', name }).ops
+	);
+	ops.push({ op: 'remove_node', id: id as NodeId });
+	return { ops, label: `${labelOf(ix, id)} is now shared with the whole workspace` };
+}
+
+/**
+ * Copies a shared lookup's values into a new lookup of this process, which the fact is then
+ * chosen from, so it can be changed here without changing it for everyone.
+ */
+export function copyIntoProcess(
+	ix: ProcessIndex,
+	fact: FactId,
+	shared: { title: string; values: LookupValue[] }
+): Edit & { id: LookupId } {
+	const made = newLookup(ix, shared.title, shared.values);
+	return {
+		id: made.id,
+		ops: [...made.ops, ...chooseFrom(ix, fact, { kind: 'lookup', lookup: made.id }).ops],
+		label: `Copied ${shared.title} into this process; ${labelOf(ix, fact)} is chosen from the copy`,
+		select: made.id
+	};
+}
+
+/** Deletes a lookup, or says which facts are still chosen from it. */
+export function removeLookup(ix: ProcessIndex, id: string): Edit | string {
+	const users = factsUsingLookup(ix.document, id);
+	if (users.length) {
+		return `${labelOf(ix, id)} is still used by ${users.map((f) => labelOf(ix, f)).join(', ')}; choose other values for ${users.length === 1 ? 'it' : 'them'} first`;
+	}
+	return {
+		ops: [{ op: 'remove_node', id: id as NodeId }],
+		label: `Deleted lookup ${labelOf(ix, id)}`
+	};
+}
+
 /** Sets the choices of a choice fact, such as a decision's outcome. */
 export function setChoices(ix: ProcessIndex, fact: FactId, choices: string[]): Edit {
+	const schema = (ix.byId.get(fact) as FactNode).core.schema;
 	return {
-		ops: [{ op: 'update_core', id: fact, changes: { schema: { enum: choices } } }],
+		ops: [
+			{
+				op: 'update_core',
+				id: fact,
+				changes: { schema: choicesPatch(schema, { kind: 'own', options: choices }) }
+			}
+		],
 		label: `Choices for ${labelOf(ix, fact)}: ${choices.join(', ')}`
+	};
+}
+
+/**
+ * Lets people choose several of a choice fact's values, or only one. Its own options move
+ * between the fact and its items; a lookup it is chosen from stays.
+ */
+export function setMultiple(ix: ProcessIndex, fact: FactId, several: boolean): Edit {
+	const schema = (ix.byId.get(fact) as FactNode).core.schema;
+	const own = choicesOf(ix, fact).map((c) => c.value);
+	const isOwn = !schema['x-lookup'];
+	const changes = several
+		? {
+				type: 'array',
+				items: { type: 'string', ...(isOwn ? { enum: own } : {}) },
+				enum: null
+			}
+		: {
+				type: 'string',
+				items: null,
+				minItems: null,
+				maxItems: null,
+				...(isOwn ? { enum: own } : {})
+			};
+	return {
+		ops: [{ op: 'update_core', id: fact, changes: { schema: changes } }],
+		label: several
+			? `People can choose several ${labelOf(ix, fact)}`
+			: `People choose one ${labelOf(ix, fact)}`
 	};
 }
 
@@ -332,7 +565,7 @@ export function outcomeName(ix: ProcessIndex, outcome: string): string {
 /** The guard for "runs only when `outcome` is `choice`", in prose and as an expression. */
 export function branchGuard(ix: ProcessIndex, outcome: string, choice: string): Guard {
 	return {
-		text: `Only when ${outcomeName(ix, outcome)} is ${choice}`,
+		text: `Only when ${outcomeName(ix, outcome)} is ${choiceLabel(ix, outcome, choice)}`,
 		expr: `${outcome} == '${choice.replaceAll("'", "\\'")}'`
 	};
 }
@@ -348,7 +581,7 @@ export function branchTo(ix: ProcessIndex, decision: string, choice: string, to:
 	ops.push(setWhen(to, branchGuard(ix, outcome, choice)));
 	return {
 		ops,
-		label: `${labelOf(ix, to)} runs only when ${labelOf(ix, decision)} is ${choice}`
+		label: `${labelOf(ix, to)} runs only when ${labelOf(ix, decision)} is ${choiceLabel(ix, outcome, choice)}`
 	};
 }
 

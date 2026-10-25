@@ -358,3 +358,153 @@ describe('moving and removing', () => {
 		);
 	});
 });
+
+describe('lookups', () => {
+	const schemaOf = (document: DefinitionDocument, id: string) =>
+		(node(document, id) as FactNode).core.schema;
+
+	it('makes a named lookup and selects it', () => {
+		const made = edits.newLookup(ix, 'Document types', [{ value: 'Passport' }]);
+		expect(made).toMatchObject({ id: 'lookup.document-types', select: 'lookup.document-types' });
+		expect(node(apply(doc, made), made.id)?.core).toEqual({
+			id: 'lookup.document-types',
+			kind: 'lookup',
+			title: 'Document types',
+			values: [{ value: 'Passport' }]
+		});
+	});
+
+	it('saves new values with what changed, or says why not', () => {
+		const lookup = node(doc, 'lookup.severity-levels')!;
+		const values = (lookup.core as { values: { value: string }[] }).values;
+		const edit = edits.changeValues(ix, 'lookup.severity-levels', [...values, { value: 'SEV5' }]);
+		expect(edit).toMatchObject({ label: 'Severity levels: Added SEV5' });
+		expect(edits.changeValues(ix, 'lookup.severity-levels', values)).toBe('Nothing changed');
+		expect(edits.changeValues(ix, 'lookup.severity-levels', 'SEV1 is already in the list')).toBe(
+			'SEV1 is already in the list'
+		);
+	});
+
+	it('turns a fact’s own options into a lookup it is chosen from, in one edit', () => {
+		const own = apply(
+			doc,
+			edits.chooseFrom(ix, 'fact.severity', { kind: 'own', options: ['Low', 'High'] })
+		);
+		expect(schemaOf(own, 'fact.severity')).toEqual({ type: 'string', enum: ['Low', 'High'] });
+		const made = edits.lookupFromFact(indexDocument(own), 'fact.severity', 'Levels');
+		const next = apply(own, made);
+		expect(schemaOf(next, 'fact.severity')).toEqual({
+			type: 'string',
+			'x-lookup': { kind: 'lookup', lookup: 'lookup.levels' }
+		});
+		expect((node(next, 'lookup.levels')?.core as { values: unknown }).values).toEqual([
+			{ value: 'Low' },
+			{ value: 'High' }
+		]);
+	});
+
+	it('makes a text fact a choice from a shared lookup', () => {
+		const next = apply(
+			doc,
+			edits.chooseFrom(ix, 'fact.incident-summary', { kind: 'shared', name: 'regions' })
+		);
+		expect(schemaOf(next, 'fact.incident-summary')).toMatchObject({
+			type: 'string',
+			'x-lookup': { kind: 'dataset', dataset: 'regions' }
+		});
+		expect(factType(schemaOf(next, 'fact.incident-summary')).label).toBe('Choice');
+	});
+
+	it('adds a choice to the lookup a decision’s outcome is chosen from', () => {
+		const next = apply(doc, edits.addChoice(ix, 'fact.severity' as FactId, 'SEV5'));
+		const values = (node(next, 'lookup.severity-levels')?.core as { values: { value: string }[] })
+			.values;
+		expect(values.at(-1)).toEqual({ value: 'SEV5' });
+		expect(edits.addChoice(ix, 'fact.severity' as FactId, 'sev1')).toBe(
+			'sev1 is already in the list'
+		);
+	});
+
+	it('deletes a lookup only when no fact is chosen from it', () => {
+		expect(edits.removeLookup(ix, 'lookup.severity-levels')).toBe(
+			'Severity levels is still used by Severity; choose other values for it first'
+		);
+		const made = edits.newLookup(ix, 'Spare');
+		const next = apply(doc, made);
+		expect(
+			node(apply(next, edits.removeLookup(indexDocument(next), made.id)), made.id)
+		).toBeUndefined();
+	});
+});
+
+describe('choices that allow several', () => {
+	it('moves own options onto the items and back', () => {
+		const own = apply(
+			doc,
+			edits.chooseFrom(ix, 'fact.incident-summary', { kind: 'own', options: ['A', 'B'] })
+		);
+		const several = apply(
+			own,
+			edits.setMultiple(indexDocument(own), 'fact.incident-summary', true)
+		);
+		expect((node(several, 'fact.incident-summary') as FactNode).core.schema).toEqual({
+			type: 'array',
+			items: { type: 'string', enum: ['A', 'B'] },
+			'x-sensitivity': 'none'
+		});
+		const one = apply(
+			several,
+			edits.setMultiple(indexDocument(several), 'fact.incident-summary', false)
+		);
+		expect((node(one, 'fact.incident-summary') as FactNode).core.schema).toEqual({
+			type: 'string',
+			enum: ['A', 'B'],
+			'x-sensitivity': 'none'
+		});
+		expect(factType((node(several, 'fact.incident-summary') as FactNode).core.schema).label).toBe(
+			'Choices'
+		);
+	});
+
+	it('keeps a lookup when a fact allows several of its values', () => {
+		const several = apply(doc, edits.setMultiple(ix, 'fact.severity' as FactId, true));
+		expect((node(several, 'fact.severity') as FactNode).core.schema).toEqual({
+			type: 'array',
+			items: { type: 'string' },
+			'x-lookup': { kind: 'lookup', lookup: 'lookup.severity-levels' }
+		});
+	});
+
+	it('removes a choice from the lookup it is chosen from', () => {
+		const next = apply(doc, edits.removeChoice(ix, 'fact.severity' as FactId, 'SEV4'));
+		expect(
+			(node(next, 'lookup.severity-levels')?.core as { values: { value: string }[] }).values.map(
+				(v) => v.value
+			)
+		).toEqual(['SEV1', 'SEV2', 'SEV3']);
+	});
+});
+
+describe('sharing lookups', () => {
+	it('points facts at a shared copy and drops the process’s own', () => {
+		const next = apply(doc, edits.shareLookup(ix, 'lookup.severity-levels', 'severity-levels'));
+		expect(node(next, 'lookup.severity-levels')).toBeUndefined();
+		expect((node(next, 'fact.severity') as FactNode).core.schema).toEqual({
+			type: 'string',
+			'x-lookup': { kind: 'dataset', dataset: 'severity-levels' }
+		});
+	});
+
+	it('copies a shared lookup into the process for one fact', () => {
+		const made = edits.copyIntoProcess(ix, 'fact.affected-services', {
+			title: 'Service catalog',
+			values: [{ value: 'api', label: 'Public API' }]
+		});
+		const next = apply(doc, made);
+		expect((node(next, 'fact.affected-services') as FactNode).core.schema['x-lookup']).toEqual({
+			kind: 'lookup',
+			lookup: 'lookup.service-catalog'
+		});
+		expect(made.select).toBe('lookup.service-catalog');
+	});
+});

@@ -190,7 +190,7 @@ describe('plain language', () => {
 		expect(type('fact.rca-document')).toBe('Document');
 		expect(type('fact.resolved-at')).toBe('Date & time');
 		expect(type('fact.downstream-notified')).toBe('Yes or no');
-		expect(type('fact.affected-services')).toBe('Lookup');
+		expect(type('fact.affected-services')).toBe('Choices');
 	});
 
 	it('reads durations and evidence', () => {
