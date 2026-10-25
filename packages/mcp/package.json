@@ -1,0 +1,31 @@
+{
+	"name": "@casebook/mcp",
+	"version": "0.0.0",
+	"private": true,
+	"description": "casebook's MCP server: tools an agent uses to work cases as the user it signed in as, over Streamable HTTP with OAuth.",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"@casebook/model": "workspace:*",
+		"@casebook/store": "workspace:*",
+		"@modelcontextprotocol/node": "2.1.2",
+		"@modelcontextprotocol/server": "2.4.0",
+		"drizzle-orm": "0.45.4",
+		"zod": "4.6.7"
+	},
+	"devDependencies": {
+		"@modelcontextprotocol/client": "2.4.0",
+		"@types/node": "22.20.5",
+		"postgres": "3.4.9",
+		"typescript": "6.0.3",
+		"vitest": "5.0.5"
+	}
+}

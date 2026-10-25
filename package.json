@@ -14,6 +14,7 @@
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
 		"dev": "moon run web:dev",
+		"dev:mcp": "moon run mcp:dev",
 		"db:up": "docker compose up -d --wait postgres",
 		"db:seed": "moon run store:seed",
 		"db:down": "docker compose down"

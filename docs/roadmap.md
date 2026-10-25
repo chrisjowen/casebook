@@ -5,7 +5,7 @@
 1. **Define, create and store process definitions.** v1 focus. See decisions 0002 to 0008.
 2. **Start and execute through a process.** Started: the case runtime and the runner screens (0022).
 3. **UI options.** v1 focus: read-only graph, editor and the authoring wizard (0011, 0013).
-4. **Agents in the loop via MCP.** Deferred.
+4. **Agents in the loop via MCP.** Started: the MCP server, with a dev OAuth sign-in (0023).
 5. **Build and auto-convert processes.** v1 covers spreadsheet import via the wizard; the rest is deferred.
 
 v1 = workstreams 1 and 3, plus the spreadsheet wizard; workstream 2 has begun with running cases.
@@ -17,8 +17,9 @@ v1 = workstreams 1 and 3, plus the spreadsheet wizard; workstream 2 has begun wi
   Still to come: notifications beyond the in-app lists, inviting guests who are not yet known to an account, evaluating role references in guards, and an object store for files.
 - **Excel two-way sync ("nocell") and hooks.**
   Keep source spreadsheets in sync with case state; execute hook bindings on reserved lifecycle events (0010).
-- **MCP surface (workstream 4).**
-  Tools to read a process, inspect a case, list opportunities, submit evidence and record decisions, under delegation rules (0009).
+- **MCP surface, what is left (workstream 4).**
+  Done (0023): tools to list work, read a process, inspect a case, start cases, record values, evidence and decisions, as the user an agent signs in as over OAuth, under the delegation rules (0009).
+  Still to come: an external authorization server in place of the dev sign-in, narrower delegations, and a screen to see and revoke agents' sign-ins.
 - **Auto-conversion of documents (workstream 5).**
   Turn prose SOPs, PDFs and documents into drafts; publish via draft-plus-review; re-extraction shows a diff against the current version.
 - **BPMN projection.**

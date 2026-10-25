@@ -6,7 +6,7 @@ casebook is a generic process modeler and runner for business and human-in-the-l
 Processes are stored as versioned definitions of stages, steps, facts, roles and approvals.
 A case is the shared subject several processes attach to, sharing one fact store.
 People and agents act on cases as principals within hierarchical namespaces.
-v1 focuses on defining processes, viewing them as a graph, and an agent-assisted wizard that imports spreadsheets; running cases has begun (ADR 0022).
+v1 focuses on defining processes, viewing them as a graph, and an agent-assisted wizard that imports spreadsheets; running cases has begun (ADR 0022), and agents can work cases over MCP (ADR 0023).
 
 ## What it looks like
 
@@ -59,6 +59,7 @@ A [moon](https://moonrepo.dev) workspace with pnpm workspaces underneath, all Ty
 | `apps/web`              | SvelteKit 2 app (Svelte 5, Tailwind 4, shadcn-svelte): the runner and the process definition editor.                                   |
 | `packages/model`        | Process-definition types, JSON Schema, validation, publish checks, node operations and the case runtime's pure logic. Pure TypeScript. |
 | `packages/store`        | Postgres persistence, permission checks, definition editing, the case runtime and the demo seed; Drizzle ORM migrations.               |
+| `packages/mcp`          | The MCP server: tools for agents to work cases as the user they sign in as, over Streamable HTTP with OAuth.                           |
 | `packages/sheet-import` | Reads .xlsx workbooks into neutral rows and cells for the wizard.                                                                      |
 | `packages/wizard-agent` | Placeholder for the deepagents-based authoring agent.                                                                                  |
 
@@ -140,6 +141,45 @@ The seed (`packages/store/src/seed.ts`) creates two accounts, `acme` ("Acme") an
 | Dana Cole                | guest: care provider on one family case                     | sends a hospital's itemised invoice                                      |
 | Example Health Insurance | guest: insurer in `personal/example-user/family`            | assesses claims                                                          |
 
+## Agents over MCP
+
+`pnpm dev:mcp` serves casebook to agents at `http://localhost:5190/mcp`, over Streamable HTTP (ADR 0023).
+An agent signs in as one person with OAuth and then acts as them: it sees and does only what they can, and everything it records names the agent and the person it acted for.
+Its tools mirror the runner: `list_my_work`, `list_processes`, `read_process`, `inspect_case`, `open_task`, `start_case`, `complete_task` (values, files and decisions), `start_task`, `pause_task`, `resume_task`, `skip_task` and `read_case_file`.
+Approvals and steps marked human-only are refused to agents.
+
+Sign-in is a dev-only authorization server in the same process: the client registers itself, your browser opens a page to pick one of the seeded users, with no password, and the client gets a 15-minute access token it refreshes for up to 8 hours.
+Restarting the server signs every agent out. It refuses to run with `NODE_ENV=production`.
+Set `CASEBOOK_FILES_DIR` in `.env` so the web app, the seed and the MCP server share case files.
+
+Connect Claude Code:
+
+```sh
+claude mcp add --transport http casebook http://localhost:5190/mcp
+```
+
+or check in a `.mcp.json` like this, then run `/mcp` in Claude Code to sign in:
+
+```json
+{
+  "mcpServers": {
+    "casebook": { "type": "http", "url": "http://localhost:5190/mcp" }
+  }
+}
+```
+
+Claude Desktop reaches a local server through the `mcp-remote` bridge, in `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "casebook": { "command": "npx", "args": ["-y", "mcp-remote", "http://localhost:5190/mcp"] }
+  }
+}
+```
+
+Set `CASEBOOK_MCP_PORT` to use another port, and `CASEBOOK_MCP_URL` when clients reach the server at another origin.
+
 ## Checks
 
 Each command runs the matching moon task across every project.
@@ -153,7 +193,7 @@ pnpm format              # Prettier (pnpm format:check to verify only)
 ```
 
 Run a single project's task with moon directly, for example `moon run model:test`.
-The `store` tests, which cover the seed, editing, publishing, running cases and permission refusals, need Postgres (`pnpm db:up` and a `.env`): they migrate a throwaway database next to the one `DATABASE_URL` names, and are skipped when it is unset outside CI.
+The `store` tests, which cover the seed, editing, publishing, running cases and permission refusals, and the `mcp` tests, which cover the tools and the OAuth sign-in, need Postgres (`pnpm db:up` and a `.env`): they migrate a throwaway database next to the one `DATABASE_URL` names, and are skipped when it is unset outside CI.
 
 ## Database migrations
 

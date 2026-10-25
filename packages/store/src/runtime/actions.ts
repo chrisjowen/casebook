@@ -672,7 +672,12 @@ export function completeItem(
 		const { item } = state;
 		if (item.kind === 'approval') {
 			throw new Refused(
-				refuse('invalid-input', 'An approval is approved or sent back, not completed.')
+				who.kind === 'user'
+					? refuse('invalid-input', 'An approval is approved or sent back, not completed.')
+					: refuse(
+							'human-only',
+							`Approvals are human-only: a person approves or sends back “${item.title}” themselves.`
+						)
 			);
 		}
 		await requireOpen(tx, state);
