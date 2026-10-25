@@ -162,12 +162,7 @@ function describeNodeChange(
 		case 'actor':
 			return `Changed who may do ${node} from ${actorText(a)} to ${actorText(b)}`;
 		case 'requires': {
-			const parts = memberChanges(
-				'now requires',
-				'no longer requires',
-				ids(a).map(label),
-				ids(b).map(label)
-			);
+			const parts = memberChanges('now requires', 'no longer requires', ids(a), ids(b), label);
 			return parts.length === 0
 				? `Reordered the facts ${node} requires`
 				: `${node} ${parts.join(' and ')}`;
@@ -218,8 +213,9 @@ function describeCollects(label: Label, node: string, a: Collect[], b: Collect[]
 	const parts = memberChanges(
 		'now collects',
 		'no longer collects',
-		[...was.keys()].map(label),
-		[...now.keys()].map(label)
+		[...was.keys()],
+		[...now.keys()],
+		label
 	);
 	const recorders = recorder.length > 0 ? `who records ${list(recorder.map(label))}` : undefined;
 	if (parts.length === 0) {
@@ -231,9 +227,15 @@ function describeCollects(label: Label, node: string, a: Collect[], b: Collect[]
 }
 
 /** Phrases the members added to and removed from a list, such as `now requires fact A`. */
-function memberChanges(addedVerb: string, removedVerb: string, a: string[], b: string[]): string[] {
-	const added = b.filter((x) => !a.includes(x));
-	const removed = a.filter((x) => !b.includes(x));
+function memberChanges(
+	addedVerb: string,
+	removedVerb: string,
+	a: string[],
+	b: string[],
+	label: Label
+): string[] {
+	const added = b.filter((id) => !a.includes(id)).map(label);
+	const removed = a.filter((id) => !b.includes(id)).map(label);
 	return [
 		...(added.length > 0 ? [`${addedVerb} ${list(added)}`] : []),
 		...(removed.length > 0 ? [`${removedVerb} ${list(removed)}`] : [])

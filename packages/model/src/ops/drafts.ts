@@ -34,11 +34,19 @@ export interface DraftContext {
 }
 
 /**
- * A stored revision. Under a living policy it also carries either the version it published or,
- * when publishing was refused after the revision was stored, why.
+ * A stored revision. Under a living policy it also carries one of: the version it published; the
+ * newer version that already holds it, when a later edit published first; or, when publishing was
+ * refused after the revision was stored, why.
  */
 export type DraftResult =
-	(Committed & { published?: PublishedVersion; publishRefused?: PublishRefusal }) | Rejection;
+	| (Committed & {
+			published?: PublishedVersion;
+			supersededBy?: PublishedVersion;
+			publishRefused?: PublishRefusal;
+	  })
+	| Rejection;
+
+const LIVING_PUBLISH_ATTEMPTS = 3;
 
 /** Stores `document` as revision 1 of a new draft. */
 export function createDraft(
@@ -95,17 +103,18 @@ export async function publishDraft(
 	context: DraftContext,
 	options: PublishDraftOptions
 ): Promise<PublishDecision | Rejection> {
-	const head = await context.store.head(context.definitionId);
+	const { store, definitionId } = context;
+	const head = await store.head(definitionId);
 	if (head === undefined) return noDraft(context);
-	return publishRevision(context, head, options);
+	return publishRevision(context, head, await store.latestVersion(definitionId), options);
 }
 
 async function publishRevision(
 	{ store, definitionId, policy }: DraftContext,
 	revision: Revision,
+	latest: PublishedVersion | undefined,
 	options: PublishDraftOptions
 ): Promise<PublishDecision> {
-	const latest = await store.latestVersion(definitionId);
 	const decision = publish({
 		...options,
 		policy,
@@ -138,14 +147,18 @@ async function save(
 	if (!result.ok) return result;
 	await context.store.appendRevision(context.definitionId, result.revision);
 	if (!publishesOnEdit(context.policy)) return result;
-	const decision = await publishRevision(context, result.revision, {
-		publishedBy: author,
-		...(onBehalfOf === undefined ? {} : { onBehalfOf }),
-		at
-	});
-	return decision.allowed
-		? { ...result, published: decision.version }
-		: { ...result, publishRefused: decision };
+	const options = { publishedBy: author, ...(onBehalfOf === undefined ? {} : { onBehalfOf }), at };
+	for (let attempt = 1; ; attempt++) {
+		const latest = await context.store.latestVersion(context.definitionId);
+		const decision = await publishRevision(context, result.revision, latest, options);
+		if (decision.allowed) return { ...result, published: decision.version };
+		if (decision.code === 'superseded' && latest !== undefined) {
+			return { ...result, supersededBy: latest };
+		}
+		if (decision.code !== 'version-conflict' || attempt === LIVING_PUBLISH_ATTEMPTS) {
+			return { ...result, publishRefused: decision };
+		}
+	}
 }
 
 function noDraft({ definitionId }: DraftContext): Rejection {

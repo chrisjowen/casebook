@@ -78,6 +78,7 @@ export const PUBLISH_REFUSAL_CODES = [
 	'checks-failed',
 	'approval-required',
 	'no-change',
+	'superseded',
 	'version-conflict'
 ] as const;
 
@@ -140,8 +141,8 @@ export function publish(request: PublishRequest): PublishDecision {
 		request.revision < latest.revision
 	) {
 		return refuse(
-			'version-conflict',
-			`Version ${latest.version} already holds the newer revision ${latest.revision}, so revision ${request.revision} cannot be published after it`
+			'superseded',
+			`Version ${latest.version} already holds the newer revision ${latest.revision}, so revision ${request.revision} has nothing left to publish`
 		);
 	}
 	const check = checkPublish(document);

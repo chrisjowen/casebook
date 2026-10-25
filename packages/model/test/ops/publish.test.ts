@@ -231,9 +231,9 @@ describe('publish', () => {
 			})
 		).toMatchObject({
 			allowed: false,
-			code: 'version-conflict',
+			code: 'superseded',
 			reason:
-				'Version 1 already holds the newer revision 3, so revision 2 cannot be published after it'
+				'Version 1 already holds the newer revision 3, so revision 2 has nothing left to publish'
 		});
 	});
 
@@ -345,57 +345,90 @@ describe('stored drafts', () => {
 		expect(await draft.store.versions('def-incident')).toEqual([]);
 	});
 
-	it('living: publishes the revision each edit committed, and reports a lost race instead of throwing', async () => {
-		let interleave: (() => Promise<unknown>) | undefined;
-		class InterleavingStore extends InMemoryRevisionStore {
+	describe('living: two edits racing to publish', () => {
+		class GatedStore extends InMemoryRevisionStore {
+			gating = false;
+			readonly #waiting: (() => void)[] = [];
 			override async latestVersion(definitionId: string) {
 				const latest = await super.latestVersion(definitionId);
-				const other = interleave;
-				interleave = undefined;
-				await other?.();
+				if (this.gating) await new Promise<void>((resolve) => this.#waiting.push(resolve));
 				return latest;
 			}
-		}
-		const draft: DraftContext = {
-			store: new InterleavingStore(),
-			definitionId: 'def-incident',
-			policy: { mode: 'living' }
-		};
-		await createDraft(draft, incidentManagement, alice, at);
-		const bob: Attribution = { author: { id: 'u-bob', kind: 'user' } };
-		let bobs: Awaited<ReturnType<typeof editDraft>> | undefined;
-		interleave = async () => {
-			bobs = await editDraft(draft, [{ op: 'remove_node', id: 'step.notify-downstream' }], bob, at);
-		};
-
-		const alices = await editDraft(draft, [uncollect], alice, at);
-
-		const revisions = await draft.store.revisions('def-incident');
-		expect(revisions.map((r) => r.author.id)).toEqual(['u-alice', 'u-alice', 'u-bob']);
-		expect(bobs).toMatchObject({
-			ok: true,
-			revision: { number: 3 },
-			published: { version: 2, revision: 3, publishedBy: bob.author }
-		});
-		const versions = await draft.store.versions('def-incident');
-		expect(versions.map((v) => [v.version, v.revision, v.publishedBy.id])).toEqual([
-			[1, 1, 'u-alice'],
-			[2, 3, 'u-bob']
-		]);
-		expect(versions[1]?.document.nodes).toEqual(
-			revisions[2]?.document.nodes.map((n) => expect.objectContaining({ core: n.core }))
-		);
-		expect(alices).toMatchObject({
-			ok: true,
-			revision: { number: 2 },
-			publishRefused: {
-				allowed: false,
-				code: 'version-conflict',
-				reason:
-					'Version 2 was published by someone else at the same time; publish again to make the next one'
+			release(index: number): void {
+				this.#waiting[index]?.();
 			}
+		}
+		const bob: Attribution = { author: { id: 'u-bob', kind: 'user' } };
+		const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+		async function race() {
+			const store = new GatedStore();
+			const draft: DraftContext = {
+				store,
+				definitionId: 'def-incident',
+				policy: { mode: 'living' }
+			};
+			await createDraft(draft, incidentManagement, alice, at);
+			store.gating = true;
+			const alices = editDraft(draft, [uncollect], alice, at);
+			await settle();
+			const bobs = editDraft(draft, [{ op: 'remove_node', id: 'step.notify-downstream' }], bob, at);
+			await settle();
+			store.gating = false;
+			const revisions = await store.revisions('def-incident');
+			expect(revisions.map((r) => r.author.id)).toEqual(['u-alice', 'u-alice', 'u-bob']);
+			return { store, alices, bobs, revisions };
+		}
+
+		it('the older revision publishing first is followed by the newer one, so the newest edit goes live', async () => {
+			const { store, alices, bobs, revisions } = await race();
+			store.release(0);
+			expect(await alices).toMatchObject({
+				ok: true,
+				revision: { number: 2 },
+				published: { version: 2, revision: 2, publishedBy: alice.author }
+			});
+			store.release(1);
+			const bobsResult = await bobs;
+			expect(bobsResult).toMatchObject({
+				ok: true,
+				revision: { number: 3 },
+				published: { version: 3, revision: 3, publishedBy: bob.author }
+			});
+			expect(bobsResult).not.toHaveProperty('publishRefused');
+			const versions = await store.versions('def-incident');
+			expect(versions.map((v) => [v.version, v.revision, v.publishedBy.id])).toEqual([
+				[1, 1, 'u-alice'],
+				[2, 2, 'u-alice'],
+				[3, 3, 'u-bob']
+			]);
+			expect(versions[2]?.document.nodes.map((n) => n.core)).toEqual(
+				revisions[2]?.document.nodes.map((n) => n.core)
+			);
 		});
-		expect(alices).not.toHaveProperty('published');
+
+		it('the newer revision publishing first supersedes the older one, which is not an error', async () => {
+			const { store, alices, bobs } = await race();
+			store.release(1);
+			expect(await bobs).toMatchObject({
+				ok: true,
+				revision: { number: 3 },
+				published: { version: 2, revision: 3, publishedBy: bob.author }
+			});
+			store.release(0);
+			const alicesResult = await alices;
+			expect(alicesResult).toMatchObject({
+				ok: true,
+				revision: { number: 2 },
+				supersededBy: { version: 2, revision: 3 }
+			});
+			expect(alicesResult).not.toHaveProperty('published');
+			expect(alicesResult).not.toHaveProperty('publishRefused');
+			expect((await store.versions('def-incident')).map((v) => [v.version, v.revision])).toEqual([
+				[1, 1],
+				[2, 3]
+			]);
+		});
 	});
 
 	it('rejects editing a draft that does not exist', async () => {
