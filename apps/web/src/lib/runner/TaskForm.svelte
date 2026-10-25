@@ -140,6 +140,11 @@
 			</form>
 		{/if}
 	</div>
+{:else if view.requester && (task.status === 'waiting' || task.status === 'blocked')}
+	<div class="mt-6 flex gap-3 rounded-xl border bg-muted/60 px-4 py-3 text-[13px]">
+		<Hourglass class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+		<p class="text-muted-foreground">This opens once the information it needs is in.</p>
+	</div>
 {:else if task.status === 'waiting' && task.waitingOn}
 	<div class="mt-6 flex gap-3 rounded-xl border bg-muted/60 px-4 py-3 text-[13px]">
 		<Hourglass class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -228,7 +233,7 @@
 								<span class="font-medium break-words">{use.recorded.display}</span>
 							{/if}
 							<span class="block text-[12px] text-muted-foreground">
-								{use.recorded.by.name}, {day(
+								{use.recorded.by ? `${use.recorded.by.name}, ` : ''}{day(
 									use.recorded.at
 								)}{#if use.recorded.from && taskHref}<span class="mx-1" aria-hidden="true">·</span
 									><a

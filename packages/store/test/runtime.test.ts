@@ -4,7 +4,13 @@ import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { createDb, type Db } from '../src/client.js';
 import { runMigrations } from '../src/migrate.js';
 import { memoryFileStore } from '../src/files.js';
-import { bindRole, createAccount, createCase, createNamespace } from '../src/repository.js';
+import {
+	bindRole,
+	createAccount,
+	createCase,
+	createNamespace,
+	grantDelegation
+} from '../src/repository.js';
 import { publishDefinition } from '../src/definitions.js';
 import {
 	casebookPeople,
@@ -204,7 +210,9 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 				['Amount billed', 'number']
 			]);
 			expect(task.requester?.name).toBe('Alex Example');
+			expect(task.uses.map((u) => u.recorded?.by)).toEqual([undefined, undefined]);
 			const payload = JSON.stringify(task);
+			expect(payload.split('Alex Example')).toHaveLength(2);
 			expect(payload).not.toContain('BC-2026-004417');
 			expect(payload).not.toContain('Riverside Hospital');
 			expect(payload).not.toContain('Sam Example');
@@ -737,6 +745,8 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 			expect(payload).not.toContain(users.sam.id);
 			expect(payload).not.toContain('Checking the visit date');
 			expect(payload).not.toContain('Ask the provider for an itemised bill');
+			expect(task.task).not.toHaveProperty('waitingOn');
+			expect(task.task).not.toHaveProperty('held');
 		});
 
 		it('are not counted as holders by a role they hold in another account', async () => {
@@ -760,6 +770,32 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 			});
 			await createCase(db, { namespaceId: personal.id, title: 'Riverside intake' });
 			expect((await loadRequests(db, users.dana)).map((r) => r.forWhom).sort()).toEqual(before);
+		});
+	});
+
+	describe('agents', () => {
+		it('see only the case a case-limited delegation covers', async () => {
+			const view = await work('sam', 'example-family');
+			const mira = view.cases.find((c) => c.title === 'Mira Example')!;
+			expect(view.cases.length).toBeGreaterThan(1);
+			const [row] = await db
+				.select({ namespaceId: cases.namespaceId })
+				.from(cases)
+				.where(eq(cases.id, mira.id));
+			await grantDelegation(db, {
+				delegatorId: users.sam.id,
+				agentId: users.agent.id,
+				namespaceId: row!.namespaceId,
+				caseId: mira.id,
+				expiresAt: new Date(Date.now() + 86_400_000)
+			});
+			const agentView = await loadWork(
+				db,
+				{ id: users.agent.id, onBehalfOfId: users.sam.id },
+				'example-family'
+			);
+			if ('ok' in agentView) throw new Error(agentView.reason);
+			expect(agentView.cases.map((c) => c.id)).toEqual([mira.id]);
 		});
 	});
 });

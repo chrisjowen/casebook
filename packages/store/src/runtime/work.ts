@@ -228,23 +228,33 @@ async function readableCases(db: Db, actor: Actor, accountId: string, now: Date)
 	return loadCases(db, await readableOf(db, actor, ids), now);
 }
 
-/** The cases among these the actor may open, in order. `case.read` turns on the case's namespace alone. */
+/**
+ * The cases among these the actor may open, in order. For a user acting for themselves
+ * `case.read` turns on the case's namespace alone, so it is decided once per namespace; an
+ * agent's delegation can be limited to one case, so its access is decided case by case.
+ */
 async function readableOf(db: Db, actor: Actor, ids: string[]): Promise<string[]> {
 	if (ids.length === 0) return [];
 	const rows = await db
 		.select({ id: cases.id, namespaceId: cases.namespaceId })
 		.from(cases)
 		.where(inArray(cases.id, ids));
+	const [who] = await db
+		.select({ kind: principals.kind })
+		.from(principals)
+		.where(eq(principals.id, actor.id));
+	const byNamespace = actor.onBehalfOfId === undefined && who?.kind === 'user';
 	const namespaceOf = new Map(rows.map((r) => [r.id, r.namespaceId]));
-	const byNamespace = new Map<string, boolean>();
+	const decided = new Map<string, boolean>();
 	const readable: string[] = [];
 	for (const id of ids) {
 		const ns = namespaceOf.get(id);
 		if (ns === undefined) continue;
-		let allowed = byNamespace.get(ns);
+		const key = byNamespace ? ns : id;
+		let allowed = decided.get(key);
 		if (allowed === undefined) {
 			allowed = (await can(db, actor, 'case.read', { type: 'case', caseId: id })).allowed;
-			byNamespace.set(ns, allowed);
+			decided.set(key, allowed);
 		}
 		if (allowed) readable.push(id);
 	}
@@ -736,10 +746,13 @@ export interface FormField {
 }
 
 /** A value a task uses, with where it came from. */
+/** A recorded value as a form shows it; a guest is not told who recorded it unless it was them. */
+export type RecordedValue = Omit<RecordEntry, 'by'> & { by?: PersonView };
+
 export interface UsedValue {
 	fact: string;
 	title: string;
-	recorded?: RecordEntry;
+	recorded?: RecordedValue;
 }
 
 export interface TaskView {
@@ -1095,21 +1108,20 @@ export async function loadGuestTask(
 	const requester = a.startedBy ?? c.openedBy;
 	const me = subjectOf(actor);
 	const t = view.task;
-	const scrub = (r?: RecordEntry): RecordEntry | undefined =>
-		r && {
-			title: r.title,
-			display: r.display,
-			at: r.at,
-			by: r.by.id === me ? r.by : { id: '', name: c.accountName },
-			sharedBy: [],
-			...(r.fact ? { fact: r.fact } : {}),
-			...(r.file ? { file: r.file } : {})
-		};
+	const scrub = (r: RecordedValue): RecordedValue => ({
+		title: r.title,
+		display: r.display,
+		at: r.at,
+		...(r.by?.id === me ? { by: r.by } : {}),
+		sharedBy: [],
+		...(r.fact ? { fact: r.fact } : {}),
+		...(r.file ? { file: r.file } : {})
+	});
 	return {
 		case: { id: '', title: c.title },
 		task: {
 			caseId: '',
-			caseTitle: c.title,
+			caseTitle: '',
 			attachmentId: t.attachmentId,
 			process: '',
 			definitionSlug: '',
@@ -1118,11 +1130,11 @@ export async function loadGuestTask(
 			title: t.title,
 			status: t.status,
 			stage: { index: 0, number: 0, count: 0, title: '' },
-			role: t.role,
+			role: '',
 			holders: t.holders.filter((h) => h.id === me),
 			...(t.held?.by.id === me ? { held: t.held } : {}),
 			...(t.sentBack?.by.id === me ? { sentBack: t.sentBack } : {}),
-			started: [],
+			started: t.started.filter((s) => s.by.id === me),
 			repeating: t.repeating,
 			...(t.due ? { due: t.due } : {}),
 			...(t.overdue !== undefined ? { overdue: t.overdue } : {}),
@@ -1134,11 +1146,12 @@ export async function loadGuestTask(
 			.map((u) => ({
 				fact: u.fact,
 				title: u.title,
-				...(u.recorded ? { recorded: scrub(u.recorded)! } : {})
+				...(u.recorded ? { recorded: scrub(u.recorded) } : {})
 			})),
-		fields: view.fields.map(({ people: list, ...f }) => ({
+		fields: view.fields.map(({ people: list, current, ...f }) => ({
 			...f,
-			...(list ? { people: list.filter((x) => x.id === me) } : {})
+			...(list ? { people: list.filter((x) => x.id === me) } : {}),
+			...(current && (!list || current.raw.every((id) => id === me)) ? { current } : {})
 		})),
 		evidence: view.evidence,
 		canSkip: false,
