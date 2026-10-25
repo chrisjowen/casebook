@@ -1,6 +1,6 @@
-import { guardReferences } from './guard.js';
-import type { DefinitionDocument, FactId, Guard, Node, NodeKind } from './node.js';
+import type { DefinitionDocument, Node, NodeKind } from './node.js';
 import { formatField, toPointer, type Segments } from './pointer.js';
+import { nodeReferences, type NodeReference } from './references.js';
 import { validate, type ValidationError } from './validate.js';
 
 export const ISSUE_SEVERITIES = ['error', 'warning'] as const;
@@ -39,19 +39,9 @@ export interface InvariantIssue {
 	related?: string[];
 }
 
-type ReferenceKind = Extract<NodeKind, 'stage' | 'fact' | 'role' | 'approval'>;
-
-interface Reference {
+interface Reference extends NodeReference {
 	/** Index of the node holding the reference. */
 	node: number;
-	/** Location of the reference inside that node. */
-	at: Segments;
-	target: string;
-	kind: ReferenceKind;
-	/** True for a requires edge, which the dependency checks follow. */
-	required: boolean;
-	/** True when read out of a guard expression rather than a typed field. */
-	inGuard: boolean;
 }
 
 interface Edge {
@@ -113,7 +103,9 @@ export function checkInvariants(document: DefinitionDocument): InvariantIssue[] 
 		});
 	}
 
-	const references = nodes.flatMap(referencesOf);
+	const references: Reference[] = nodes.flatMap((node, i) =>
+		nodeReferences(node).map((ref) => ({ ...ref, node: i }))
+	);
 
 	for (const ref of references) {
 		if (isDeclared(ref.target, ref.kind)) continue;
@@ -259,71 +251,6 @@ export function checkPublish(document: unknown): PublishCheck {
 	}
 	const issues = checkInvariants(result.document);
 	return { ok: !issues.some((i) => i.severity === 'error'), errors: [], issues };
-}
-
-function referencesOf(node: Node, index: number): Reference[] {
-	const refs: Reference[] = [];
-	const add = (at: Segments, target: string, kind: ReferenceKind, required = false) =>
-		refs.push({ node: index, at: ['core', ...at], target, kind, required, inGuard: false });
-	const addGuard = (at: Segments, guard: Guard | undefined) => {
-		if (guard?.expr === undefined) return;
-		const { facts, roles } = guardReferences(guard.expr);
-		const exprAt = ['core', ...at, 'expr'];
-		for (const target of facts) {
-			refs.push({ node: index, at: exprAt, target, kind: 'fact', required: false, inGuard: true });
-		}
-		for (const target of roles) {
-			refs.push({ node: index, at: exprAt, target, kind: 'role', required: false, inGuard: true });
-		}
-	};
-	const addRequires = (requires: readonly FactId[] | undefined) =>
-		requires?.forEach((fact, i) => add(['requires', i], fact, 'fact', true));
-
-	const { core } = node;
-	switch (core.kind) {
-		case 'step':
-			add(['stage'], core.stage, 'stage');
-			add(['role'], core.role, 'role');
-			addRequires(core.requires);
-			core.collects?.forEach((c, i) => {
-				add(['collects', i, 'fact'], c.fact, 'fact');
-				if (c.by !== undefined) add(['collects', i, 'by'], c.by, 'role');
-			});
-			core.evidence?.forEach((e, i) => {
-				if (e.fact !== undefined) add(['evidence', i, 'fact'], e.fact, 'fact');
-			});
-			core.assigns?.forEach((a, i) => {
-				add(['assigns', i, 'role'], a.role, 'role');
-				add(['assigns', i, 'fact'], a.fact, 'fact');
-			});
-			if (core.approval !== undefined) add(['approval'], core.approval, 'approval');
-			addGuard(['when'], core.when);
-			addGuard(['repeat', 'until'], core.repeat?.until);
-			break;
-		case 'decision':
-			add(['stage'], core.stage, 'stage');
-			add(['role'], core.role, 'role');
-			addRequires(core.requires);
-			add(['outcome'], core.outcome, 'fact');
-			addGuard(['when'], core.when);
-			break;
-		case 'approval':
-			add(['role'], core.role, 'role');
-			addRequires(core.requires);
-			addGuard(['when'], core.when);
-			break;
-		case 'fact': {
-			const lookup = core.schema['x-lookup'];
-			if (lookup?.kind === 'principal' && lookup.role !== undefined) {
-				add(['schema', 'x-lookup', 'role'], lookup.role, 'role');
-			}
-			if (lookup?.kind === 'fact') {
-				add(['schema', 'x-lookup', 'fact'], lookup.fact, 'fact');
-			}
-			break;
-		}
-	}
-	return refs;
 }
 
 function producedFacts(node: Node): string[] {

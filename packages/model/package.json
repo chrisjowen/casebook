@@ -2,7 +2,7 @@
 	"name": "@casebook/model",
 	"version": "0.0.0",
 	"private": true,
-	"description": "Process definition model: node types, the process-definition JSON Schema, validation and publish checks. Pure TypeScript, no I/O.",
+	"description": "Process definition model: node types, the process-definition JSON Schema, validation, publish checks, node operations, revisions and publish policies. Pure TypeScript, no I/O.",
 	"type": "module",
 	"exports": {
 		".": {
