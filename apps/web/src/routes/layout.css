@@ -30,6 +30,12 @@
 	--chart-4: oklch(0.371 0 0);
 	--chart-5: oklch(0.269 0 0);
 	--radius: 0.625rem;
+	/* One brand accent (violet) and a soft grey canvas; everything else stays neutral. */
+	--brand: oklch(0.53 0.24 284);
+	--brand-soft: oklch(0.965 0.025 290);
+	--brand-ring: oklch(0.86 0.08 288);
+	--canvas: oklch(0.977 0.002 286);
+	--canvas-dot: oklch(0.86 0.004 286);
 	--sidebar: oklch(0.985 0 0);
 	--sidebar-foreground: oklch(0.145 0 0);
 	--sidebar-primary: oklch(0.205 0 0);
@@ -75,6 +81,11 @@
 }
 
 @theme inline {
+	--color-brand: var(--brand);
+	--color-brand-soft: var(--brand-soft);
+	--color-brand-ring: var(--brand-ring);
+	--color-canvas: var(--canvas);
+	--color-canvas-dot: var(--canvas-dot);
 	--font-sans: 'Inter Variable', sans-serif;
 	--color-sidebar-ring: var(--sidebar-ring);
 	--color-sidebar-border: var(--sidebar-border);
@@ -125,5 +136,22 @@
 	}
 	html {
 		@apply font-sans;
+	}
+}
+
+/* Scrolling panels scroll without a visible scrollbar. */
+.no-scrollbar {
+	scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
 	}
 }

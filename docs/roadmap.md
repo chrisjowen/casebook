@@ -14,6 +14,7 @@ v1 = workstreams 1 and 3, plus the spreadsheet wizard.
 
 - **Execution engine and case runtime (workstream 2).**
   Given a case and a user, return available actions, blockers and missing information; record facts, evidence, completed steps and decisions.
+  UI direction: a per-user task list showing only the work that person can do now, one form per task, and a light progress indicator for the case rather than the full definition graph.
 - **Excel two-way sync ("nocell") and hooks.**
   Keep source spreadsheets in sync with case state; execute hook bindings on reserved lifecycle events (0010).
 - **MCP surface (workstream 4).**

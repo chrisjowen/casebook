@@ -20,7 +20,7 @@ A [moon](https://moonrepo.dev) workspace with pnpm workspaces underneath, all Ty
 
 | Path                    | What it is                                                                             |
 | ----------------------- | -------------------------------------------------------------------------------------- |
-| `apps/web`              | SvelteKit 2 app (Svelte 5, Tailwind 4, shadcn-svelte).                                 |
+| `apps/web`              | SvelteKit 2 app (Svelte 5, Tailwind 4, shadcn-svelte): the process definition editor.  |
 | `packages/model`        | Process-definition types, JSON Schema, validation and publish checks. Pure TypeScript. |
 | `packages/store`        | Postgres persistence with Drizzle ORM; migrations via drizzle-kit.                     |
 | `packages/sheet-import` | Reads .xlsx workbooks into neutral rows and cells for the wizard.                      |
@@ -43,6 +43,13 @@ pnpm dev                 # web app on http://localhost:5173
 
 If port 5433 is taken, set `CASEBOOK_PG_PORT` in `.env` and update the port in `DATABASE_URL` to match.
 Stop Postgres with `pnpm db:down`; its data stays in the `casebook-pgdata` volume.
+
+## Definition editor
+
+`pnpm dev` serves the editor.
+Phase 1 is read-only: each process definition shows as step cards, role lanes or a fact flow (Svelte Flow with an ELK layout), alongside a per-workspace process map of shared fact types.
+Inspectors cover steps, decisions, fact types and processes, including the publish checks from `packages/model`.
+Definitions come from the model package's synthetic fixtures through `apps/web/src/lib/server/definitions.ts`; no database is involved yet.
 
 ## Checks
 

@@ -4,6 +4,8 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+	// elkjs ships as a single ~1.4 MB bundle; the graph layout loads it lazily on first use.
+	build: { chunkSizeWarningLimit: 1500 },
 	plugins: [
 		tailwindcss(),
 		sveltekit({

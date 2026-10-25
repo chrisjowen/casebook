@@ -3,32 +3,48 @@ $schema: '../../.moon/cache/schemas/project.json'
 language: 'typescript'
 layer: 'application'
 
+# The app imports @casebook/model, which resolves to the package's built output.
+dependsOn:
+  - 'model'
+
 tasks:
   dev:
     command: 'vite dev'
     preset: 'server'
+    deps:
+      - '^:build'
   build:
     command: 'vite build'
+    deps:
+      - '^:build'
     inputs:
       - 'src/**/*'
       - 'static/**/*'
       - 'vite.config.ts'
       - 'tsconfig.json'
+      - '/packages/model/fixtures/**/*'
     outputs:
       - 'build'
   check:
     script: 'svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings'
+    deps:
+      - '^:build'
     inputs:
       - 'src/**/*'
       - 'vite.config.ts'
+      - '/packages/model/fixtures/**/*'
       - 'tsconfig.json'
+      - '/packages/model/fixtures/**/*'
   lint:
     command: 'eslint .'
     inputs:
       - '**/*'
       - '/eslint.config.js'
   test:
-    command: 'vitest run --passWithNoTests'
+    command: 'vitest run'
+    deps:
+      - '^:build'
     inputs:
       - 'src/**/*'
       - 'vite.config.ts'
+      - '/packages/model/fixtures/**/*'
