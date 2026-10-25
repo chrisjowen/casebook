@@ -91,6 +91,7 @@
 					choices={choicesOf(ix, fact.id)}
 					people={samples.context?.people}
 					value={samples.values[fact.id]}
+					timeZone={samples.timeZone}
 					onchange={(v) => samples.set(fact.id, v)}
 				/>
 			{/each}

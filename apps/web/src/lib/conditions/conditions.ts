@@ -164,6 +164,17 @@ export function todayIso(timeZone: string): string {
 	return calendarDay(new Date(), timeZone);
 }
 
+/**
+ * The day a sample date or date-time shows as in a date picker, YYYY-MM-DD: a date-time's day in
+ * the time zone, the same day a condition compares it on; '' when the value is not a date.
+ */
+export function sampleDay(value: unknown, timeZone: string): string {
+	if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(value)) return '';
+	if (value.length === 10) return value;
+	const at = new Date(value);
+	return Number.isNaN(at.getTime()) ? value.slice(0, 10) : calendarDay(at, timeZone);
+}
+
 /** A moment on a day in a time zone, for evaluating a condition as if today were that day. */
 export function momentOn(day: string, timeZone: string): Date {
 	const noon = new Date(`${day}T12:00:00Z`);

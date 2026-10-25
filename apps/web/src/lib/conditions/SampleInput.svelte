@@ -2,13 +2,14 @@
 	// One fact's sample value for a condition test, typed by the fact's kind. Clearing it means the
 	// fact is not recorded, which is a real state on a case.
 	import type { PersonView } from '@casebook/store';
-	import type { FactOption } from './conditions';
+	import { sampleDay, type FactOption } from './conditions';
 
 	let {
 		fact,
 		choices,
 		people,
 		value,
+		timeZone,
 		onchange
 	}: {
 		fact: FactOption;
@@ -16,6 +17,8 @@
 		/** Who a people fact can hold, once loaded. */
 		people?: PersonView[];
 		value: unknown;
+		/** The zone a date-time's day is read in, as conditions compare it. */
+		timeZone: string;
 		onchange: (value: unknown) => void;
 	} = $props();
 	const held = $derived(Array.isArray(value) ? value.map(String) : []);
@@ -80,7 +83,7 @@
 			{id}
 			type="date"
 			class={box}
-			value={typeof value === 'string' ? value.slice(0, 10) : ''}
+			value={sampleDay(value, timeZone)}
 			oninput={(e) => set(e.currentTarget.value)}
 		/>
 	{:else if fact.kind === 'people' && people}

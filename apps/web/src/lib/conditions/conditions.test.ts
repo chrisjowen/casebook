@@ -9,7 +9,8 @@ import {
 	complete,
 	describe as words,
 	factInfo,
-	factTiming
+	factTiming,
+	sampleDay
 } from './conditions';
 import type { WorkItem } from '$lib/graph/derive';
 
@@ -99,5 +100,18 @@ describe('helping people pick facts', () => {
 		);
 		expect(choicesRunning(when("fact.d in ['A', 'B']"), 'fact.d', choices)).toEqual(['A', 'B']);
 		expect(choicesRunning(when('fact.d != null'), 'fact.d', choices)).toEqual([]);
+	});
+});
+
+describe('sample dates in the test panel', () => {
+	it('shows a date-time on the day it falls in the time zone, the day conditions compare', () => {
+		expect(sampleDay('2026-10-19T17:16:00Z', 'Asia/Singapore')).toBe('2026-10-20');
+		expect(sampleDay('2026-10-19T17:16:00Z', 'UTC')).toBe('2026-10-19');
+	});
+
+	it('shows a date as it is and anything else as no date', () => {
+		expect(sampleDay('2026-10-19', 'Asia/Singapore')).toBe('2026-10-19');
+		expect(sampleDay(undefined, 'UTC')).toBe('');
+		expect(sampleDay('soon', 'UTC')).toBe('');
 	});
 });
