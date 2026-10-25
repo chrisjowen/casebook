@@ -33,6 +33,13 @@ export type Change =
 			summary: string;
 	  }
 	| {
+			/** Stages run in the order they appear, so their order is part of the definition. */
+			type: 'stages-reordered';
+			before: string[];
+			after: string[];
+			summary: string;
+	  }
+	| {
 			type: 'document-changed';
 			field: DocumentField;
 			before?: unknown;
@@ -42,7 +49,8 @@ export type Change =
 
 /**
  * Lists what changed from `before` to `after`: document fields, then added and changed nodes in
- * the order of `after`, then removed nodes. Nodes are matched by id; reordering is not a change.
+ * the order of `after`, then removed nodes, then a reordering of stages. Nodes are matched by id;
+ * reordering other nodes is not a change, but stages run in their order, so moving one is.
  * Each node change covers one top-level core field, the content, or one data key.
  */
 export function diff(before: DefinitionDocument, after: DefinitionDocument): Change[] {
@@ -93,6 +101,22 @@ export function diff(before: DefinitionDocument, after: DefinitionDocument): Cha
 				summary: `Removed ${label(id)}`
 			});
 		}
+	}
+	const stagesOf = (d: DefinitionDocument, others: DefinitionDocument) => {
+		const shared = new Set(others.nodes.map((n) => n.core.id));
+		return d.nodes
+			.filter((n) => n.core.kind === 'stage' && shared.has(n.core.id))
+			.map((n) => n.core.id);
+	};
+	const [was, now] = [stagesOf(before, after), stagesOf(after, before)];
+	if (!isEqual(was, now)) {
+		const title = (id: string) => label(id).replace(/^stage /, '');
+		changes.push({
+			type: 'stages-reordered',
+			before: was,
+			after: now,
+			summary: `Reordered stages: ${now.map(title).join(', ')}`
+		});
 	}
 	return changes;
 }

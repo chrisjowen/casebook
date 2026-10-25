@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LoadedDefinition } from '$lib/definitions/types';
 import { Editor } from './editing.svelte';
 
-const page = vi.hoisted(() => ({ revision: 1 }));
+const page = vi.hoisted(() => ({
+	revision: 1,
+	issues: [] as { severity: string; message: string }[]
+}));
 
 vi.mock('$app/forms', () => ({ deserialize: (text: string) => JSON.parse(text) }));
 vi.mock('$app/navigation', () => ({
@@ -17,6 +20,8 @@ const definition = () =>
 		id: 'def-1',
 		policy: 'governed',
 		revision: page.revision,
+		undoable: page.revision > 1,
+		issues: page.revision > 1 ? page.issues : [],
 		can: { edit: allow, publish: allow }
 	}) as unknown as LoadedDefinition;
 
@@ -25,9 +30,9 @@ const posted: Record<string, string>[] = [];
 function stubServer() {
 	vi.stubGlobal(
 		'fetch',
-		vi.fn(async (_url: string, init: RequestInit) => {
+		vi.fn(async (url: string, init: RequestInit) => {
 			const fields = Object.fromEntries(init.body as FormData) as Record<string, string>;
-			posted.push(fields);
+			posted.push({ ...fields, action: url });
 			await new Promise((resolve) => setTimeout(resolve, 5));
 			const stale = Number(fields.baseRevision) !== page.revision;
 			return new Response(
@@ -45,6 +50,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 	posted.length = 0;
 	page.revision = 1;
+	page.issues = [];
 });
 
 describe('Editor', () => {
@@ -68,5 +74,47 @@ describe('Editor', () => {
 		expect(await editor.apply([])).toBe(false);
 		expect(editor.notice?.text).toBe('The draft has moved on');
 		expect(editor.busy).toBe(false);
+	});
+
+	it('says what a labelled edit did and offers Undo, which posts the undo action', async () => {
+		stubServer();
+		const editor = new Editor(definition);
+		expect(
+			await editor.apply(
+				[{ op: 'set_content', id: 'a', content: 'x' } as never],
+				'Added Build to Next'
+			)
+		).toBe(true);
+		expect(editor.notice).toMatchObject({ tone: 'info', text: 'Added Build to Next.', undo: true });
+		expect(editor.undoable).toBe(true);
+		await editor.undo();
+		expect(posted.map((p) => p.action)).toEqual(['?/edit', '?/undo']);
+		expect(editor.notice?.text).toBe('Undid the last edit');
+	});
+
+	it('warns when a saved edit leaves something that blocks publishing', async () => {
+		stubServer();
+		page.issues = [{ severity: 'error', message: 'Report and Classify wait for each other' }];
+		const editor = new Editor(definition);
+		expect(
+			await editor.apply([{ op: 'set_content', id: 'a', content: 'x' } as never], 'Linked them')
+		).toBe(true);
+		expect(editor.notice).toMatchObject({
+			tone: 'warn',
+			text: 'Linked them, but publishing is now blocked',
+			details: ['Report and Classify wait for each other'],
+			undo: true
+		});
+	});
+
+	it('shows why a gesture cannot be done without sending anything', () => {
+		stubServer();
+		const editor = new Editor(definition);
+		editor.refuse('Detect is already the first stage');
+		expect(editor.notice).toMatchObject({
+			tone: 'error',
+			text: 'Detect is already the first stage'
+		});
+		expect(posted).toEqual([]);
 	});
 });

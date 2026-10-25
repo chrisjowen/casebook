@@ -587,7 +587,7 @@ describe('operation shape', () => {
 	it.each([
 		[
 			{ op: 'rename_node', id: 'stage.detect' },
-			'op must be one of add_node, remove_node, update_core, set_content, set_data, link, unlink, move_to_stage'
+			'op must be one of add_node, remove_node, update_core, set_content, set_data, link, unlink, move_to_stage, move_stage'
 		],
 		[{ op: 'remove_node' }, 'operation is missing required field "id"'],
 		[{ op: 'remove_node', id: 'stage.detect', extra: true }, 'operation has unknown field "extra"'],
@@ -659,6 +659,63 @@ describe('applyBatch', () => {
 			{ op: 'link', from: 'step.book-appointment', edge: 'collects', to: 'fact.application-form' }
 		]);
 		expect(result.ok).toBe(true);
+	});
+});
+
+describe('move_stage', () => {
+	const stages = (document: DefinitionDocument) =>
+		document.nodes.filter((n) => n.core.kind === 'stage').map((n) => n.core.id);
+
+	it('moves a stage just before another, leaving every other node in place', () => {
+		const document = applied(
+			apply(incident, { op: 'move_stage', id: 'stage.review', before: 'stage.respond' })
+		);
+		expect(stages(document)).toEqual([
+			'stage.detect',
+			'stage.review',
+			'stage.respond',
+			'stage.resolve'
+		]);
+		const others = (d: DefinitionDocument) => d.nodes.filter((n) => n.core.kind !== 'stage');
+		expect(others(document)).toEqual(others(incident));
+	});
+
+	it('moves a stage to the end when before is null', () => {
+		const document = applied(
+			apply(incident, { op: 'move_stage', id: 'stage.detect', before: null })
+		);
+		expect(stages(document)).toEqual([
+			'stage.respond',
+			'stage.resolve',
+			'stage.review',
+			'stage.detect'
+		]);
+	});
+
+	it.each<[string, Operation, string]>([
+		[
+			'a move that changes nothing',
+			{ op: 'move_stage', id: 'stage.detect', before: 'stage.respond' },
+			'no-change'
+		],
+		[
+			'moving the last stage last',
+			{ op: 'move_stage', id: 'stage.review', before: null },
+			'no-change'
+		],
+		['an unknown stage', { op: 'move_stage', id: 'stage.nope', before: null }, 'unknown-node'],
+		[
+			'moving before a step',
+			{ op: 'move_stage', id: 'stage.review', before: 'step.write-rca' as never },
+			'invalid-operation'
+		],
+		[
+			'moving before itself',
+			{ op: 'move_stage', id: 'stage.review', before: 'stage.review' },
+			'invalid-operation'
+		]
+	])('rejects %s', (_name, operation, code) => {
+		expect(apply(incident, operation)).toMatchObject({ ok: false, code });
 	});
 });
 

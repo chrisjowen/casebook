@@ -236,6 +236,26 @@ describe.skipIf(!url)('definition editing (Postgres)', () => {
 		);
 	});
 
+	it('saves a stage reorder as a draft change, which undo takes back', async () => {
+		const start = await definition(users.wren, 'incident-management');
+		const moved = await editDefinition(db, users.wren, {
+			definitionId: start.id,
+			ops: [{ op: 'move_stage', id: 'stage.review', before: 'stage.respond' }],
+			baseRevision: start.draft!.number
+		});
+		expect(moved).toMatchObject({ ok: true, revision: start.draft!.number + 1 });
+		const after = (await loadDefinition(db, start.id))!;
+		expect(after.changes.map((c) => c.summary)).toEqual([
+			'Reordered stages: Detect, Review, Respond, Resolve'
+		]);
+		const undone = await undoDefinitionEdit(db, users.wren, {
+			definitionId: start.id,
+			baseRevision: after.draft!.number
+		});
+		expect(undone.ok).toBe(true);
+		expect((await loadDefinition(db, start.id))!.changes).toEqual([]);
+	});
+
 	it('publishes a governed draft through the publish checks', async () => {
 		const start = await definition(users.wren, 'incident-management');
 		expectRefusal(

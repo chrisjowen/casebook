@@ -25,7 +25,8 @@ const examples: Record<OperationName, Operation> = {
 		by: 'role.communications-lead'
 	},
 	unlink: { op: 'unlink', from: 'step.write-rca', edge: 'approval', to: 'approval.rca-sign-off' },
-	move_to_stage: { op: 'move_to_stage', id: 'step.write-rca', stage: 'stage.resolve' }
+	move_to_stage: { op: 'move_to_stage', id: 'step.write-rca', stage: 'stage.resolve' },
+	move_stage: { op: 'move_stage', id: 'stage.review', before: 'stage.respond' }
 };
 
 describe('operation schemas', () => {

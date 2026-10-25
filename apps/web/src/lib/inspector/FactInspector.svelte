@@ -3,7 +3,7 @@
 	// consumers. With `edit`, its name, simple kinds, options and guidance change the draft.
 	import type { FactNode, Operation } from '@casebook/model';
 	import { Trash2 } from '@lucide/svelte';
-	import { remove, rename } from '$lib/editor/ops';
+	import { removeFact, rename } from '$lib/editor/ops';
 	import {
 		collectsOf,
 		describeEvidence,
@@ -152,14 +152,20 @@
 			</p>{/each}
 	</Group>
 	{#if edit}
+		{@const removal = removeFact(ix, id)}
 		<Group title="Remove">
 			<button
-				class="flex cursor-pointer items-center gap-1.5 self-start rounded-lg border px-2.5 py-1.5 text-[12px] text-destructive hover:bg-destructive/5"
-				onclick={async () => (await edit(remove(id).ops)) && onremoved?.()}
+				class="flex items-center gap-1.5 self-start rounded-lg border px-2.5 py-1.5 text-[12px] text-destructive enabled:cursor-pointer enabled:hover:bg-destructive/5 disabled:cursor-not-allowed disabled:opacity-45"
+				disabled={typeof removal === 'string'}
+				title={typeof removal === 'string' ? removal : undefined}
+				onclick={async () =>
+					typeof removal !== 'string' && (await edit(removal.ops)) && onremoved?.()}
 				><Trash2 class="size-3.5" />Delete this fact type</button
 			>
 			<p class="text-[11px] text-muted-foreground">
-				Only once no step collects or needs it any more.
+				{typeof removal === 'string'
+					? `${removal}.`
+					: 'Takes it off every step that records or needs it. Undo brings it back.'}
 			</p>
 		</Group>
 	{/if}

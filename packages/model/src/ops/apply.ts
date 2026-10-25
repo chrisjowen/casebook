@@ -125,7 +125,42 @@ function change(document: DefinitionDocument, op: Operation): Edit {
 			return unlink(document, op);
 		case 'move_to_stage':
 			return link(document, { op: 'link', from: op.id, edge: 'stage', to: op.stage });
+		case 'move_stage':
+			return moveStage(document, op.id, op.before);
 	}
+}
+
+/** Moves a stage just before another stage, or after the last one. Other nodes keep their places. */
+function moveStage(document: DefinitionDocument, id: string, before: string | null): Edit {
+	const isStage = (n: Node) => n.core.kind === 'stage';
+	const stage = findNode(document, id);
+	if (stage === undefined) return unknownNode(id);
+	if (!isStage(stage))
+		return reject('wrong-kind', `${id} is not a stage; only stages can be reordered`);
+	if (before !== null) {
+		const target = findNode(document, before);
+		if (target === undefined) return unknownNode(before);
+		if (!isStage(target)) {
+			return reject('wrong-kind', `Cannot move ${id} before ${before}: it is not a stage`);
+		}
+		if (before === id) return reject('invalid-operation', `${id} cannot move before itself`);
+	}
+	const order: string[] = document.nodes.filter(isStage).map((n) => n.core.id);
+	const without = order.filter((s) => s !== id);
+	const next =
+		before === null ? [...without, id] : without.toSpliced(without.indexOf(before), 0, id);
+	if (next.every((s, i) => s === order[i])) {
+		return reject(
+			'no-change',
+			before === null ? `${id} is already the last stage` : `${id} is already just before ${before}`
+		);
+	}
+	// stages keep the slots stages had, filled in the new order
+	const queue = next.map((s) => findNode(document, s)!);
+	return {
+		ok: true,
+		document: { ...document, nodes: document.nodes.map((n) => (isStage(n) ? queue.shift()! : n)) }
+	};
 }
 
 function addNode(document: DefinitionDocument, node: Node): Edit {

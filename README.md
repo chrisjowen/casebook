@@ -49,15 +49,25 @@ Stop Postgres with `pnpm db:down`; its data stays in the `casebook-pgdata` volum
 ## Definition editor
 
 `pnpm dev` serves the editor.
-Each process definition shows as step cards, role lanes or a fact flow (Svelte Flow with an ELK layout), alongside a per-workspace process map of shared fact types.
-Inspectors cover steps, decisions, fact types and processes, including the publish checks from `packages/model`.
+A process is built on the **board** (ADR 0021): its stages are columns, laid out from the definition, with step and decision cards in them.
+Role lanes and a fact flow (Svelte Flow with an ELK layout) are read-only lenses on it, alongside a per-workspace process map of shared fact types.
+Inspectors cover steps, decisions, stages, fact types and processes, including the publish checks from `packages/model`.
+
+On the board, everything is added and linked in place:
+
+- a stage's "+" or "Add step", a card's "+", right-click, `N` and `D`, or the palette (`/`) add a named step or decision;
+- "Add stage" after the last column adds a stage, and a stage's menu moves it left or right;
+- dragging a card's dot onto another step links them: the later step now needs what the earlier one records.
+  Dragging a fact's dot or a decision's choice works the same way, and dropping in empty space adds a new step there;
+- dragging a card onto another column moves it to that stage, and double-clicking a name renames it;
+- a step's **Records** and **Needs first** add, rename, re-kind and remove its facts in place.
 
 Definitions are read from and saved to Postgres through `packages/store` (`apps/web/src/lib/server/definitions.ts` and the form actions in `apps/web/src/routes/+page.server.ts`).
 Each workspace is a namespace the signed-in user can read.
-Node menus and inspector fields change the draft through the model's node operations, and every edit is saved as a draft revision.
-The process inspector lists what the draft changes since the latest published version, with Publish and Undo.
+Every gesture changes the draft through the model's node operations and is saved as one draft revision, with a notice that offers Undo (`⌘Z` too).
+The process details list what the draft changes since the latest published version, with Publish and Undo.
 A governed process publishes when someone presses Publish and the publish checks pass; a living process publishes every edit straight away.
-"New process" (the + next to Processes) starts a process in the workspace.
+"New process" (the + after the process tabs) starts a process in the workspace.
 
 Sign-in is a dev-only stand-in for OIDC: pick one of the seeded users at `/signin`, with no password.
 It is on only in `pnpm dev`, never in a production build.
