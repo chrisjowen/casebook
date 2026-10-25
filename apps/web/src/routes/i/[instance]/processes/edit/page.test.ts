@@ -72,7 +72,8 @@ const user = { id: 'u', displayName: 'Olive Owner', roles: ['account-owner of ac
 const dataFor = async (query: string, can: Permission = allow) => {
 	vi.mocked(loadWorkspaces).mockResolvedValue(workspaces(can));
 	const data = await load({
-		url: new URL(`http://localhost/?${query}`),
+		url: new URL(`http://localhost/i/acme/processes/edit?${query}`),
+		params: { instance: 'acme' },
 		locals: { user }
 	} as never);
 	if (!data) throw new Error('load returned nothing');

@@ -15,6 +15,13 @@
       "when": 1792914523137,
       "tag": "0001_draft_revision_ops",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792931111218,
+      "tag": "0002_case_runtime",
+      "breakpoints": true
     }
   ]
 }

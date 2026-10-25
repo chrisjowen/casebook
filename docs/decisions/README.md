@@ -25,3 +25,4 @@ Architecture decisions for casebook, one file per decision.
 | 0019 | [Node operations: checks, history and undo](0019-node-operations.md) | Accepted |
 | 0020 | [Editing definitions through the store, with a dev sign-in](0020-editing-through-the-store.md) | Accepted (amends 0019) |
 | 0021 | [Building a process on the board](0021-building-on-the-board.md) | Accepted (amends 0013, 0019) |
+| 0022 | [Running cases](0022-running-cases.md) | Accepted (amends 0016, 0017) |

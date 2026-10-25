@@ -9,12 +9,13 @@ import {
 	appendDraftRevision,
 	bindRole,
 	createAccount,
+	attachProcess,
 	createCase,
 	createNamespace,
 	createPrincipal,
 	createProcessDefinition,
 	grantDelegation,
-	moveCaseVersion,
+	moveAttachmentVersion,
 	publishVersion,
 	retireVersion,
 	revokeDelegation,
@@ -116,16 +117,13 @@ describe.skipIf(!url)('permission resolution (Postgres)', () => {
 		const opsDef = await definition(ns.ops, owner.id, 'billing');
 		const v1 = await publish(sreDef.id, owner.id);
 		const v2 = await publish(sreDef.id, owner.id);
-		const incident = await createCase(db, {
-			namespaceId: ns.sre,
-			definitionVersionId: v1.id,
-			title: 'Outage'
+		const incident = await createCase(db, { namespaceId: ns.sre, title: 'Outage' });
+		const incidentRun = await attachProcess(db, {
+			caseId: incident.id,
+			definitionVersionId: v1.id
 		});
-		const other = await createCase(db, {
-			namespaceId: ns.sre,
-			definitionVersionId: v1.id,
-			title: 'Latency'
-		});
+		const other = await createCase(db, { namespaceId: ns.sre, title: 'Latency' });
+		await attachProcess(db, { caseId: other.id, definitionVersionId: v1.id });
 
 		/** A new user bound to `role` at account scope, or in a namespace or case when given. */
 		async function holder(role: string, scope: { namespaceId?: string; caseId?: string } = {}) {
@@ -139,7 +137,7 @@ describe.skipIf(!url)('permission resolution (Postgres)', () => {
 			});
 			return user;
 		}
-		return { owner, accountId, ns, sreDef, opsDef, v1, v2, incident, other, holder };
+		return { owner, accountId, ns, sreDef, opsDef, v1, v2, incident, incidentRun, other, holder };
 	}
 
 	function definition(
@@ -822,9 +820,9 @@ describe.skipIf(!url)('permission resolution (Postgres)', () => {
 			const commander = await w.holder('commander', { caseId: w.incident.id });
 			const writer = await w.holder('write', { namespaceId: w.ns.root });
 			const move = (moverId: string) =>
-				moveCaseVersion(
+				moveAttachmentVersion(
 					db,
-					{ caseId: w.incident.id, toVersionId: w.v2.id, movedById: moverId },
+					{ attachmentId: w.incidentRun.id, toVersionId: w.v2.id, movedById: moverId },
 					{ actor: { id: moverId } }
 				);
 			await expectDenied(move(commander.id), /cannot move the bound version of case "Outage"/);

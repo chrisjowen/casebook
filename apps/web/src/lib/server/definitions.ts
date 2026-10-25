@@ -6,9 +6,14 @@ import { listDefinitions, type Actor, type DefinitionForActor } from '@casebook/
 import type { LoadedDefinition, Workspace } from '$lib/definitions/types';
 import { getDb } from './db';
 
-/** Every namespace the actor can read, with its definitions, ordered by path. */
-export async function loadWorkspaces(actor: Actor): Promise<Workspace[]> {
-	const namespaces = await listDefinitions(getDb(), actor);
+/**
+ * Every namespace the actor can read, with its definitions, ordered by path; only those of one
+ * account (an instance) when its slug is given.
+ */
+export async function loadWorkspaces(actor: Actor, accountSlug?: string): Promise<Workspace[]> {
+	const namespaces = (await listDefinitions(getDb(), actor)).filter(
+		(n) => accountSlug === undefined || n.namespace.accountSlug === accountSlug
+	);
 	return namespaces.map(({ namespace, can, definitions }) => ({
 		id: namespace.id,
 		namespace: namespace.path,

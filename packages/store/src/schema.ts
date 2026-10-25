@@ -1,11 +1,14 @@
 // Drizzle table definitions for definition storage (ADR 0002), namespaces (ADR 0007),
-// principals and role bindings (ADR 0008) and agent delegation (ADR 0009).
+// principals and role bindings (ADR 0008), agent delegation (ADR 0009) and the case runtime:
+// cases, attached processes, their event log, facts and files (ADR 0001, ADR 0010).
 // The database holds declarative constraints only: keys, foreign keys, NOT NULL and checks on
 // kind and status columns. Every other rule (namespace paths, version immutability, case
-// pinning, formats) lives in `repository.ts`, the only write path for these tables.
+// pinning, formats) lives in `repository.ts` and, for case events, facts, files and assigned case
+// roles, in `runtime/actions.ts`: the only write paths for these tables.
 import { sql } from 'drizzle-orm';
 import {
 	type AnyPgColumn,
+	bigint,
 	boolean,
 	check,
 	foreignKey,
@@ -264,9 +267,8 @@ export const draftRevisions = pgTable(
 );
 
 /**
- * Stub of the case runtime table: only what case-scoped role bindings and delegations need.
- * The rest of the case runtime (facts, evidence, events) is deferred. A case binds a published
- * definition version; the repository refuses binding a retired one.
+ * A case: the shared subject several processes attach to, sharing one fact store (ADR 0001).
+ * The case, not the process, is the unit of storage and access, so it lives in one namespace.
  */
 export const cases = pgTable(
 	'cases',
@@ -275,23 +277,54 @@ export const cases = pgTable(
 		namespaceId: uuid('namespace_id')
 			.notNull()
 			.references(() => namespaces.id),
-		/** The currently bound version. */
-		definitionVersionId: uuid('definition_version_id')
-			.notNull()
-			.references(() => definitionVersions.id),
-		/** Pinned cases move only by an explicit, recorded move; following cases track new versions. */
-		binding: caseBinding('binding').notNull(),
 		title: text('title').notNull(),
+		/** What the case is about, in a few words. */
+		subject: text('subject'),
+		/** Who opened it; unset for cases opened before the runtime recorded it. */
+		openedById: uuid('opened_by_id').references(() => principals.id),
 		createdAt: createdAt(),
 		updatedAt: updatedAt()
 	},
 	(t) => [
 		unique('cases_id_namespace_key').on(t.id, t.namespaceId),
-		index('cases_definition_version_id_idx').on(t.definitionVersionId)
+		index('cases_namespace_id_idx').on(t.namespaceId)
 	]
 );
 
-/** Audit of explicit moves of a pinned case to another version (ADR 0016). */
+/**
+ * A process attached to a case: one run of a definition on it, bound to a published version
+ * (ADR 0016). The repository refuses binding a retired version, and a version of a definition
+ * whose namespace does not contain the case's.
+ */
+export const caseAttachments = pgTable(
+	'case_attachments',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		caseId: uuid('case_id')
+			.notNull()
+			.references(() => cases.id, { onDelete: 'cascade' }),
+		/** The currently bound version. */
+		definitionVersionId: uuid('definition_version_id')
+			.notNull()
+			.references(() => definitionVersions.id),
+		/** Pinned attachments move only by an explicit, recorded move; following ones track new versions. */
+		binding: caseBinding('binding').notNull(),
+		/** Tells two runs of the same process on one case apart, such as "Delivery bill". */
+		label: text('label'),
+		/** Who attached it; unset for attachments made before the runtime recorded it. */
+		startedById: uuid('started_by_id').references(() => principals.id),
+		/** When its last stage was finished; set and cleared by the runtime as work is recorded. */
+		completedAt: timestamp('completed_at', { withTimezone: true }),
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+	},
+	(t) => [
+		index('case_attachments_case_id_idx').on(t.caseId),
+		index('case_attachments_definition_version_id_idx').on(t.definitionVersionId)
+	]
+);
+
+/** Audit of explicit moves of a pinned attachment to another version (ADR 0016). */
 export const caseVersionMoves = pgTable(
 	'case_version_moves',
 	{
@@ -299,6 +332,9 @@ export const caseVersionMoves = pgTable(
 		caseId: uuid('case_id')
 			.notNull()
 			.references(() => cases.id, { onDelete: 'cascade' }),
+		attachmentId: uuid('attachment_id')
+			.notNull()
+			.references(() => caseAttachments.id, { onDelete: 'cascade' }),
 		fromVersionId: uuid('from_version_id')
 			.notNull()
 			.references(() => definitionVersions.id),
@@ -311,6 +347,111 @@ export const caseVersionMoves = pgTable(
 		movedAt: timestamp('moved_at', { withTimezone: true }).notNull().defaultNow()
 	},
 	(t) => [index('case_version_moves_case_id_idx').on(t.caseId)]
+);
+
+/**
+ * The case's event log, named with the reserved lifecycle events (ADR 0010). Every event records
+ * who acted and, for an agent or service, who it acted for (ADR 0009), checked through composite
+ * foreign keys to `(id, kind)` as draft revisions are. `seq` orders events within a case.
+ */
+export const caseEvents = pgTable(
+	'case_events',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		seq: bigint('seq', { mode: 'number' }).generatedAlwaysAsIdentity(),
+		caseId: uuid('case_id')
+			.notNull()
+			.references(() => cases.id, { onDelete: 'cascade' }),
+		attachmentId: uuid('attachment_id').references(() => caseAttachments.id, {
+			onDelete: 'cascade'
+		}),
+		/** The work item the event is about, such as `step.form-working-group`. */
+		item: text('item'),
+		type: text('type').notNull(),
+		actorId: uuid('actor_id').notNull(),
+		actorKind: principalKind('actor_kind').notNull(),
+		onBehalfOfId: uuid('on_behalf_of_id'),
+		onBehalfOfKind: principalKind('on_behalf_of_kind'),
+		/** Event details, such as a hold note, a skip reason or the fact recorded. */
+		data: jsonb('data').notNull().default({}),
+		at: timestamp('at', { withTimezone: true }).notNull().defaultNow()
+	},
+	(t) => [
+		index('case_events_case_seq_idx').on(t.caseId, t.seq),
+		foreignKey({
+			name: 'case_events_actor_fk',
+			columns: [t.actorId, t.actorKind],
+			foreignColumns: [principals.id, principals.kind]
+		}),
+		foreignKey({
+			name: 'case_events_on_behalf_of_fk',
+			columns: [t.onBehalfOfId, t.onBehalfOfKind],
+			foreignColumns: [principals.id, principals.kind]
+		}),
+		check(
+			'case_events_on_behalf_of_kind',
+			sql`(${t.onBehalfOfId} IS NULL) = (${t.onBehalfOfKind} IS NULL)
+				AND ${t.onBehalfOfKind} IS DISTINCT FROM 'agent'`
+		),
+		check(
+			'case_events_actor_on_behalf_of',
+			sql`(${t.actorKind} = 'user' AND ${t.onBehalfOfId} IS NULL)
+				OR (${t.actorKind} = 'agent' AND ${t.onBehalfOfId} IS NOT NULL)
+				OR ${t.actorKind} = 'service'`
+		)
+	]
+);
+
+/**
+ * Facts recorded on a case, shared by every process attached to it (ADR 0001). Rows are never
+ * changed: recording a fact again adds a row, and the newest row is its value. Who recorded it
+ * and when is its `fact.recorded` event.
+ */
+export const caseFacts = pgTable(
+	'case_facts',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		caseId: uuid('case_id')
+			.notNull()
+			.references(() => cases.id, { onDelete: 'cascade' }),
+		/** The fact node id, such as `fact.severity`. */
+		fact: text('fact').notNull(),
+		value: jsonb('value').notNull(),
+		/** The `fact.recorded` event, which says who, when, and from which work item. */
+		eventId: uuid('event_id')
+			.notNull()
+			.references(() => caseEvents.id, { onDelete: 'cascade' }),
+		createdAt: createdAt()
+	},
+	(t) => [index('case_facts_case_fact_idx').on(t.caseId, t.fact)]
+);
+
+/**
+ * Files attached to a case as evidence: a file that is a fact's value, one backing a fact, or one
+ * a step asks for. The bytes live in a file store (`files.ts`) under `storage_key`.
+ */
+export const caseFiles = pgTable(
+	'case_files',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		caseId: uuid('case_id')
+			.notNull()
+			.references(() => cases.id, { onDelete: 'cascade' }),
+		/** The fact the file is or backs, when it is tied to one. */
+		fact: text('fact'),
+		/** The evidence requirement it meets, in the definition's words. */
+		evidence: text('evidence'),
+		name: text('name').notNull(),
+		contentType: text('content_type').notNull(),
+		size: integer('size').notNull(),
+		storageKey: text('storage_key').notNull(),
+		/** The `evidence.attached` event, which says who, when, and from which work item. */
+		eventId: uuid('event_id')
+			.notNull()
+			.references(() => caseEvents.id, { onDelete: 'cascade' }),
+		createdAt: createdAt()
+	},
+	(t) => [index('case_files_case_id_idx').on(t.caseId)]
 );
 
 /**
