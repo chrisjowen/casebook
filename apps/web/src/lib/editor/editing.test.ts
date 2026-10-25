@@ -9,7 +9,7 @@ const page = vi.hoisted(() => ({
 
 vi.mock('$app/forms', () => ({ deserialize: (text: string) => JSON.parse(text) }));
 vi.mock('$app/navigation', () => ({
-	invalidateAll: vi.fn(async () => {
+	invalidate: vi.fn(async () => {
 		page.revision++;
 	})
 }));

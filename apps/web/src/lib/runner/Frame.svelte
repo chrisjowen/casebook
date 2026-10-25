@@ -135,12 +135,20 @@
 					: undefined
 				: rest.split('/')[2]
 	);
-	const grouped = $derived(
-		[...new Set(shell?.processes.map((p) => p.namespace))].map((namespace) => ({
+	const grouped = $derived.by(() => {
+		const groups = [...new Set(shell?.processes.map((p) => p.namespace))].map((namespace) => ({
+			namespace,
 			label: shell?.spaces.find((s) => s.namespace === namespace)?.label ?? namespace,
 			processes: shell?.processes.filter((p) => p.namespace === namespace) ?? []
-		}))
-	);
+		}));
+		return groups.map((g) => ({
+			...g,
+			label:
+				groups.filter((o) => o.label === g.label).length > 1
+					? `${g.label} · ${g.namespace}`
+					: g.label
+		}));
+	});
 	// Where New process and Import start: the open process's workspace, else the busiest one.
 	const preferred = $derived.by(() => {
 		const writable = shell?.spaces.filter((s) => s.canCreate.allowed) ?? [];
@@ -368,7 +376,7 @@
 					{/each}
 				</ul>
 
-				{#each grouped as group (group.label)}
+				{#each grouped as group (group.namespace)}
 					<div class="mt-5">
 						<p
 							class="flex items-center px-2.5 pb-1 text-[11.5px] font-medium text-muted-foreground"

@@ -15,7 +15,8 @@ import type { ViewId } from '$lib/graph/layout';
 
 const VIEWS: ViewId[] = ['board', 'lanes', 'facts'];
 
-export const load: PageServerLoad = async ({ url, locals, params }) => {
+export const load: PageServerLoad = async ({ url, locals, params, depends }) => {
+	depends('casebook:board');
 	const workspaces = await loadWorkspaces(actorOf(locals), params.instance);
 	const workspace =
 		workspaces.find((w) => w.namespace === url.searchParams.get('ws')) ??

@@ -84,7 +84,8 @@ const dataFor = async (query: string, can: Permission = allow) => {
 	const data = await load({
 		url: new URL(`http://localhost/i/acme/processes/edit?${query}`),
 		params: { instance: 'acme' },
-		locals: { user }
+		locals: { user },
+		depends: () => {}
 	} as never);
 	if (!data) throw new Error('load returned nothing');
 	return data;
@@ -164,7 +165,6 @@ describe('editor route', () => {
 		}
 		expect(html).toContain('Add stage');
 		expect(html).toContain('aria-label="Actions for Report the incident"');
-		expect(html).not.toContain('aria-label="Outline"');
 		expect(html).not.toContain('aria-label="Outline"');
 		expect(html).not.toContain('aria-label="Editor"');
 	});

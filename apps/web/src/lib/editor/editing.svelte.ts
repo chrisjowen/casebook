@@ -5,7 +5,7 @@
  */
 import { getContext, setContext } from 'svelte';
 import { deserialize } from '$app/forms';
-import { invalidateAll } from '$app/navigation';
+import { invalidate } from '$app/navigation';
 import type { Operation } from '@casebook/model';
 import type { LoadedDefinition } from '$lib/definitions/types';
 
@@ -163,7 +163,7 @@ export class Editor {
 			const result = deserialize(await response.text());
 			if (result.type === 'success') {
 				this.notice = undefined;
-				await invalidateAll();
+				await invalidate('casebook:board');
 				return result.data ?? {};
 			}
 			if (result.type === 'failure') {
