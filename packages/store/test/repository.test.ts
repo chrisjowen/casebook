@@ -953,7 +953,11 @@ describe.skipIf(!url)('store repository (Postgres)', () => {
 				'publish-body-mismatch'
 			);
 
-			const explicit = await publishVersion(db, { ...base, ...fields(), body: { title: 'direct' } });
+			const explicit = await publishVersion(db, {
+				...base,
+				...fields(),
+				body: { title: 'direct' }
+			});
 			expect(explicit).toMatchObject({ body: { title: 'direct' }, sourceRevisionId: null });
 			await expectRule(publishVersion(db, { ...base, ...fields() }), 'publish-body-missing');
 		});
