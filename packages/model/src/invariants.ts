@@ -19,7 +19,7 @@ export const INVARIANT_CODES = [
 	'unknown-guard-fact',
 	'uncollected-fact',
 	'dependency-cycle',
-	'uncollected-guard-fact',
+	'uncollected-read-fact',
 	'unused-fact',
 	'empty-stage'
 ] as const;
@@ -143,7 +143,7 @@ export function checkInvariants(document: DefinitionDocument): InvariantIssue[] 
 		if (producers.has(fact)) continue;
 		const factIndex = declared.get(fact) ?? 0;
 		const requiredBy = unique(refs.filter((r) => r.required).map((r) => idOf(r.node)));
-		const readBy = unique(refs.filter((r) => r.inGuard).map((r) => idOf(r.node)));
+		const readBy = unique(refs.filter((r) => !r.required).map((r) => idOf(r.node)));
 		if (requiredBy.length > 0) {
 			issues.push({
 				code: 'uncollected-fact',
@@ -155,11 +155,11 @@ export function checkInvariants(document: DefinitionDocument): InvariantIssue[] 
 			});
 		} else if (readBy.length > 0) {
 			issues.push({
-				code: 'uncollected-guard-fact',
+				code: 'uncollected-read-fact',
 				severity: 'warning',
 				path: at(factIndex, []),
 				nodeId: fact,
-				message: `${fact} is read by a guard on ${listIds(readBy)}, but no step or decision collects it`,
+				message: `${fact} is read by ${listIds(readBy)}, but no step or decision collects it`,
 				related: readBy
 			});
 		}
@@ -189,13 +189,34 @@ export function checkInvariants(document: DefinitionDocument): InvariantIssue[] 
 		}
 	});
 
-	// A work node depends on every producer of each fact it requires.
-	const edges = new Map<number, Edge[]>();
+	// A required fact is available once any producer other than the requiring node can start.
+	const requiredFacts = new Map<number, string[]>();
 	for (const ref of references) {
 		if (!ref.required || !WORK_KINDS.has(nodes[ref.node]?.core.kind ?? 'process')) continue;
-		for (const producer of producers.get(ref.target) ?? []) {
-			const edge = { from: ref.node, to: producer, fact: ref.target };
-			edges.set(ref.node, [...(edges.get(ref.node) ?? []), edge]);
+		requiredFacts.set(ref.node, [...(requiredFacts.get(ref.node) ?? []), ref.target]);
+	}
+	const startable = new Set(nodes.flatMap((_node, i) => (requiredFacts.has(i) ? [] : [i])));
+	const available = (node: number, fact: string) =>
+		(producers.get(fact) ?? []).some((p) => p !== node && startable.has(p));
+	for (let changed = true; changed;) {
+		changed = false;
+		for (const [node, facts] of requiredFacts) {
+			if (startable.has(node) || !facts.every((fact) => available(node, fact))) continue;
+			startable.add(node);
+			changed = true;
+		}
+	}
+
+	// A node that can never start depends on every producer of each fact it is still missing.
+	const edges = new Map<number, Edge[]>();
+	for (const [node, facts] of requiredFacts) {
+		if (startable.has(node)) continue;
+		for (const fact of facts) {
+			if (available(node, fact)) continue;
+			for (const producer of producers.get(fact) ?? []) {
+				const edge = { from: node, to: producer, fact };
+				edges.set(node, [...(edges.get(node) ?? []), edge]);
+			}
 		}
 	}
 	for (const component of stronglyConnected(nodes.length, edges)) {

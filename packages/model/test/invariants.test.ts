@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+	alternativeCollector,
 	birthRegistrationAbroad,
 	dependencyCycle,
 	duplicateId,
 	incidentManagement,
 	missingProcess,
 	multipleProcesses,
+	recollectedFact,
 	selfDependency,
 	uncollectedFact,
+	uncollectedReads,
 	undeclaredRole,
 	unknownGuardFact,
 	unresolvedReferences,
@@ -54,6 +57,14 @@ describe('checkInvariants', () => {
 		]);
 	});
 
+	it.each([
+		['a step re-collects a fact another step collects', recollectedFact],
+		['a required fact has a collector outside the loop', alternativeCollector]
+	])('finds no cycle when %s', (_name, document) => {
+		expect(checkInvariants(document)).toEqual([]);
+		expect(checkPublish(document).ok).toBe(true);
+	});
+
 	it('finds a required fact that nothing collects', () => {
 		expect(checkInvariants(uncollectedFact)).toEqual([
 			{
@@ -66,6 +77,27 @@ describe('checkInvariants', () => {
 				related: ['step.record-payment']
 			}
 		]);
+	});
+
+	it('warns about facts read by assigns, evidence and lookups that nothing collects', () => {
+		expect(checkInvariants(uncollectedReads).map((i) => [i.code, i.severity, i.message])).toEqual([
+			[
+				'uncollected-read-fact',
+				'warning',
+				'fact.region is read by fact.office, but no step or decision collects it'
+			],
+			[
+				'uncollected-read-fact',
+				'warning',
+				'fact.receipt is read by step.form-group, but no step or decision collects it'
+			],
+			[
+				'uncollected-read-fact',
+				'warning',
+				'fact.responders is read by step.form-group, but no step or decision collects it'
+			]
+		]);
+		expect(checkPublish(uncollectedReads).ok).toBe(true);
 	});
 
 	it('finds every undeclared role: step, collector, lookup and guard', () => {
@@ -144,7 +176,7 @@ describe('checkInvariants', () => {
 
 	it('warns about unused facts, empty stages and guards on uncollected facts', () => {
 		expect(codesOf(unusedNodes)).toEqual([
-			['uncollected-guard-fact', 'warning', 'fact.priority'],
+			['uncollected-read-fact', 'warning', 'fact.priority'],
 			['empty-stage', 'warning', 'stage.later'],
 			['unused-fact', 'warning', 'fact.orphan']
 		]);
