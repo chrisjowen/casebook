@@ -5,7 +5,7 @@
 	import type { NodeProps } from '@xyflow/svelte';
 	import { Plus, EllipsisVertical } from '@lucide/svelte';
 	import type { BoardStageData } from '../board';
-	import { getBoard } from '../board-context.svelte';
+	import { getBoard, releaseFocus } from '../board-context.svelte';
 
 	let { id, data }: NodeProps & { data: BoardStageData } = $props();
 	const { ui, actions } = getBoard();
@@ -65,6 +65,7 @@
 			<button
 				class="nodrag min-w-0 cursor-pointer truncate font-medium text-foreground/85"
 				title={editable ? 'Double-click to rename' : undefined}
+				onmousedown={releaseFocus}
 				onclick={() => actions.select(id)}
 				ondblclick={(e) => {
 					if (!editable) return;

@@ -47,6 +47,7 @@
 	import { buildBoard, columnAt, GHOST_ID, type BoardCardData, type BoardEdgeData } from './board';
 	import {
 		BoardUI,
+		releaseFocus,
 		setBoard,
 		type AddContext,
 		type Command,
@@ -680,21 +681,25 @@
 					<button
 						class="flex h-9 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-[12.5px] hover:bg-muted"
 						title="Add a step (N)"
+						onmousedown={releaseFocus}
 						onclick={() => addNext('step')}><SquareStack class="size-4" />Step</button
 					>
 					<button
 						class="flex h-9 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-[12.5px] hover:bg-muted"
 						title="Add a decision (D)"
+						onmousedown={releaseFocus}
 						onclick={() => addNext('decision')}><Signpost class="size-4" />Decision</button
 					>
 					<button
 						class="flex h-9 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-[12.5px] hover:bg-muted"
 						title="Add a stage"
+						onmousedown={releaseFocus}
 						onclick={() => (ui.addingStage = true)}><Columns3 class="size-4" />Stage</button
 					>
 					<span class="mx-1 h-5 w-px bg-border"></span>
 					<button
 						class="flex h-9 cursor-pointer items-center gap-2 rounded-xl px-3 text-[12.5px] text-muted-foreground hover:bg-muted hover:text-foreground"
+						onmousedown={releaseFocus}
 						onclick={() => (ui.palette = true)}
 						><Search class="size-4" />Add or find<kbd
 							class="rounded-md border bg-background px-1.5 text-[10.5px]">/</kbd

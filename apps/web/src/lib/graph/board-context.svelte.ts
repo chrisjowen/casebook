@@ -106,3 +106,12 @@ export function setBoard(ui: BoardUI, actions: BoardActions) {
 export function getBoard(): { ui: BoardUI; actions: BoardActions } {
 	return getContext(KEY);
 }
+
+/**
+ * For a board button pressed with the pointer: it does not take focus, and whatever had focus lets
+ * go, so the board's keys apply to what the button selects or adds.
+ */
+export function releaseFocus(e: MouseEvent) {
+	e.preventDefault();
+	if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+}
