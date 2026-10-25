@@ -98,6 +98,7 @@
 	let formEl = $state<HTMLFormElement>();
 	let dirty = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
+	let saving: Promise<void> = Promise.resolve();
 	let savedAt = $state<string>();
 	let saveFailed = $state<string>();
 	let savedNote = $state('');
@@ -107,8 +108,12 @@
 		for (const key of [...body.keys()]) if (!key.startsWith('value:')) body.delete(key);
 		return body;
 	}
-	async function saveNow() {
+	function saveNow() {
 		clearTimeout(timer);
+		saving = saving.then(sendDraft);
+		return saving;
+	}
+	async function sendDraft() {
 		if (!dirty || !formEl || !canSave) return;
 		dirty = false;
 		let reason = 'Something went wrong.';
@@ -464,9 +469,10 @@
 			action="?/complete"
 			enctype="multipart/form-data"
 			bind:this={formEl}
-			use:enhance={({ action }) => {
+			use:enhance={async ({ action }) => {
 				if (!action.search.includes('save')) {
 					clearTimeout(timer);
+					await saving;
 					dirty = false;
 				}
 				return async ({ result, update }) => {
