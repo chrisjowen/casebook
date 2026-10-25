@@ -105,7 +105,7 @@ The seed lays out a handful of cases in different stages, so each demo user's wo
 
 ## Definition editor
 
-A process's **Edit** tab opens the editor, at `/i/<instance>/processes/edit`; older `/?ws=…&p=…` links still open it. **New → New process** creates one and opens it straight on the board.
+A process's **Edit** tab opens the editor, at `/i/<instance>/processes/edit`; older `/?ws=…&p=…` links still open it.
 A process is built on the **board** (ADR 0021): its stages are columns, laid out from the definition, with step and decision cards in them.
 Role lanes and a fact flow (Svelte Flow with an ELK layout) are read-only lenses on it, alongside a per-workspace process map of shared fact types.
 Inspectors cover steps, decisions, stages, fact types and processes, including the publish checks from `packages/model`.
