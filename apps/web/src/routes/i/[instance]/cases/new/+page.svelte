@@ -56,9 +56,9 @@
 	instances={data.instances}
 	crumbs={fixed
 		? [{ label: fixed.title, href: links.case(slug, fixed.id) }, { label: 'Add a process' }]
-		: [{ label: 'Cases', href: links.cases(slug) }, { label: 'New case' }]}
+		: [{ label: 'New case' }]}
 >
-	<div class="mx-auto max-w-2xl px-4 py-8">
+	<div class="max-w-3xl px-4 py-8 lg:px-6">
 		<header class="mb-6 px-1">
 			<h1 class="text-[22px] font-semibold tracking-tight">
 				{fixed ? `Add a process to ${fixed.title}` : 'Start a case'}

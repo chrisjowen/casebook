@@ -35,16 +35,12 @@
 			])
 		).values()
 	]);
-	const tabs = $derived([
-		{ label: 'My work', href: links.myWork(slug), active: true, count: total },
-		{ label: 'Cases', href: links.cases(slug), active: false }
-	]);
 </script>
 
 <svelte:head><title>My work · {data.instance.name}</title></svelte:head>
 
-<Frame user={data.user} instance={data.instance} instances={data.instances} {tabs}>
-	<div class="mx-auto max-w-3xl px-4 py-8">
+<Frame user={data.user} instance={data.instance} instances={data.instances}>
+	<div class="max-w-6xl px-4 py-8 lg:px-6">
 		<header class="mb-6 px-1">
 			<h1 class="text-[22px] font-semibold tracking-tight">My work</h1>
 			<p class="mt-1 text-[14px] text-muted-foreground">

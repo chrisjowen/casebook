@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { ChevronRight, Plus } from '@lucide/svelte';
+	import { Plus } from '@lucide/svelte';
 	import Frame from '$lib/runner/Frame.svelte';
+	import ActionsMenu from '$lib/shell/ActionsMenu.svelte';
+	import { caseVerbs } from '$lib/shell/actions';
 	import StageStrip from '$lib/runner/StageStrip.svelte';
 	import { day } from '$lib/runner/format';
 	import { links } from '$lib/runner/links';
@@ -12,21 +14,13 @@
 
 <svelte:head><title>Cases · {data.instance.name}</title></svelte:head>
 
-<Frame
-	user={data.user}
-	instance={data.instance}
-	instances={data.instances}
-	tabs={[
-		{ label: 'My work', href: links.myWork(slug), active: false, count: data.open },
-		{ label: 'Cases', href: links.cases(slug), active: true }
-	]}
->
-	<div class="mx-auto max-w-3xl px-4 py-8">
+<Frame user={data.user} instance={data.instance} instances={data.instances}>
+	<div class="max-w-6xl px-4 py-8 lg:px-6">
 		<header class="mb-6 flex flex-wrap items-start gap-4 px-1">
 			<div class="min-w-0 flex-1">
 				<h1 class="text-[22px] font-semibold tracking-tight">Cases</h1>
 				<p class="mt-1 text-[14px] text-muted-foreground">
-					Each case is its own workspace. Open one to see every process attached to it.
+					Each case gathers the processes run for one person or thing. Open one to see them all.
 				</p>
 			</div>
 			<a
@@ -45,7 +39,7 @@
 		{/if}
 		<ul class="grid gap-3">
 			{#each data.cases as c (c.id)}
-				<li>
+				<li class="relative">
 					<a
 						href={links.case(slug, c.id)}
 						class="group block rounded-xl border bg-card px-5 py-4 transition-colors hover:border-foreground/20"
@@ -65,7 +59,7 @@
 									{[c.subject, `opened ${day(c.openedAt)}`].filter(Boolean).join(' · ')}
 								</p>
 							</div>
-							<ChevronRight class="mt-1 size-4 text-muted-foreground/50" />
+							<span class="size-8 shrink-0"></span>
 						</div>
 						<div class="mt-3 grid gap-2">
 							{#each c.processes as p (p.id)}
@@ -76,6 +70,9 @@
 							{/each}
 						</div>
 					</a>
+					<div class="absolute top-3 right-3">
+						<ActionsMenu verbs={caseVerbs(slug, c)} label={c.title} omit={['open']} size="sm" />
+					</div>
 				</li>
 			{/each}
 		</ul>

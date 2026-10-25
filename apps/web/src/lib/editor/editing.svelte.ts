@@ -123,16 +123,6 @@ export class Editor {
 		if (result?.version !== undefined) this.#say('info', `Published version ${result.version}`);
 	}
 
-	/** Creates a process in a namespace and resolves its slug. */
-	async create(
-		namespaceId: string,
-		title: string,
-		changePolicy: 'governed' | 'living'
-	): Promise<string | undefined> {
-		const result = await this.#submit('create', () => ({ namespaceId, title, changePolicy }));
-		return typeof result?.slug === 'string' ? result.slug : undefined;
-	}
-
 	dismiss() {
 		this.notice = undefined;
 	}

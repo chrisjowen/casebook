@@ -18,9 +18,41 @@ import {
 	work
 } from '$lib/runner/test-data';
 
-vi.mock('$app/state', () => ({
-	page: { url: new URL('http://localhost/i/example-family') }
-}));
+vi.mock('$app/state', () => {
+	const allow = { allowed: true, reason: '' };
+	const shell = {
+		processes: [
+			{
+				id: 'def-birth',
+				slug: 'birth-registration-abroad',
+				namespace: 'personal/example-user/family',
+				title: 'Register a birth abroad',
+				status: 'published',
+				draftPending: false,
+				canEdit: allow
+			},
+			{
+				id: 'def-spouse',
+				slug: 'spouse-citizenship',
+				namespace: 'personal/example-user/family',
+				title: 'Spouse citizenship',
+				status: 'published',
+				draftPending: true,
+				canEdit: allow
+			}
+		],
+		spaces: [
+			{
+				id: 'ns-family',
+				namespace: 'personal/example-user/family',
+				label: 'Family',
+				canCreate: allow
+			}
+		],
+		imports: []
+	};
+	return { page: { url: new URL('http://localhost/i/example-family'), data: { shell } } };
+});
 
 const frame = { user, instance: family, instances: [acme, family] };
 const text = (html: string) =>
@@ -104,13 +136,17 @@ describe('My work', () => {
 		expect(html).toContain('You’re all caught up');
 	});
 
-	it('switches between Work and Processes, and to the Cases tab', () => {
+	it('sits in the app shell: My work, Cases, Processes and every process in the sidebar', () => {
 		const html = render(WorkPage, {
 			props: { data: { ...frame, work: work() }, params: {} } as never
 		}).body;
-		expect(html).toContain('href="/i/example-family/processes"');
+		expect(html).toMatch(/href="\/i\/example-family" aria-current="page"/);
 		expect(html).toContain('href="/i/example-family/cases"');
-		expect(html).toMatch(/aria-current="page"[^>]*>Work</);
+		expect(html).toContain('href="/i/example-family/processes"');
+		expect(html).toContain('href="/i/example-family/processes/birth-registration-abroad"');
+		expect(html).toContain('Draft changes pending');
+		expect(html).toContain('aria-label="Search and commands"');
+		expect(text(html)).toContain(' New ');
 	});
 });
 
@@ -159,6 +195,30 @@ describe('Processes', () => {
 		expect(html).toMatch(/Incident management Published · v3 Governed 2 live cases/);
 		expect(html).toMatch(/Change approval Published · v3 Governed · publishing needs approval/);
 		expect(html).toMatch(/On-call notes Published · v3 Living 2 live cases/);
+		expect(html).toContain('Import a spreadsheet');
+		expect(html).toContain('Process map');
+	});
+
+	it('gives every process the same actions menu', () => {
+		const html = render(ProcessesPage, {
+			props: {
+				data: {
+					...frame,
+					groups: [
+						{
+							namespace: 'acme/eng/sre',
+							label: 'SRE',
+							canCreate: { allowed: false, reason: 'read-only' },
+							definitions: [row({})]
+						}
+					]
+				},
+				params: {}
+			} as never
+		}).body;
+		expect(html).toContain('aria-label="Actions for Incident management"');
+		expect(html).not.toContain('Import a spreadsheet');
+		expect(text(html)).toContain('You can browse processes and start cases.');
 	});
 });
 

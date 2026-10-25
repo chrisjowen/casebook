@@ -10,7 +10,7 @@
 <svelte:head><title>{data.task.task.title}</title></svelte:head>
 
 <Frame user={data.user} crumbs={[{ label: data.task.task.title }]}>
-	<div class="mx-auto max-w-2xl px-4 py-8">
+	<div class="max-w-3xl px-4 py-8 lg:px-6">
 		<a
 			href={links.requests()}
 			class="mb-4 inline-block text-[13px] text-muted-foreground hover:text-foreground"

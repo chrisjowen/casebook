@@ -11,6 +11,8 @@
 	import TaskRow from '$lib/runner/TaskRow.svelte';
 	import { day } from '$lib/runner/format';
 	import { links } from '$lib/runner/links';
+	import ActionsMenu from '$lib/shell/ActionsMenu.svelte';
+	import { caseVerbs } from '$lib/shell/actions';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -45,7 +47,10 @@
 		{ label: 'Case record', href: links.record(slug, c.id), active: false }
 	]}
 >
-	<div class="mx-auto max-w-3xl px-4 py-8">
+	{#snippet actions()}
+		<ActionsMenu verbs={caseVerbs(slug, c)} label={c.title} omit={['open']} size="sm" />
+	{/snippet}
+	<div class="max-w-6xl px-4 py-8 lg:px-6">
 		<header class="mb-6 px-1">
 			<h1 class="text-[22px] font-semibold tracking-tight">{c.title}</h1>
 			<p class="mt-1 text-[14px] text-muted-foreground">
@@ -102,7 +107,14 @@
 					<article class="rounded-xl border bg-card px-5 py-4">
 						<div class="mb-3 flex items-start gap-3">
 							<div class="min-w-0 flex-1">
-								<h3 class="text-[14px] font-semibold">{p.name}</h3>
+								<h3 class="text-[14px] font-semibold">
+									<a
+										href={links.process(slug, p.definitionSlug)}
+										class="hover:underline"
+										title="Open the process: its stages, its board and every case running it"
+										>{p.name}</a
+									>
+								</h3>
 								<p class="text-[12px] text-muted-foreground">
 									{p.complete ? 'All stages done' : `Stage ${p.line.number} of ${p.line.count}`}
 									· {p.binding === 'pinned'
