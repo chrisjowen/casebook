@@ -179,7 +179,9 @@
 							<p class="mt-1.5 text-[13px] text-muted-foreground">
 								{wait.mine
 									? `“${wait.mine.title}” starts once that’s in.`
-									: 'Your part is done for now.'}
+									: wait.myPartDone
+										? 'Your part is done for now.'
+										: 'Nothing for you to do here yet.'}
 							</p>
 						</div>
 					</a>

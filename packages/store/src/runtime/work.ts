@@ -113,7 +113,10 @@ export interface WaitingEntry {
 	stage: StageLine;
 	/** What the others are doing, with any pause and its note: pausing notifies only them. */
 	on: { title: string; holders: PersonView[]; held?: Mark & { note: string } }[];
-	/** True when the user has nothing open in this process; false when their own task waits. */
+	/**
+	 * True when the user has done something in this process and has nothing open in it; false when
+	 * their own task waits, or they have not done anything here yet.
+	 */
 	myPartDone: boolean;
 	/** The user's own task that is waiting, if any. */
 	mine?: TaskSummary;
@@ -511,7 +514,8 @@ export async function loadWork(
 							}
 						: {})
 				})),
-				myPartDone: !myWaiting,
+				// Starting the case, or holding a role with nothing done yet, is not a part done.
+				myPartDone: !myWaiting && a.events.some((e) => e.by === me || e.onBehalfOf === me),
 				...(myWaiting ? { mine: summarizeTask(c, a, myWaiting.state, loaded.people) } : {})
 			});
 		}

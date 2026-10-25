@@ -98,12 +98,13 @@ Breadcrumbs start at the section, and each process, case and task has the same "
 - **Cases** are workspaces: what is up next for you on the case, your other tasks, one stage strip per attached process with a line about what others are doing, and **View whole process**, a read-only list of every stage and step.
   The **Case record** lists every value and file on the case, once, with who recorded it, when and the task it came from.
 - A **task** is one focused page (ADR 0026): its stage strip and status, then its form: who it is for, what it uses (values already on the case, with where they came from) and what to record, typed from each fact's schema. A rail lists the process's other tasks by stage.
-  What you type is saved as you go, without recording it on the case, for whoever picks the task up. One action bar holds **Complete**, **Save for later** and "I can’t finish this yet", which says what is missing and can ask a named person for it, pausing the task until they answer.
+  What you type is saved as you go, without recording it on the case, for whoever picks the task up. One action bar holds **Complete**, **Save for later** (which keeps what is typed and returns you to My work) and "I can’t finish this yet", which says what is missing and can ask a named person for it, pausing the task until they answer.
   **Questions** on a task are threads: anyone who can open the case can be asked, they answer from My work, and the answer shows on the paused task. After completing a task, the page hands you on to your next ready tasks.
   There is no claim button: the first to finish completes it, and others see who has started.
   A step whose condition is only prose can be marked as not applying.
 - **Processes** lists the instance's definitions with status, version, change policy and live cases. A process opens on its own home with three tabs: **Overview** (its stages and steps, live cases and a "Draft changes pending" note), **Edit** (the board editor, in place) and **Cases** (the cases running it), with **Start a case** at the top.
-  A case is started by anyone with write access or a role in the process, in three short steps: what to run, which case it is for and who's who, then a check of what happens next; it opens on your first task when that is yours. **New case** and **Add a process** on a case use the same flow.
+  A case is started by anyone with write access or a role in the process, in three short steps: what to run, which case it is for and who's who, then a check of what happens next; it opens on your first task when that is yours.
+  Who's who names people for the process's per-case roles and for any role nobody holds yet, such as the roles of a process just built on the board; the starter takes the first task's role unless they choose someone else. **New case** and **Add a process** on a case use the same flow.
 - A **guest** holds a role in an account without belonging to it, such as a hospital's billing contact on one case. Guests see only **Requests for you**, and each form shows only the values it needs, one line of context and who asked.
 
 The seed lays out a handful of cases in different stages, so each demo user's work differs.
@@ -142,7 +143,7 @@ Definitions are read from and saved to Postgres through `packages/store` (`apps/
 Each workspace is a namespace the signed-in user can read.
 Every gesture changes the draft through the model's node operations and is saved as one draft revision, with a notice that offers Undo (`⌘Z` too).
 The process details list what the draft changes since the latest published version, with Publish and Undo.
-A governed process publishes when someone presses Publish and the publish checks pass; a living process publishes every edit straight away.
+A governed process publishes when someone presses Publish and the publish checks pass, and the notice offers **Start a case** of the new version; a living process publishes every edit straight away.
 **New → New process** starts a process in a workspace you can edit and opens it on the board.
 
 ## Spreadsheet wizard
