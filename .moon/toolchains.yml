@@ -1,0 +1,17 @@
+$schema: './cache/schemas/toolchains.json'
+
+# Node and pnpm versions are pinned in .prototools, which moon and proto both read.
+proto:
+  version: '0.63.2'
+
+javascript:
+  packageManager: 'pnpm'
+  inferTasksFromScripts: false
+  syncProjectWorkspaceDependencies: false
+
+node: {}
+
+pnpm: {}
+
+typescript:
+  syncProjectReferences: false

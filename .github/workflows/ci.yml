@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      # moon's affected checks diff against the base branch, which needs full history.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Installs proto, then moon, Node and pnpm at the versions pinned in .prototools.
+      - uses: moonrepo/setup-toolchain@v0
+        with:
+          auto-install: true
+          proto-version: '0.63.2'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: moon run :check
+
+      - name: Lint
+        run: moon run :lint
+
+      - name: Format
+        run: pnpm format:check
+
+      - name: Test
+        run: moon run :test

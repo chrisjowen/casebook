@@ -1,0 +1,19 @@
+{
+	"name": "@casebook/wizard-agent",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Placeholder for the deepagents-based process authoring agent.",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"devDependencies": {
+		"typescript": "6.0.3"
+	}
+}
