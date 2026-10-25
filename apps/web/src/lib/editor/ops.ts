@@ -109,7 +109,8 @@ export interface NewWork {
 
 /**
  * A named step, or a named decision with a Yes/No outcome fact of the same name, so rules and the
- * case record read "Big spend? is Yes", optionally needing facts and guarded. Naming comes first, so adding and naming is one edit and one undo.
+ * case record read "Big spend? is Yes", optionally needing facts and guarded. Naming comes first,
+ * so adding and naming is one edit and one undo.
  */
 export function addWork(document: DefinitionDocument, w: NewWork): Edit & { id: string } {
 	const ix = indexDocument(document);
