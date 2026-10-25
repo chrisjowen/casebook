@@ -301,6 +301,11 @@ export interface NewSharedLookup {
 	namespaceId: string;
 	title: string;
 	values?: LookupList['values'];
+	/**
+	 * Also number the name when a namespace above already has a list of it, so the new list does
+	 * not stand in for that one where processes and their cases already choose from it by name.
+	 */
+	unshadowed?: boolean;
 }
 
 /**
@@ -317,12 +322,24 @@ export async function createSharedLookup(
 	const body: LookupList = { title: input.title.trim(), values: input.values ?? [] };
 	const problem = lookupListProblem(body);
 	if (problem) return refuse('invalid-operation', problem);
+	const [home] = await db
+		.select({ accountId: namespaces.accountId, path: namespaces.path })
+		.from(namespaces)
+		.where(eq(namespaces.id, input.namespaceId));
 	const taken = new Set(
 		(
 			await db
 				.select({ name: sharedLookups.name })
 				.from(sharedLookups)
-				.where(eq(sharedLookups.namespaceId, input.namespaceId))
+				.innerJoin(namespaces, eq(namespaces.id, sharedLookups.namespaceId))
+				.where(
+					input.unshadowed && home
+						? and(
+								eq(namespaces.accountId, home.accountId),
+								inArray(namespaces.path, namespacePathPrefixes(home.path))
+							)
+						: eq(sharedLookups.namespaceId, input.namespaceId)
+				)
 		).map((r) => r.name)
 	);
 	const base = nameOf(body.title);

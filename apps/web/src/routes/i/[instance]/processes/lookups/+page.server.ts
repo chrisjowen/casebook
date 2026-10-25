@@ -105,7 +105,8 @@ export const actions: Actions = {
 		const result = await createSharedLookup(getDb(), actorOf(locals), {
 			namespaceId: String(form.get('namespaceId') ?? ''),
 			title: String(form.get('title') ?? ''),
-			values: values as Parameters<typeof createSharedLookup>[2]['values']
+			values: values as Parameters<typeof createSharedLookup>[2]['values'],
+			unshadowed: true
 		});
 		return result.ok ? result : refused(result);
 	},

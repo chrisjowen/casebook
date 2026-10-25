@@ -226,6 +226,20 @@ describe.skipIf(!url)('shared lookups (Postgres)', () => {
 		expect(await deleteSharedLookup(db, users.olive, spare.id)).toEqual({ ok: true });
 	});
 
+	it('numbers a list shared from a process when a namespace above has its name', async () => {
+		const shared = await createSharedLookup(db, users.olive, {
+			namespaceId: ns.get('acme/eng/sre')!,
+			title: 'Service catalog',
+			values: [{ value: 'pager' }],
+			unshadowed: true
+		});
+		if (!shared.ok) throw new Error(shared.reason);
+		expect(shared.name).toBe('service-catalog-2');
+		const seen = await sharedLookupsFor(db, await accountOf('acme'), 'acme/eng/sre');
+		expect(seen.get('service-catalog')?.values).not.toEqual([{ value: 'pager' }]);
+		expect(await deleteSharedLookup(db, users.olive, shared.id)).toEqual({ ok: true });
+	});
+
 	it('lets a nearer namespace’s list of the same name stand in for a farther one', async () => {
 		const near = await createSharedLookup(db, users.olive, {
 			namespaceId: ns.get('acme/eng/sre')!,
