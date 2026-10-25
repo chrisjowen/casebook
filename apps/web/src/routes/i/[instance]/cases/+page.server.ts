@@ -6,5 +6,5 @@ import type { PageServerLoad } from './$types';
 /** The cases the user can open in this instance, each a workspace of its own. */
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const work = orError(await loadWork(getDb(), actorOf(locals), params.instance));
-	return { cases: work.cases, open: work.ready.length + work.held.length };
+	return { cases: work.cases };
 };

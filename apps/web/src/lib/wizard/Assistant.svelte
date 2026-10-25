@@ -4,7 +4,7 @@
 	// and each drafted turn as a proposal to accept or reject. The proposal itself is drawn on the
 	// board. Every request goes to the import's endpoint, which acts as the signed-in user.
 	import { tick } from 'svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
 	import {
 		ArrowRightLeft,
 		ArrowUp,
@@ -123,7 +123,7 @@
 				return undefined;
 			}
 			saved = result.version;
-			await invalidateAll();
+			await Promise.all([invalidate('casebook:board'), invalidate('casebook:shell')]);
 			return result;
 		} catch (error) {
 			problem =
@@ -141,7 +141,7 @@
 	async function retry() {
 		const again = failed;
 		if (!again) return;
-		await invalidateAll();
+		await Promise.all([invalidate('casebook:board'), invalidate('casebook:shell')]);
 		await send(again.request, again.label);
 	}
 
@@ -167,7 +167,7 @@
 		void watch(done);
 		void done.then(async () => {
 			busy = undefined;
-			await invalidateAll();
+			await Promise.all([invalidate('casebook:board'), invalidate('casebook:shell')]);
 		});
 	});
 

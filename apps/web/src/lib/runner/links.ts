@@ -33,9 +33,20 @@ export const links = {
 	processes: (instance: string) => resolve('/i/[instance]/processes', { instance }),
 	process: (instance: string, slug: string) =>
 		resolve('/i/[instance]/processes/[slug]', { instance, slug }),
-	/** The board editor, inside Processes, opened on one definition's workspace. */
-	editor: (instance: string, namespace?: string, slug?: string) =>
-		resolve(`/i/[instance]/processes/edit${search({ ws: namespace, p: slug })}`, { instance }),
+	/** A process's Cases tab: the cases running it, and Start a case. */
+	processCases: (instance: string, slug: string) =>
+		resolve('/i/[instance]/processes/[slug]/cases', { instance, slug }),
+	/**
+	 * A process's Edit tab: the board, opened on one definition's workspace, optionally with a
+	 * spreadsheet import's assistant. `slug` "map" opens the workspace's process map.
+	 */
+	editor: (instance: string, namespace?: string, slug?: string, opts: { wizard?: string } = {}) =>
+		resolve(
+			`/i/[instance]/processes/edit${search({ ws: namespace, p: slug, wizard: opts.wizard })}`,
+			{ instance }
+		),
+	/** What the command palette searches: the user's cases and tasks in an instance. */
+	search: (instance: string) => resolve('/i/[instance]/search', { instance }),
 	requests: () => resolve('/requests'),
 	request: (attachment: string, item: string) =>
 		resolve('/requests/[attachment]/[item]', { attachment, item }),

@@ -87,7 +87,8 @@ Files attached to cases are stored on local disk in `CASEBOOK_FILES_DIR`, or `.c
 ## Running cases
 
 `pnpm dev` opens on **My work** (ADR 0022).
-The instance switcher at the top left moves between the accounts you belong to; inside one, **Work | Processes** switches between running cases and designing processes.
+Every page shares one sidebar: the instance switcher at the top left moves between the accounts you belong to; **New** makes a case, a process or a spreadsheet import; **My work**, **Cases** and **Processes** are the sections, with every process listed under them; and ⌘K (Ctrl-K) searches processes, cases and tasks and runs their actions.
+Breadcrumbs start at the section, and each process, case and task has the same "…" actions menu wherever it appears.
 
 - **My work** lists what waits on you in that instance, in a fixed order: Ready for you, Needs information (paused, with the reason), Waiting on someone else (who, and any pause note), and a quiet Recurring group for repeating steps.
 - **Cases** are workspaces: your tasks on the case, one stage strip per attached process with a line about what others are doing, and **View whole process**, a read-only list of every stage and step.
@@ -95,7 +96,7 @@ The instance switcher at the top left moves between the accounts you belong to; 
 - A **task** is one focused form: who it is for, what it uses (values already on the case, with where they came from) and what to record, typed from each fact's schema.
   There is no claim button: the first to finish completes it, and others see who has started.
   "I can’t finish this yet" pauses it with a note that whoever is waiting sees; a step whose condition is only prose can be marked as not applying.
-- **Processes** lists the instance's definitions with status, version, change policy and live cases. A process opens on its own page, with **Edit** into the board editor, **Start a case**, the cases running it and a "Draft changes pending" note.
+- **Processes** lists the instance's definitions with status, version, change policy and live cases. A process opens on its own home with three tabs: **Overview** (its stages and steps, live cases and a "Draft changes pending" note), **Edit** (the board editor, in place) and **Cases** (the cases running it), with **Start a case** at the top.
   A case is started by anyone with write access or a role in the process; **New case** and **Add a process** on a case use the same form.
 - A **guest** holds a role in an account without belonging to it, such as a hospital's billing contact on one case. Guests see only **Requests for you**, and each form shows only the values it needs, one line of context and who asked.
 
@@ -104,7 +105,7 @@ The seed lays out a handful of cases in different stages, so each demo user's wo
 
 ## Definition editor
 
-**Processes → Edit** opens the editor, at `/i/<instance>/processes/edit`; older `/?ws=…&p=…` links still open it.
+A process's **Edit** tab opens the editor, at `/i/<instance>/processes/edit`; older `/?ws=…&p=…` links still open it.
 A process is built on the **board** (ADR 0021): its stages are columns, laid out from the definition, with step and decision cards in them.
 Role lanes and a fact flow (Svelte Flow with an ELK layout) are read-only lenses on it, alongside a per-workspace process map of shared fact types.
 Inspectors cover steps, decisions, stages, fact types and processes, including the publish checks from `packages/model`.
@@ -123,11 +124,11 @@ Each workspace is a namespace the signed-in user can read.
 Every gesture changes the draft through the model's node operations and is saved as one draft revision, with a notice that offers Undo (`⌘Z` too).
 The process details list what the draft changes since the latest published version, with Publish and Undo.
 A governed process publishes when someone presses Publish and the publish checks pass; a living process publishes every edit straight away.
-"New process" (the + after the process tabs) starts a process in the workspace.
+**New → New process** starts a process in a workspace you can edit and opens it on the board.
 
 ## Spreadsheet wizard
 
-"Import a spreadsheet", beside the process tabs, turns an `.xlsx` tracker into processes (ADR 0011, ADR 0024); "Use the sample" imports a synthetic newborn tracker, also downloadable from `/wizard/sample`.
+**New → Import a spreadsheet** turns an `.xlsx` tracker into processes (ADR 0011, ADR 0024); "Use the sample" imports a synthetic newborn tracker, also downloadable from `/wizard/sample`.
 The board stays in view, with the assistant in a slide-over beside it that can be closed and reopened:
 
 1. The assistant proposes how to split the workbook into processes, each with the cells it comes from. Rename, merge, split off a range or ask in chat for a different split, then accept it to create the processes.

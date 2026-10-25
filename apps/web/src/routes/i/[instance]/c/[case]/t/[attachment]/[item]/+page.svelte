@@ -5,6 +5,8 @@
 	import StageStrip from '$lib/runner/StageStrip.svelte';
 	import TaskForm from '$lib/runner/TaskForm.svelte';
 	import { links } from '$lib/runner/links';
+	import ActionsMenu from '$lib/shell/ActionsMenu.svelte';
+	import { taskVerbs } from '$lib/shell/actions';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -33,7 +35,20 @@
 		{ label: view.task.title }
 	]}
 >
-	<div class="mx-auto max-w-2xl px-4 py-8">
+	{#snippet actions()}
+		<ActionsMenu
+			verbs={taskVerbs(slug, {
+				caseId: c.id,
+				attachmentId: process.id,
+				item: view.task.item,
+				definitionSlug: process.definitionSlug
+			})}
+			label={view.task.title}
+			omit={['open']}
+			size="sm"
+		/>
+	{/snippet}
+	<div class="max-w-3xl px-4 py-8 lg:px-6">
 		<div class="mb-6 rounded-xl border bg-card px-5 py-4">
 			<div class="mb-3 flex items-center gap-2 text-[12px] text-muted-foreground">
 				<span>Stage {view.task.stage.number} of {view.task.stage.count}</span>

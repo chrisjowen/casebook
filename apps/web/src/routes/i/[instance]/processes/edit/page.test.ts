@@ -7,7 +7,7 @@ import { indexDocument, labelOf } from '$lib/graph/derive';
 import { loadWorkspaces, namespaceLabel } from '$lib/server/definitions';
 import type { LoadedDefinition, Permission, Workspace } from '$lib/definitions/types';
 import { load } from './+page.server';
-import { listImports, loadWizard } from '$lib/server/wizard';
+import { loadWizard } from '$lib/server/wizard';
 import type { WizardView } from '$lib/wizard/types';
 import { proposeSplit, proposeTurn, say, splitAccepted, startState } from '@casebook/wizard-agent';
 
@@ -16,7 +16,12 @@ vi.mock('$lib/server/definitions', async (importOriginal) => ({
 	loadWorkspaces: vi.fn()
 }));
 
-vi.mock('$lib/server/wizard', () => ({ loadWizard: vi.fn(), listImports: vi.fn() }));
+vi.mock('$lib/server/wizard', () => ({ loadWizard: vi.fn() }));
+
+// The app shell reads where it is from the page; the shell's own data is not needed here.
+vi.mock('$app/state', () => ({
+	page: { url: new URL('http://localhost/i/acme/processes/edit'), data: {} }
+}));
 
 const allow: Permission = { allowed: true, reason: 'user "Olive Owner" is account-owner' };
 const deny: Permission = {
@@ -79,19 +84,25 @@ const dataFor = async (query: string, can: Permission = allow) => {
 	const data = await load({
 		url: new URL(`http://localhost/i/acme/processes/edit?${query}`),
 		params: { instance: 'acme' },
-		locals: { user }
+		locals: { user },
+		depends: () => {}
 	} as never);
 	if (!data) throw new Error('load returned nothing');
 	return data;
 };
 
+const instance = { slug: 'acme', name: 'Acme', role: 'account-owner', waitingOnYou: 0 };
 const pageFor = async (query: string, can: Permission = allow) =>
-	render(Page, { props: { data: await dataFor(query, can), params: {} } as never }).body;
+	render(Page, {
+		props: {
+			data: { ...(await dataFor(query, can)), instance, instances: [instance] },
+			params: {}
+		} as never
+	}).body;
 
 beforeEach(() => {
 	vi.mocked(loadWorkspaces).mockReset();
 	vi.mocked(loadWizard).mockReset().mockResolvedValue(undefined);
-	vi.mocked(listImports).mockReset().mockResolvedValue([]);
 });
 
 describe('editor route', () => {
@@ -154,8 +165,6 @@ describe('editor route', () => {
 		}
 		expect(html).toContain('Add stage');
 		expect(html).toContain('aria-label="Actions for Report the incident"');
-		expect(html).toContain('aria-label="Workspace"');
-		expect(html).toContain('aria-label="New process"');
 		expect(html).not.toContain('aria-label="Outline"');
 		expect(html).not.toContain('aria-label="Editor"');
 	});
@@ -186,12 +195,26 @@ describe('editor route', () => {
 		expect(living).toContain('Living');
 	});
 
+	it("is the process's Edit tab, beside Overview and Cases, in the app shell", async () => {
+		const html = await pageFor('ws=acme/eng/sre&p=incident-management');
+		expect(html).toContain('href="/i/acme/processes/incident-management"');
+		expect(html).toContain('href="/i/acme/processes/incident-management/cases"');
+		expect(html).toMatch(/aria-current="page"[^>]*>\s*Edit/);
+		expect(html).toContain('aria-label="Actions for Incident management"');
+		expect(html).toContain('aria-label="Find on the board"');
+		// Workspaces and processes are switched from the shell, not the board's toolbar.
+		expect(html).not.toContain('aria-label="Workspace"');
+		const readOnly = await pageFor('ws=acme/eng/sre&p=incident-management', deny);
+		expect(readOnly).toMatch(/aria-current="page"[^>]*>\s*Board/);
+	});
+
 	it('renders the map tab for a workspace', async () => {
 		const data = await dataFor('ws=acme/eng/sre&p=map');
 		expect(data.namespace).toBe('acme/eng/sre');
 		expect(data.slug).toBeUndefined();
 		const html = await pageFor('ws=acme/eng/sre&p=map');
 		expect(html).toContain('Process map');
+		expect(html).toContain('aria-label="Workspace"');
 		expect(html).toContain('0 shared fact types');
 	});
 
@@ -235,13 +258,6 @@ describe('spreadsheet import', () => {
 		shared: [{ title: 'Shared document set', summary: 'Documents', sources: [] }]
 	});
 	const split = say(proposed, 'assistant', 'Two processes.', { type: 'split' });
-
-	it('offers the import beside the process tabs, with the reason when it is not allowed', async () => {
-		expect(await pageFor(`ws=${sre}`)).toContain('Import a spreadsheet');
-		expect(await pageFor(`ws=${sre}`, deny)).toContain(
-			`Import a spreadsheet: ${deny.reason.replaceAll('"', '&quot;')}`
-		);
-	});
 
 	it('shows the split to choose, with rename, merge and accept, in place of the board', async () => {
 		vi.mocked(loadWizard).mockResolvedValue(view(split));

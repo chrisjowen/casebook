@@ -10,12 +10,13 @@ import {
 import { getDb } from '$lib/server/db';
 import { loadWorkspaces } from '$lib/server/definitions';
 import { actorOf } from '$lib/server/runner';
-import { listImports, loadWizard } from '$lib/server/wizard';
+import { loadWizard } from '$lib/server/wizard';
 import type { ViewId } from '$lib/graph/layout';
 
 const VIEWS: ViewId[] = ['board', 'lanes', 'facts'];
 
-export const load: PageServerLoad = async ({ url, locals, params }) => {
+export const load: PageServerLoad = async ({ url, locals, params, depends }) => {
+	depends('casebook:board');
 	const workspaces = await loadWorkspaces(actorOf(locals), params.instance);
 	const workspace =
 		workspaces.find((w) => w.namespace === url.searchParams.get('ws')) ??
@@ -39,9 +40,8 @@ export const load: PageServerLoad = async ({ url, locals, params }) => {
 		slug,
 		view,
 		selected: url.searchParams.get('sel') ?? undefined,
-		// A spreadsheet import in progress, shown with its assistant, and the others to go back to.
-		wizard: wizard && wizard.namespaceId === workspace?.id ? wizard : undefined,
-		imports: workspace?.can.create.allowed ? await listImports(actor, workspace.id) : []
+		// A spreadsheet import in progress, shown with its assistant; the shell lists the others.
+		wizard: wizard && wizard.namespaceId === workspace?.id ? wizard : undefined
 	};
 };
 

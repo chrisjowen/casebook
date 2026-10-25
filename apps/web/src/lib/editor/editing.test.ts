@@ -4,13 +4,20 @@ import { Editor } from './editing.svelte';
 
 const page = vi.hoisted(() => ({
 	revision: 1,
-	issues: [] as { severity: string; message: string }[]
+	issues: [] as { severity: string; message: string }[],
+	version: undefined as number | undefined,
+	next: {} as { version?: number },
+	invalidated: [] as string[]
 }));
 
 vi.mock('$app/forms', () => ({ deserialize: (text: string) => JSON.parse(text) }));
 vi.mock('$app/navigation', () => ({
-	invalidateAll: vi.fn(async () => {
+	invalidate: vi.fn(async (key: string) => {
+		page.invalidated.push(key);
+		if (key !== 'casebook:board') return;
 		page.revision++;
+		if (page.next.version !== undefined) page.version = page.next.version;
+		page.next = {};
 	})
 }));
 
@@ -20,6 +27,9 @@ const definition = () =>
 		id: 'def-1',
 		policy: 'governed',
 		revision: page.revision,
+		document: { nodes: [{ core: { kind: 'process', title: 'Incident' } }] },
+		published: page.version === undefined ? undefined : { version: page.version },
+		changes: [],
 		undoable: page.revision > 1,
 		issues: page.revision > 1 ? page.issues : [],
 		can: { edit: allow, publish: allow }
@@ -51,6 +61,9 @@ afterEach(() => {
 	posted.length = 0;
 	page.revision = 1;
 	page.issues = [];
+	page.version = undefined;
+	page.next = {};
+	page.invalidated = [];
 });
 
 describe('Editor', () => {
@@ -105,6 +118,16 @@ describe('Editor', () => {
 			details: ['Report and Classify wait for each other'],
 			undo: true
 		});
+	});
+
+	it('reloads the app shell only when the sidebar entry changes, such as on publish', async () => {
+		stubServer();
+		const editor = new Editor(definition);
+		await editor.apply([{ op: 'set_content', id: 'a', content: 'x' } as never]);
+		expect(page.invalidated).toEqual(['casebook:board']);
+		page.next = { version: 1 };
+		await editor.publish();
+		expect(page.invalidated).toEqual(['casebook:board', 'casebook:board', 'casebook:shell']);
 	});
 
 	it('shows why a gesture cannot be done without sending anything', () => {

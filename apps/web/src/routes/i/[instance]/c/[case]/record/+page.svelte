@@ -8,6 +8,8 @@
 	import FilterChips from '$lib/runner/FilterChips.svelte';
 	import { size, when } from '$lib/runner/format';
 	import { links } from '$lib/runner/links';
+	import ActionsMenu from '$lib/shell/ActionsMenu.svelte';
+	import { caseVerbs } from '$lib/shell/actions';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -70,7 +72,10 @@
 		{ label: 'Case record', href: links.record(slug, c.id), active: true }
 	]}
 >
-	<div class="mx-auto max-w-3xl px-4 py-8">
+	{#snippet actions()}
+		<ActionsMenu verbs={caseVerbs(slug, c)} label={c.title} omit={['record']} size="sm" />
+	{/snippet}
+	<div class="max-w-6xl px-4 py-8 lg:px-6">
 		<header class="mb-6 px-1">
 			<h1 class="text-[22px] font-semibold tracking-tight">Case record</h1>
 			<p class="mt-1 text-[14px] text-muted-foreground">

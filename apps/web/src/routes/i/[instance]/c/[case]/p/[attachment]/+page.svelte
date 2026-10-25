@@ -20,7 +20,7 @@
 	instances={data.instances}
 	crumbs={[{ label: c.title, href: links.case(slug, c.id) }, { label: process.name }]}
 >
-	<div class="mx-auto max-w-3xl px-4 py-8">
+	<div class="max-w-6xl px-4 py-8 lg:px-6">
 		<header class="px-1">
 			<h1 class="text-[22px] font-semibold tracking-tight">{process.name}</h1>
 			<p class="mt-1 text-[14px] text-muted-foreground">

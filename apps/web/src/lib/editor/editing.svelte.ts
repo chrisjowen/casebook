@@ -5,7 +5,7 @@
  */
 import { getContext, setContext } from 'svelte';
 import { deserialize } from '$app/forms';
-import { invalidateAll } from '$app/navigation';
+import { invalidate } from '$app/navigation';
 import type { Operation } from '@casebook/model';
 import type { LoadedDefinition } from '$lib/definitions/types';
 
@@ -123,16 +123,6 @@ export class Editor {
 		if (result?.version !== undefined) this.#say('info', `Published version ${result.version}`);
 	}
 
-	/** Creates a process in a namespace and resolves its slug. */
-	async create(
-		namespaceId: string,
-		title: string,
-		changePolicy: 'governed' | 'living'
-	): Promise<string | undefined> {
-		const result = await this.#submit('create', () => ({ namespaceId, title, changePolicy }));
-		return typeof result?.slug === 'string' ? result.slug : undefined;
-	}
-
 	dismiss() {
 		this.notice = undefined;
 	}
@@ -173,7 +163,9 @@ export class Editor {
 			const result = deserialize(await response.text());
 			if (result.type === 'success') {
 				this.notice = undefined;
-				await invalidateAll();
+				const before = sidebarEntry(this.current());
+				await invalidate('casebook:board');
+				if (sidebarEntry(this.current()) !== before) await invalidate('casebook:shell');
 				return result.data ?? {};
 			}
 			if (result.type === 'failure') {
@@ -201,6 +193,14 @@ export class Editor {
 			this.#timer = setTimeout(() => (this.notice = undefined), undo ? 6000 : 3500);
 	}
 }
+
+/** What the app shell shows of a definition: its title, published version and pending changes. */
+const sidebarEntry = (d: LoadedDefinition | undefined) =>
+	JSON.stringify([
+		d?.document.nodes.find((x) => x.core.kind === 'process')?.core.title,
+		d?.published?.version,
+		(d?.changes.length ?? 0) > 0
+	]);
 
 const KEY = Symbol('casebook-editor');
 
