@@ -583,6 +583,29 @@ export interface CaseProcess extends AttachmentSummary {
 	document: DefinitionDocument;
 }
 
+/** A role on a case, with who holds it and the open work in it: who's who. */
+export interface CaseRole {
+	id: string;
+	title: string;
+	/** People named for it on this case; who's who changes these. */
+	holders: PersonView[];
+	/** People holding it as a standing role on the case's namespace or an ancestor. */
+	standing: PersonView[];
+	/** Its ready and paused tasks, which wait on nobody while nobody holds it. */
+	work: { attachmentId: string; item: string; title: string; process: string }[];
+}
+
+/** A change to who's who on a case: a role's holders on the case before and after. */
+export interface RoleChangeEntry {
+	role: string;
+	/** Unset when the role was given at case start or on finishing a task. */
+	before?: PersonView[];
+	after: PersonView[];
+	at: string;
+	by: PersonView;
+	onBehalfOf?: PersonView;
+}
+
 export interface CaseView {
 	instance: Instance;
 	id: string;
@@ -594,8 +617,12 @@ export interface CaseView {
 	processes: CaseProcess[];
 	/** Every captured value and file, files first, newest first within each. */
 	record: RecordEntry[];
+	/** Every role its processes declare, in the order they declare them. */
+	roles: CaseRole[];
+	/** Who was named for which role, and every change since, newest first. */
+	roleChanges: RoleChangeEntry[];
 	/** What the actor may do on the case. */
-	can: { addProcess: boolean };
+	can: { addProcess: boolean; manageRoles: boolean };
 }
 
 /** A case the actor can open, with their tasks on it, its processes and its record. */
@@ -651,6 +678,7 @@ export async function loadCase(
 		...(a.startedBy ? { startedBy: p(a.startedBy) } : {})
 	}));
 	const addProcess = (await startableIn(db, actor, found.accountId)).length > 0;
+	const manageRoles = (await can(db, actor, 'case.manage_roles', { type: 'case', caseId })).allowed;
 	return {
 		instance: found.instance,
 		id: c.id,
@@ -659,10 +687,59 @@ export async function loadCase(
 		mine,
 		processes,
 		record: caseRecord(c, people),
-		can: { addProcess },
+		roles: caseRoles(c, people),
+		roleChanges: roleChanges(c, people),
+		can: { addProcess, manageRoles },
 		...(c.subject ? { subject: c.subject } : {}),
 		...(c.openedBy ? { openedBy: p(c.openedBy) } : {})
 	};
+}
+
+/** Who's who on a case: each role its processes declare, its holders and its open work. */
+function caseRoles(c: LoadedCase, people: ReadonlyMap<string, Person>): CaseRole[] {
+	const p = (id: string) => person(people, id);
+	return [...c.roles].map(([id, { bound, standing }]) => ({
+		id,
+		title: roleTitle(c, id),
+		holders: bound.map(p),
+		standing: standing.filter((s) => !bound.includes(s)).map(p),
+		work: c.attachments.flatMap((a) =>
+			a.state.items
+				.filter((s) => s.item.role === id && (s.status === 'ready' || s.status === 'held'))
+				.map((s) => ({
+					attachmentId: a.id,
+					item: s.item.id,
+					title: s.item.title,
+					process: attachmentName(a)
+				}))
+		)
+	}));
+}
+
+function roleTitle(c: LoadedCase, id: string): string {
+	for (const a of c.attachments) {
+		const role = a.process.roles.get(id);
+		if (role) return role.title ?? id;
+	}
+	return id;
+}
+
+/** The case's `role.assigned` and `role.changed` events, newest first. */
+function roleChanges(c: LoadedCase, people: ReadonlyMap<string, Person>): RoleChangeEntry[] {
+	const p = (id: string) => person(people, id);
+	const ids = (value: unknown) =>
+		Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+	return c.events
+		.filter((e) => e.type === 'role.assigned' || e.type === 'role.changed')
+		.reverse()
+		.map((e) => ({
+			role: roleTitle(c, String(e.data.role)),
+			...(e.type === 'role.changed' ? { before: ids(e.data.before).map(p) } : {}),
+			after: (e.type === 'role.changed' ? ids(e.data.after) : ids([e.data.principal])).map(p),
+			at: iso(e.at),
+			by: p(e.by),
+			...(e.onBehalfOf ? { onBehalfOf: p(e.onBehalfOf) } : {})
+		}));
 }
 
 /** What everyone but `me` is doing in a process, in one plain line. */

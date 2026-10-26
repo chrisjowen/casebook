@@ -20,7 +20,8 @@ export const LIFECYCLE_EVENTS = [
 	'approval.requested',
 	'approval.granted',
 	'approval.rejected',
-	'role.assigned'
+	'role.assigned',
+	'role.changed'
 ] as const;
 
 export type LifecycleEvent = (typeof LIFECYCLE_EVENTS)[number];

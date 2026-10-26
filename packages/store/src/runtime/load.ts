@@ -127,6 +127,12 @@ export interface LoadedCase {
 	attachments: LoadedAttachment[];
 	/** The case's whole event log, oldest first. */
 	events: EventRecord[];
+	/**
+	 * Who's who for every role its processes declare, by role id: the principals bound to it on
+	 * this case, which who's who can change, and those holding it as a standing role along the
+	 * case's namespace lineage, groups expanded to their members.
+	 */
+	roles: Map<string, { bound: string[]; standing: string[] }>;
 }
 
 export interface Loaded {
@@ -389,6 +395,13 @@ export async function loadCases(db: Queryable, caseIds: string[], now: Date): Pr
 			for (const q of a.conversation.questions) if (q.to) people.add(q.to);
 		}
 		for (const f of history) for (const v of principalValues(f, attachments)) people.add(v);
+		for (const e of events) for (const v of rolePrincipals(e)) people.add(v);
+		const roles = new Map<string, { bound: string[]; standing: string[] }>();
+		for (const role of new Set(attachments.flatMap((a) => [...a.process.roles.keys()]))) {
+			const entry = { bound: holders.bound(c, role), standing: holders.standing(c, role) };
+			[...entry.bound, ...entry.standing].forEach((id) => people.add(id));
+			roles.set(role, entry);
+		}
 		if (c.openedBy) people.add(c.openedBy);
 		loaded.set(c.id, {
 			id: c.id,
@@ -404,6 +417,7 @@ export async function loadCases(db: Queryable, caseIds: string[], now: Date): Pr
 			files,
 			attachments,
 			events,
+			roles,
 			...(c.subject ? { subject: c.subject } : {}),
 			...(c.openedBy ? { openedBy: c.openedBy } : {})
 		});
@@ -421,6 +435,16 @@ function principalValues(record: FactRecord, attachments: LoadedAttachment[]): s
 	if (fact?.core.schema['x-lookup']?.kind !== 'principal') return [];
 	const values = Array.isArray(record.value) ? record.value : [record.value];
 	return values.filter((v): v is string => typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v));
+}
+
+/** The principals a `role.assigned` or `role.changed` event names. */
+export function rolePrincipals(e: EventRecord): string[] {
+	if (e.type === 'role.assigned')
+		return typeof e.data.principal === 'string' ? [e.data.principal] : [];
+	if (e.type !== 'role.changed') return [];
+	return [e.data.before, e.data.after].flatMap((ids) =>
+		Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []
+	);
 }
 
 /** Names and kinds of principals, by id. */
@@ -476,19 +500,29 @@ async function roleHolders(
 	const groups = [...new Set(bindings.filter((b) => b.kind === 'group').map((b) => b.principalId))];
 	const members = await groupMembersOf(db, groups);
 	const expand = (id: string, kind: PrincipalKind) => (kind === 'group' ? members(id) : [id]);
+	type Case = { id: string; namespace: string; accountId: string };
+	const onCase = (c: Case, role: string) =>
+		bindings.filter((b) => b.caseId === c.id && b.role === role);
+	const standing = (c: Case, role: string) => {
+		const prefixes = new Set(namespacePathPrefixes(c.namespace));
+		const along = new Set(
+			lineage.filter((n) => n.accountId === c.accountId && prefixes.has(n.path)).map((n) => n.id)
+		);
+		return bindings.filter(
+			(b) =>
+				b.caseId === null && b.role === role && b.namespaceId !== null && along.has(b.namespaceId)
+		);
+	};
+	const expanded = (list: typeof bindings) => [
+		...new Set(list.flatMap((b) => expand(b.principalId, b.kind)))
+	];
 	return {
-		of(c: { id: string; namespace: string; accountId: string }, role: string): string[] {
-			const prefixes = new Set(namespacePathPrefixes(c.namespace));
-			const along = new Set(
-				lineage.filter((n) => n.accountId === c.accountId && prefixes.has(n.path)).map((n) => n.id)
-			);
-			const onCase = bindings.filter((b) => b.caseId === c.id && b.role === role);
-			const standing = bindings.filter(
-				(b) =>
-					b.caseId === null && b.role === role && b.namespaceId !== null && along.has(b.namespaceId)
-			);
-			return [...new Set([...onCase, ...standing].flatMap((b) => expand(b.principalId, b.kind)))];
-		}
+		of: (c: Case, role: string): string[] => expanded([...onCase(c, role), ...standing(c, role)]),
+		/** The principals bound to the role on the case itself, groups not expanded. */
+		bound: (c: Case, role: string): string[] => [
+			...new Set(onCase(c, role).map((b) => b.principalId))
+		],
+		standing: (c: Case, role: string): string[] => expanded(standing(c, role))
 	};
 }
 

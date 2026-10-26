@@ -53,6 +53,7 @@ export const ACTIONS = [
 	'case.start',
 	'case.read',
 	'case.bind_version',
+	'case.manage_roles',
 	'case.act_in_role'
 ] as const;
 export type Action = (typeof ACTIONS)[number];
@@ -197,6 +198,11 @@ const RULES: { readonly [A in Action]: ActionRule } = {
 		resources: ['case'],
 		verb: () => 'move the bound version of',
 		permission: 'write'
+	},
+	'case.manage_roles': {
+		resources: ['case'],
+		verb: () => "change who's who on",
+		permission: 'namespace-admin'
 	},
 	'case.act_in_role': {
 		resources: ['case-role'],

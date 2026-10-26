@@ -2,7 +2,7 @@
 // approving its work items. Each write runs in one transaction that locks the case, re-reads it,
 // checks the actor with `can` (ADR 0017) and records events naming who acted and for whom
 // (ADR 0009). Expected refusals come back as a `RuntimeRefusal` with a plain-language reason.
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
 	collectedBy,
 	factChoices,
@@ -408,6 +408,114 @@ async function knownInAccount(tx: Tx, accountId: string, principalId: string): P
 		.where(and(eq(roleBindings.accountId, accountId), eq(roleBindings.principalId, principalId)))
 		.limit(1);
 	return row !== undefined;
+}
+
+// Who's who on a running case
+
+export interface RoleChange {
+	caseId: string;
+	/** A role one of the case's processes declares. */
+	role: string;
+	/** Everyone who should hold the role on the case afterwards; empty removes them all. */
+	holders: string[];
+}
+
+export interface RoleChanged {
+	ok: true;
+	/** The principals bound to the role on the case before and after, in binding order. */
+	before: string[];
+	after: string[];
+}
+
+/**
+ * Changes who holds a process role on a case already running: names someone, replaces them or
+ * removes them, so a case waiting on a role nobody holds can move on without starting over. Only
+ * the case's own bindings change; standing holders on its namespace stay as they are.
+ *
+ * It needs `case.manage_roles`: namespace-admin on the case's namespace, which account owners and
+ * admins hold everywhere. Like case start, the people named must already belong to the account or
+ * hold a role in it. A change records one `role.changed` event with the holders before and after.
+ * Status is worked out when read, so work in the role waits on its new holders at once.
+ */
+export async function changeRoleHolders(
+	db: Db,
+	actor: Actor,
+	input: RoleChange,
+	options: RuntimeOptions = {}
+): Promise<RoleChanged | RuntimeRefusal> {
+	const now = options.now ?? new Date();
+	const missing = refuse('not-found', 'That case does not exist, or you cannot see it.');
+	if (!/^[0-9a-f-]{36}$/i.test(input.caseId)) return missing;
+	return attempt(() =>
+		db.transaction(async (tx) => {
+			const [locked] = await tx
+				.select({ id: cases.id })
+				.from(cases)
+				.where(eq(cases.id, input.caseId))
+				.for('update');
+			if (!locked) throw new Refused(missing);
+			await check(tx, actor, 'case.manage_roles', { type: 'case', caseId: input.caseId }, now);
+			const who = await acting(tx, actor, now);
+			const {
+				cases: [c]
+			} = await loadCases(tx, [input.caseId], now);
+			const declared = c!.attachments
+				.map((a) => a.process.roles.get(input.role))
+				.find((r) => r !== undefined);
+			if (!declared) {
+				throw new Refused(
+					refuse('invalid-input', `${input.role} is not a role in any process on this case.`)
+				);
+			}
+			const before = c!.roles.get(input.role)?.bound ?? [];
+			const wanted = [...new Set(input.holders)];
+			const problems: FieldProblem[] = [];
+			for (const id of wanted.filter((id) => !before.includes(id))) {
+				if (!(await knownInAccount(tx, c!.accountId, id))) {
+					problems.push({
+						field: `role:${input.role}`,
+						message: `${declared.title ?? input.role}: choose someone who belongs to this casebook`
+					});
+				}
+			}
+			if (problems.length) {
+				throw new Refused(refuse('invalid-input', problems[0]!.message, problems));
+			}
+			const removed = before.filter((id) => !wanted.includes(id));
+			const added = wanted.filter((id) => !before.includes(id));
+			const after = [...before.filter((id) => wanted.includes(id)), ...added];
+			if (removed.length === 0 && added.length === 0) return { ok: true as const, before, after };
+			if (removed.length) {
+				await tx
+					.delete(roleBindings)
+					.where(
+						and(
+							eq(roleBindings.caseId, c!.id),
+							eq(roleBindings.role, input.role),
+							inArray(roleBindings.principalId, removed)
+						)
+					);
+			}
+			if (added.length) {
+				await tx.insert(roleBindings).values(
+					added.map((principalId) => ({
+						principalId,
+						role: input.role,
+						accountId: c!.accountId,
+						namespaceId: c!.namespaceId,
+						caseId: c!.id
+					}))
+				);
+			}
+			await record(tx, who, {
+				caseId: c!.id,
+				type: 'role.changed',
+				data: { role: input.role, before, after }
+			});
+			await recordProgress(tx, who, c!);
+			return { ok: true as const, before, after };
+		})
+	);
 }
 
 /**

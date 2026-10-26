@@ -490,6 +490,15 @@ async function seedCases(db: Db, seed: CaseSeed) {
 		[pdf('fact:fact.payment-receipt', 'receipt-physio.pdf', 'Payment receipt, Harbour Physio')]
 	);
 
+	// Leo: started before a case had to name every role, so it waits on a Parent nobody holds
+	// until an owner fixes who's who.
+	await start(alex, ago(4), {
+		definitionId: definitions.get('birth-registration-abroad')!,
+		title: 'Leo Example',
+		subject: 'Newborn, born abroad on 2 Oct 2026',
+		roles: {}
+	});
+
 	// INC-2041: responding, with a status update due again.
 	const latency = await start(devon, ago(0, 6), {
 		definitionId: definitions.get('incident-management')!,

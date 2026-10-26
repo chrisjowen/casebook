@@ -14,6 +14,7 @@ import {
 import { createDefinition, publishDefinition } from '../src/definitions.js';
 import {
 	casebookPeople,
+	changeRoleHolders,
 	completeItem,
 	decideApproval,
 	findCaseFile,
@@ -110,8 +111,13 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 			expect(titles(view.held)).toEqual(['Upload the marriage certificate · Sam Example']);
 			expect(view.held[0]!.held?.note).toMatch(/apostille/);
 			expect(
-				view.waiting.map((w) => [w.process, w.on.map((o) => `${o.holders[0]?.name} — ${o.title}`)])
+				view.waiting.map((w) => [
+					w.process,
+					w.on.map((o) => `${o.holders[0]?.name ?? 'nobody yet'} — ${o.title}`)
+				])
 			).toEqual([
+				// Leo's case started before every role had to be named, so it waits on nobody.
+				['Register a birth abroad', ['nobody yet — Register the birth locally']],
 				['Claim a medical bill · Delivery bill', ['Dana Cole — Send the itemised invoice']],
 				['Claim a medical bill · Physio sessions', ['Example Health Insurance — Assess the claim']]
 			]);
@@ -966,6 +972,231 @@ describe.skipIf(!url)('case runtime (Postgres)', () => {
 			);
 			if ('ok' in agentView) throw new Error(agentView.reason);
 			expect(agentView.cases.map((c) => c.id)).toEqual([mira.id]);
+		});
+	});
+
+	describe("who's who on a running case", () => {
+		async function leo(who: Subject = 'alex') {
+			const view = await work('alex', 'example-family');
+			const id = view.cases.find((c) => c.title === 'Leo Example')!.id;
+			const c = await loadCase(db, users[who], 'example-family', id);
+			if ('ok' in c) throw new Error(c.reason);
+			return c;
+		}
+		const parent = async (who: Subject = 'alex') =>
+			(await leo(who)).roles.find((r) => r.id === 'role.parent')!;
+		const readyFor = async (who: Subject) =>
+			titles((await work(who, 'example-family')).ready).filter((t) => t.endsWith('Leo Example'));
+
+		it('shows a case stuck on a role nobody holds, and what waits on it', async () => {
+			const c = await leo();
+			expect(c.roles.map((r) => r.title)).toEqual([
+				'Parent',
+				'Sworn translator',
+				'Consular officer'
+			]);
+			expect(await parent()).toMatchObject({
+				holders: [],
+				standing: [],
+				work: [{ title: 'Register the birth locally', process: 'Register a birth abroad' }]
+			});
+			expect(c.processes[0]!.others).toBe(
+				'Waiting on nobody yet (Parent) — register the birth locally.'
+			);
+			expect(c.roleChanges).toEqual([]);
+		});
+
+		it('lets account owners and namespace admins change it, and nobody else', async () => {
+			expect((await leo('alex')).can.manageRoles).toBe(true);
+			expect((await leo('sam')).can.manageRoles).toBe(false);
+			const caseId = (await leo()).id;
+			expectRefused(
+				await changeRoleHolders(db, users.sam, {
+					caseId,
+					role: 'role.parent',
+					holders: [users.sam.id]
+				}),
+				'access-denied',
+				/cannot change who's who on case "Leo Example".*namespace-admin/
+			);
+			// A guest on another case in the casebook cannot open this one, let alone change it.
+			expectRefused(
+				await changeRoleHolders(db, users.dana, {
+					caseId,
+					role: 'role.parent',
+					holders: [users.dana.id]
+				}),
+				'access-denied'
+			);
+			// Write on the namespace is not enough on Acme's incidents either.
+			const incidents = await work('wren', 'acme');
+			const incident = incidents.cases.find((x) => x.title === 'INC-2043 Search indexing delay')!;
+			expectRefused(
+				await changeRoleHolders(db, users.wren, {
+					caseId: incident.id,
+					role: 'role.incident-commander',
+					holders: [users.wren.id]
+				}),
+				'access-denied',
+				/namespace-admin/
+			);
+			const olive = await changeRoleHolders(db, users.olive, {
+				caseId: incident.id,
+				role: 'role.incident-commander',
+				holders: [users.devon.id]
+			});
+			expect(olive).toEqual({ ok: true, before: [], after: [users.devon.id] });
+			expect(await parent()).toMatchObject({ holders: [] });
+		});
+
+		it('refuses roles the case does not have and people from outside the casebook', async () => {
+			const caseId = (await leo()).id;
+			expectRefused(
+				await changeRoleHolders(db, users.alex, { caseId, role: 'role.claimant', holders: [] }),
+				'invalid-input',
+				/not a role in any process on this case/
+			);
+			expectRefused(
+				await changeRoleHolders(db, users.alex, {
+					caseId,
+					role: 'role.parent',
+					holders: [users.rae.id]
+				}),
+				'invalid-input',
+				/Parent: choose someone who belongs to this casebook/
+			);
+			expect(await parent()).toMatchObject({ holders: [] });
+		});
+
+		it('frees a stuck case: naming, replacing and removing a holder moves its work at once', async () => {
+			const caseId = (await leo()).id;
+			expect(await readyFor('sam')).toEqual([]);
+
+			const named = await changeRoleHolders(db, users.alex, {
+				caseId,
+				role: 'role.parent',
+				holders: [users.sam.id]
+			});
+			expect(named).toEqual({ ok: true, before: [], after: [users.sam.id] });
+			expect(await readyFor('sam')).toEqual(['Register the birth locally · Leo Example']);
+			expect((await leo()).processes[0]!.others).toBe(
+				'Waiting on Sam Example — register the birth locally.'
+			);
+
+			// Saving the same holders again changes nothing and records nothing.
+			const same = await changeRoleHolders(db, users.alex, {
+				caseId,
+				role: 'role.parent',
+				holders: [users.sam.id]
+			});
+			expect(same).toEqual({ ok: true, before: [users.sam.id], after: [users.sam.id] });
+
+			const replaced = await changeRoleHolders(db, users.alex, {
+				caseId,
+				role: 'role.parent',
+				holders: [users.alex.id]
+			});
+			expect(replaced).toEqual({ ok: true, before: [users.sam.id], after: [users.alex.id] });
+			expect(await readyFor('sam')).toEqual([]);
+			expect(await readyFor('alex')).toEqual(['Register the birth locally · Leo Example']);
+
+			// An agent acting for Alex under a delegation covering the case is recorded as such.
+			const [row] = await db
+				.select({ namespaceId: cases.namespaceId })
+				.from(cases)
+				.where(eq(cases.id, caseId));
+			await grantDelegation(db, {
+				delegatorId: users.alex.id,
+				agentId: users.agent.id,
+				namespaceId: row!.namespaceId,
+				caseId,
+				expiresAt: new Date(Date.now() + 86_400_000)
+			});
+			const removed = await changeRoleHolders(
+				db,
+				{ id: users.agent.id, onBehalfOfId: users.alex.id },
+				{ caseId, role: 'role.parent', holders: [] }
+			);
+			expect(removed).toEqual({ ok: true, before: [users.alex.id], after: [] });
+			expect(await readyFor('alex')).toEqual([]);
+			expect(await parent()).toMatchObject({ holders: [] });
+
+			const events = await db
+				.select({
+					type: caseEvents.type,
+					actorId: caseEvents.actorId,
+					onBehalfOfId: caseEvents.onBehalfOfId,
+					data: caseEvents.data
+				})
+				.from(caseEvents)
+				.where(eq(caseEvents.caseId, caseId))
+				.orderBy(caseEvents.seq);
+			expect(events.filter((e) => e.type === 'role.changed')).toEqual([
+				{
+					type: 'role.changed',
+					actorId: users.alex.id,
+					onBehalfOfId: null,
+					data: { role: 'role.parent', before: [], after: [users.sam.id] }
+				},
+				{
+					type: 'role.changed',
+					actorId: users.alex.id,
+					onBehalfOfId: null,
+					data: { role: 'role.parent', before: [users.sam.id], after: [users.alex.id] }
+				},
+				{
+					type: 'role.changed',
+					actorId: users.agent.id,
+					onBehalfOfId: users.alex.id,
+					data: { role: 'role.parent', before: [users.alex.id], after: [] }
+				}
+			]);
+
+			// The case record shows every change, newest first, with who made it.
+			const changes = (await leo()).roleChanges.map((r) => ({
+				role: r.role,
+				before: r.before?.map((p) => p.name),
+				after: r.after.map((p) => p.name),
+				by: r.by.name,
+				for: r.onBehalfOf?.name
+			}));
+			expect(changes).toEqual([
+				{
+					role: 'Parent',
+					before: ['Alex Example'],
+					after: [],
+					by: 'Casebook agent',
+					for: 'Alex Example'
+				},
+				{
+					role: 'Parent',
+					before: ['Sam Example'],
+					after: ['Alex Example'],
+					by: 'Alex Example',
+					for: undefined
+				},
+				{ role: 'Parent', before: [], after: ['Sam Example'], by: 'Alex Example', for: undefined }
+			]);
+		});
+
+		it('lists the people named at case start in the record too', async () => {
+			const view = await work('alex', 'example-family');
+			const mira = await loadCase(
+				db,
+				users.alex,
+				'example-family',
+				view.cases.find((c) => c.title === 'Mira Example')!.id
+			);
+			if ('ok' in mira) throw new Error(mira.reason);
+			expect(mira.roleChanges.map((r) => [r.role, r.before, r.after.map((p) => p.name)])).toEqual([
+				['Claimant', undefined, ['Alex Example']],
+				['Parent', undefined, ['Sam Example']],
+				['Parent', undefined, ['Alex Example']]
+			]);
+			expect(mira.roles.find((r) => r.id === 'role.parent')!.holders.map((p) => p.name)).toEqual([
+				'Alex Example',
+				'Sam Example'
+			]);
 		});
 	});
 });

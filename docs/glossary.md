@@ -6,6 +6,7 @@
 - **Task draft**: what someone typed into a task's form and saved for later; it records nothing on the case until the task is completed (0026).
 - **Question**: a thread on a work item asking a named person for information it needs, answered by them on the task and listed on their My work (0026).
 - **Case record**: every value and file recorded on a case, each with who recorded it, when, and the work item it came from.
+- **Who's who**: who holds each role on a case, named at case start and changed later by owners and admins, each change recorded on the case (0028).
 - **Instance**: an account seen from the runner; the instance switcher moves between the accounts a user belongs to.
 - **Guest**: someone who holds a role in an account without belonging to it, and sees only the forms addressed to them.
 - **Process**: a definition of stages, steps, facts, roles, decisions and approvals for achieving an outcome.
