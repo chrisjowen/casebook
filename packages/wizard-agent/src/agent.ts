@@ -778,10 +778,14 @@ function readCellsTool(ctx: AgentContext): StructuredToolInterface {
 				if (problem) problems.push(`${formatRange(r)}: ${problem}`);
 				else found.push(plainRange(r));
 			}
-			const notRead = problems.length ? `Not read:\n- ${problems.join('\n- ')}` : '';
-			if (found.length === 0) return `Nothing read. ${notRead || 'Name at least one range.'}`;
-			const text = rangesText(ctx.workbook, found, READ_CHARS);
-			return notRead ? `${text}\n\n${notRead}` : text;
+			if (found.length === 0) {
+				return `Nothing read. ${problems.length ? `Not read:\n- ${problems.join('\n- ')}` : 'Name at least one range.'}`;
+			}
+			const { text, skipped } = rangesText(ctx.workbook, found, READ_CHARS);
+			for (const r of skipped) {
+				problems.push(`${formatRange(r)}: over the read limit; ask for it in another call`);
+			}
+			return problems.length ? `${text}\n\nNot read:\n- ${problems.join('\n- ')}` : text;
 		},
 		{
 			name: 'read_cells',
