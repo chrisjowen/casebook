@@ -22,12 +22,17 @@ export async function currentUser(cookies: Cookies): Promise<UserSummary | undef
 
 export const demoUsers = () => listUsers(getDb(), DEMO_ISSUER);
 
-export async function signIn(cookies: Cookies, id: string): Promise<UserSummary | undefined> {
+const cookieOptions = (url: URL) =>
+	({ path: '/', httpOnly: true, sameSite: 'lax', secure: url.protocol === 'https:' }) as const;
+
+export async function signIn(
+	cookies: Cookies,
+	url: URL,
+	id: string
+): Promise<UserSummary | undefined> {
 	const user = devSignInEnabled() ? await findUser(getDb(), DEMO_ISSUER, id) : undefined;
-	if (user) {
-		cookies.set(COOKIE, user.id, { path: '/', httpOnly: true, sameSite: 'lax', secure: !dev });
-	}
+	if (user) cookies.set(COOKIE, user.id, cookieOptions(url));
 	return user;
 }
 
-export const signOut = (cookies: Cookies) => cookies.delete(COOKIE, { path: '/' });
+export const signOut = (cookies: Cookies, url: URL) => cookies.delete(COOKIE, cookieOptions(url));

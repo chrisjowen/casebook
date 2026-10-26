@@ -17,13 +17,14 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-	signin: async ({ request, cookies }) => {
+	signin: async ({ request, cookies, url }) => {
 		const id = String((await request.formData()).get('user') ?? '');
-		if (!(await signIn(cookies, id))) return fail(400, { reason: 'Choose one of the demo users.' });
+		if (!(await signIn(cookies, url, id)))
+			return fail(400, { reason: 'Choose one of the demo users.' });
 		redirect(303, '/');
 	},
-	signout: async ({ cookies }) => {
-		signOut(cookies);
+	signout: async ({ cookies, url }) => {
+		signOut(cookies, url);
 		redirect(303, '/signin');
 	}
 };
