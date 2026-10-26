@@ -73,8 +73,8 @@ A [moon](https://moonrepo.dev) workspace with pnpm workspaces underneath, all Ty
 | `packages/store`        | Postgres persistence, permission checks, definition editing, the case runtime and the demo seed; Drizzle ORM migrations.               |
 | `packages/mcp`          | The MCP server: tools for agents to work cases as the user they sign in as, over Streamable HTTP with OAuth.                           |
 | `packages/sheet-import` | Reads .xlsx workbooks into neutral rows and cells for the wizard.                                                                      |
-| `deploy`                | Kubernetes manifests for the image the root `Dockerfile` builds, and the local deploy scripts.                                         |
 | `packages/wizard-agent` | The spreadsheet wizard's authoring agent (deepagents), its state and the sample tracker.                                               |
+| `deploy`                | Kubernetes manifests for the image the root `Dockerfile` builds, and the local deploy scripts.                                         |
 
 ## Prerequisites
 
