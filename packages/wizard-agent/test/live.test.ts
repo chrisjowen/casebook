@@ -1,5 +1,6 @@
-// Runs the wizard on the configured model (CASEBOOK_WIZARD_MODEL, a local Ollama by default), so it
-// is slow and, on a hosted provider, costs money. Skipped unless CASEBOOK_LIVE_AGENT is set:
+// Runs the wizard on the configured model (CASEBOOK_WIZARD_MODEL, a local Ollama unless set), so it is
+// slow and, on a hosted provider, costs money.
+// Skipped unless CASEBOOK_LIVE_AGENT is set:
 // `CASEBOOK_LIVE_AGENT=1 pnpm --filter @casebook/wizard-agent test`.
 import { describe, expect, it } from 'vitest';
 import { readWorkbook } from '@casebook/sheet-import';

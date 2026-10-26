@@ -250,7 +250,7 @@ export async function act(
 		if (AGENT_ACTIONS.has(request.action)) {
 			const problem = await modelProblem();
 			if (problem) return { ok: false, status: 503, reason: problem };
-			state = await runTurn(id, actor.id, ({ signal, onProgress }) =>
+			state = await runTurn(id, actor.id, ({ signal, onProgress, onLive }) =>
 				apply(session.state, request, {
 					...deps,
 					agent: () => ({
@@ -259,6 +259,7 @@ export async function act(
 						workbook: session.workbook,
 						signal,
 						onProgress,
+						onLive,
 						lenient: modelSpec().provider === 'ollama'
 					})
 				})

@@ -1,8 +1,8 @@
 /**
  * What of the workbook the agent is shown up front. A small workbook goes in whole. A large one
  * would make every model call slow (minutes on a local model) and crowd out the conversation, so
- * the agent gets its tables with their first rows instead, plus the cells of the process being
- * drafted, and reads anything else from `/workbook.md` with `read_file`.
+ * the agent gets its tables with their headers and first rows instead, plus the cells of the
+ * process being drafted, and reads only the other cells it needs with `read_cells`.
  */
 import {
 	rangeAddress,
@@ -13,7 +13,7 @@ import {
 } from '@casebook/sheet-import';
 import { formatRange, parseRange, type CellRange } from './sources.js';
 
-/** Bound on the workbook text in the agent's filesystem. */
+/** Bound on the workbook text rendered whole. */
 export const WORKBOOK_CHARS = 60_000;
 /** A workbook whose text is at most this long is shown whole. */
 export const INLINE_CHARS = 12_000;
@@ -56,14 +56,26 @@ export function sheetOverview(workbook: Workbook): string {
 	);
 }
 
-/** The cells of `ranges` as text, like the workbook's, within `maxChars`. */
-export function rangesText(workbook: Workbook, ranges: CellRange[], maxChars: number): string {
+/**
+ * The cells of `ranges` as text, like the workbook's, within `maxChars`, with the ranges left out
+ * once that ran out.
+ */
+export function rangesText(
+	workbook: Workbook,
+	ranges: CellRange[],
+	maxChars: number
+): { text: string; skipped: CellRange[] } {
 	const parts: string[] = [];
+	const skipped: CellRange[] = [];
 	let left = maxChars;
 	for (const range of ranges) {
 		const sheet = workbook.sheets.find((s) => s.name === range.sheet);
 		const bounds = parseRange(range.range);
-		if (!sheet || !bounds || left < 200) continue;
+		if (!sheet || !bounds) continue;
+		if (left < 200) {
+			skipped.push(range);
+			continue;
+		}
 		const inside = (row: number, col: number) =>
 			row >= bounds.firstRow &&
 			row <= bounds.lastRow &&
@@ -88,7 +100,7 @@ export function rangesText(workbook: Workbook, ranges: CellRange[], maxChars: nu
 		parts.push(`${formatRange(range)}\n${text}`);
 		left -= text.length;
 	}
-	return parts.join('\n\n');
+	return { text: parts.join('\n\n'), skipped };
 }
 
 /** Each table's header and first rows, for a large workbook. */
@@ -105,7 +117,7 @@ function tablePreviews(workbook: Workbook): string {
 			});
 		}
 	}
-	return rangesText(workbook, ranges.slice(0, MAX_TABLES), PREVIEW_CHARS);
+	return rangesText(workbook, ranges.slice(0, MAX_TABLES), PREVIEW_CHARS).text;
 }
 
 /**
@@ -121,7 +133,7 @@ export function workbookOpening(
 	const intro =
 		whole.length <= INLINE_CHARS
 			? `Here it is:\n\n${whole}`
-			: `It is large, so here are its tables and their first rows. The whole workbook is in /workbook.md; read the parts you need with read_file, using offset and limit.\n\nTables:\n${sheetOverview(workbook)}\n\nFirst rows:\n${tablePreviews(workbook)}`;
+			: `It is large, so here are its tables and their first rows. Read the other cells you need with read_cells, several ranges in one call.\n\nTables:\n${sheetOverview(workbook)}\n\nFirst rows:\n${tablePreviews(workbook)}`;
 	if (!process || whole.length <= INLINE_CHARS) return intro;
-	return `${intro}\n\nThe cells of ${process.title}, the process being drafted:\n${rangesText(workbook, process.sources, PROCESS_CHARS)}`;
+	return `${intro}\n\nThe cells of ${process.title}, the process being drafted:\n${rangesText(workbook, process.sources, PROCESS_CHARS).text}`;
 }

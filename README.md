@@ -169,16 +169,19 @@ The board stays in view, with the assistant in a slide-over beside it that can b
 The agent only proposes node operations, which the store checks as edits by the signed-in user, and every node it adds links back to its source cells.
 It runs on any tool-calling chat model LangChain supports, set in `.env`:
 
-| Setting                           | Default                  | Meaning                                                                                                          |
-| --------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `CASEBOOK_WIZARD_MODEL`           | `ollama:qwen2.5:7b`      | `provider:model`, where the provider is `ollama`, `anthropic` (such as `anthropic:claude-sonnet-5`) or `openai`. |
-| `OLLAMA_BASE_URL`                 | `http://127.0.0.1:11434` | Where Ollama runs; pull the model first with `ollama pull qwen2.5:7b`.                                           |
-| `ANTHROPIC_API_KEY`               |                          | For `anthropic:` models.                                                                                         |
-| `OPENAI_API_KEY`                  |                          | For `openai:` models; `OPENAI_BASE_URL` points it at a compatible server.                                        |
-| `CASEBOOK_WIZARD_TIMEOUT_SECONDS` | `480`                    | How long one assistant turn may run before it is stopped with a message.                                         |
+| Setting                           | Default                  | Meaning                                                                                                            |
+| --------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `CASEBOOK_WIZARD_MODEL`           | `ollama:qwen2.5:7b`      | `provider:model`, where the provider is `ollama`, `anthropic` or `openai`; `anthropic:claude-sonnet-5` for Claude. |
+| `ANTHROPIC_API_KEY`               |                          | For `anthropic:` models, which run at a low effort.                                                                |
+| `OLLAMA_BASE_URL`                 | `http://127.0.0.1:11434` | Where Ollama runs; pull the model first with `ollama pull qwen2.5:7b`.                                             |
+| `OPENAI_API_KEY`                  |                          | For `openai:` models; `OPENAI_BASE_URL` points it at a compatible server.                                          |
+| `CASEBOOK_WIZARD_TIMEOUT_SECONDS` | `480`                    | How long one assistant turn may run before it is stopped with a message.                                           |
 
-Small local models are slower and propose less, which shows up as proposals to reject or push back on rather than broken drafts.
-The assistant runs one turn at a time on Ollama (turns on a hosted model run side by side), stops a turn still unfinished `CASEBOOK_WIZARD_TIMEOUT_SECONDS` after its request arrived, and shows what it is doing while it works; a large workbook is shown to the model as its tables and first rows, with the rest read on demand, so a turn stays within minutes on a local model.
+While a turn runs, the panel shows what the assistant is doing ("Reading the Claims sheet", "Proposing 3 processes"), its words as it writes them, and the processes or nodes it is proposing as they arrive (ADR 0029).
+On Claude the sample's split appears in about 7 seconds and a first process's draft in under 35, each showing its first words and items within about 2 seconds.
+The model is shown the whole of a small workbook and, for a large one, its tables with their headers and first rows; it reads any other cells it needs by range.
+Small local models are slower and propose less, which shows up as proposals to reject or push back on rather than broken drafts; on Ollama the assistant runs one turn at a time (turns on a hosted model run side by side) and asks for a draft a kind of node at a time.
+A turn still unfinished `CASEBOOK_WIZARD_TIMEOUT_SECONDS` after its request arrived is stopped.
 
 Sign-in is a dev-only stand-in for OIDC: pick one of the seeded users at `/signin`, with no password.
 It is on only in `pnpm dev`, and in a production build only when `CASEBOOK_DEMO_SIGNIN=on`, as the local Kubernetes deployment sets it (ADR 0027).

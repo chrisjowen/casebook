@@ -3,10 +3,11 @@
  * the server, so nothing of `@casebook/wizard-agent` reaches the browser.
  */
 import type { DefinitionDocument } from '@casebook/model';
-import type { WizardState } from '@casebook/wizard-agent';
+import type { LiveItem, WizardState } from '@casebook/wizard-agent';
 
 export type {
 	ChatEntry,
+	LiveItem,
 	ProposedProcess,
 	Turn,
 	WizardProcess,
@@ -55,11 +56,13 @@ export interface WizardView {
 	timeoutSeconds: number;
 }
 
-/** What a running or waiting turn is doing. */
+/** What a running or waiting turn is doing, and what the assistant has written so far. */
 export interface RunProgress {
 	activity: string;
 	waiting: boolean;
 	seconds: number;
+	text: string;
+	items: LiveItem[];
 }
 
 /** An import the signed-in person started in the open workspace. */

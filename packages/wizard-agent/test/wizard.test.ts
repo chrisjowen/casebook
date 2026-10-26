@@ -4,7 +4,9 @@ import { readWorkbook } from '@casebook/sheet-import';
 import type { Operation } from '@casebook/model';
 import {
 	history,
+	leadingObject,
 	memoryDrafts,
+	type LiveTurn,
 	mergeProcesses,
 	pendingTurn,
 	renameProcess,
@@ -17,7 +19,14 @@ import {
 	type AgentContext,
 	type WizardState
 } from '../src/index.js';
-import { answer, call, lastToolResult, ScriptedModel, type Step } from './fake-model.js';
+import {
+	answer,
+	call,
+	lastToolResult,
+	ScriptedModel,
+	StreamingScriptedModel,
+	type Step
+} from './fake-model.js';
 
 const workbook = readWorkbook(sampleWorkbook());
 const FILE = SAMPLE_FILE_NAME;
@@ -158,9 +167,9 @@ const firstDraft: Operation[] = [
 describe('choosing the processes', () => {
 	it('records the agent’s split and its reply, after the agent fixes a refused proposal', async () => {
 		const { ctx, model } = context([
-			call('read_file', { file_path: '/workbook.md' }),
+			call('read_cells', { ranges: [{ sheet: 'Birth reg', range: 'A1:G7' }] }),
 			(messages) => {
-				expect(lastToolResult(messages)).toContain('=== Sheet "Birth reg"');
+				expect(lastToolResult(messages)).toContain('Gather the family document set');
 				return call('propose_split', {
 					processes: [{ ...birth, sources: [{ sheet: 'Birth registration', range: 'A2:G7' }] }]
 				})(messages);
@@ -557,6 +566,11 @@ describe('a model that struggles', () => {
 					expect(String(messages.at(-1)!.content)).toMatch(
 						/I read the operations from your reply\. Applied 3 of 3 operations/
 					);
+					const asked = messages
+						.map((m) => String(m.content))
+						.find((text) => text.includes('The draft now'));
+					expect(asked).toContain('The draft now, with your proposal so far applied:');
+					expect(asked).toContain('"yourOperationsSoFar":3');
 					return answer(`Now the rest:\n${json(firstDraft.slice(3))}`)(messages);
 				},
 				answer('That is the whole draft.')
@@ -844,4 +858,196 @@ describe('the conversation the agent sees', () => {
 			'[Split accepted: 2 processes.]\n\nDraft Birth registration from its cells.'
 		);
 	});
+});
+
+describe('a turn on a hosted model, fast and in the open', () => {
+	it('records a split whose processes arrive as a JSON string, without another round trip', async () => {
+		const { ctx, model } = context([
+			call('propose_split', {
+				processes: JSON.stringify([birth, claims]),
+				shared: JSON.stringify([{ ...documents, sources: JSON.stringify(documents.sources) }])
+			}),
+			answer('Two processes and the documents.')
+		]);
+		const state = await wizard.proposeSplit(ctx, startState(FILE));
+		expect(model.remaining).toBe(0);
+		expect(state.split?.processes.map((p) => p.title)).toEqual([
+			'Birth registration',
+			'Medical claims'
+		]);
+		expect(state.split?.shared).toEqual([documents]);
+	});
+
+	it('takes a tool input streamed with stray text after it as the call it is', async () => {
+		const input = JSON.stringify({ processes: [birth, claims] });
+		expect(leadingObject(`${input}</invoke>\n}`)).toEqual({ processes: [birth, claims] });
+		expect(leadingObject(`${input}}`)).toEqual({ processes: [birth, claims] });
+		expect(leadingObject('{"a": "}"}')).toEqual({ a: '}' });
+		expect(leadingObject(`${input}${input}`)).toBeUndefined();
+		expect(leadingObject('{"processes": [')).toBeUndefined();
+
+		const { ctx, model } = context([
+			() =>
+				new AIMessage({
+					content: '',
+					invalid_tool_calls: [
+						{
+							name: 'propose_split',
+							args: `${input}</invoke>\n}`,
+							id: 'call_broken',
+							error: 'Malformed args.',
+							type: 'invalid_tool_call'
+						}
+					]
+				}),
+			answer('Two processes.')
+		]);
+		const state = await wizard.proposeSplit(ctx, startState(FILE));
+		expect(model.remaining).toBe(0);
+		expect(state.split?.processes.map((p) => p.title)).toEqual([
+			'Birth registration',
+			'Medical claims'
+		]);
+	});
+
+	it('records a split sent whole as the value of its first argument', async () => {
+		const whole = { processes: [birth, claims], shared: [documents] };
+		for (const processes of [JSON.stringify(whole), whole]) {
+			const { ctx, model } = context([
+				call('propose_split', { processes }),
+				answer('Two processes and the documents.')
+			]);
+			const state = await wizard.proposeSplit(ctx, startState(FILE));
+			expect(model.remaining).toBe(0);
+			expect(state.split?.processes.map((p) => p.title)).toEqual([
+				'Birth registration',
+				'Medical claims'
+			]);
+			expect(state.split?.shared).toEqual([documents]);
+		}
+	});
+
+	it('reads only the cells asked for, saying which could not be read', async () => {
+		const { ctx } = context([
+			call('read_cells', {
+				ranges: [
+					{ sheet: 'Claims', range: 'A2:F3' },
+					{ sheet: 'Nope', range: 'A1' }
+				]
+			}),
+			(messages) => {
+				const result = lastToolResult(messages);
+				expect(result).toContain('Claims!A2:F3');
+				expect(result).not.toContain('Gather the family document set');
+				expect(result).toMatch(/Not read:\n- Nope!A1: there is no sheet "Nope"/);
+				return call('propose_split', { processes: [claims] })(messages);
+			},
+			answer('One process.')
+		]);
+		const state = await wizard.proposeSplit(ctx, startState(FILE));
+		expect(state.split?.processes).toHaveLength(1);
+	});
+
+	it('sends the draft with the request and asks for the whole change in one call', async () => {
+		const { state: split, drafts } = await acceptedSplit();
+		const { ctx, model } = context(
+			[call('apply_operations', { operations: firstDraft }), answer('Drafted.')],
+			drafts
+		);
+		await wizard.draft(ctx, split, split.activeKey!);
+		const asked = String(model.sent[0]!.at(-1)!.content);
+		expect(asked).toContain('Call apply_operations once with all of it');
+		expect(asked).toMatch(/The draft now:\n\{"process":"Birth registration"/);
+		expect(asked).toContain('"id":"process.birth-registration"');
+	});
+
+	it('still asks a lenient local model for one kind of node at a time', async () => {
+		const { state: split, drafts } = await acceptedSplit();
+		const { ctx, model } = context(
+			[call('apply_operations', { operations: firstDraft }), answer('Drafted.')],
+			drafts,
+			{ lenient: true }
+		);
+		await wizard.draft(ctx, split, split.activeKey!);
+		expect(String(model.sent[0]!.at(-1)!.content)).toContain('Call apply_operations three times');
+	});
+
+	// The scripted model streams in timed pieces, about 4 seconds in all, so allow more than the
+	// default 5 seconds.
+	it(
+		'says what it is doing and shows what it proposes while the model is still writing',
+		{
+			timeout: 30_000
+		},
+		async () => {
+			const activities: string[] = [];
+			const lives: LiveTurn[] = [];
+			const model = new StreamingScriptedModel(
+				[
+					() =>
+						new AIMessage({
+							content: 'I will propose one process per sheet.',
+							tool_calls: [
+								{
+									name: 'read_cells',
+									args: { ranges: [{ sheet: 'Claims', range: 'A2:F8' }] },
+									id: 'r1',
+									type: 'tool_call'
+								}
+							]
+						}),
+					call('propose_split', { processes: [birth, passport, claims], shared: [documents] }),
+					answer('Three processes, plus the documents.')
+				],
+				24,
+				40
+			);
+			const drafts = memoryDrafts();
+			const ctx: AgentContext = {
+				model,
+				drafts,
+				workbook,
+				onProgress: (a) => activities.push(a),
+				onLive: (l) => lives.push(structuredClone(l))
+			};
+			let state = await wizard.proposeSplit(ctx, startState(FILE));
+			expect(activities[0]).toBe('Reading the spreadsheet');
+			expect(activities).toContain('Reading the Claims sheet');
+			expect(lives.some((l) => l.text === 'I will propose one process per sheet.')).toBe(true);
+			// Processes show as they are written, before the tool has checked the split.
+			const checking = activities.indexOf('Checking the 3 proposed processes');
+			expect(activities.slice(0, checking)).toContain('Proposing 1 process');
+			expect(activities.slice(0, checking)).toContain('Proposing 2 processes');
+			expect(lives.at(-1)!.items).toEqual([
+				{ kind: 'process', title: 'Birth registration' },
+				{ kind: 'process', title: 'Child passport and ID' },
+				{ kind: 'process', title: 'Medical claims' },
+				{ kind: 'shared', title: 'Shared document set' }
+			]);
+			expect(state.split?.processes).toHaveLength(3);
+
+			state = await wizard.acceptSplit(drafts, state, 'ns-1');
+			activities.length = 0;
+			lives.length = 0;
+			model.script.push(call('apply_operations', { operations: firstDraft }), answer('Drafted.'));
+			state = await wizard.draft(ctx, state, state.activeKey!);
+			expect(activities[0]).toBe('Reading the cells of Birth registration');
+			const midway = lives.filter((l) => l.items.length > 0 && l.items.length < firstDraft.length);
+			expect(midway.length).toBeGreaterThan(0);
+			expect(activities).toContain('Checking 7 proposed changes');
+			expect(activities.some((a) => /^Proposing 2 stages, 1 role and \d facts?$/.test(a))).toBe(
+				true
+			);
+			expect(lives.at(-1)!.items.map((i) => `${i.kind}: ${i.title}`)).toEqual([
+				'stage: Before the birth',
+				'stage: Registration',
+				'role: Parent',
+				'fact: Home address',
+				'fact: Birth certificate',
+				'step: Gather the family document set',
+				'step: Register the birth'
+			]);
+			expect(pendingTurn(state, state.activeKey!)?.ops).toEqual(firstDraft);
+		}
+	);
 });

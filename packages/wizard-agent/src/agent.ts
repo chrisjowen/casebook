@@ -1,18 +1,27 @@
 /**
- * The authoring agent: a deepagents agent (ADR 0012) with the workbook in its virtual filesystem
- * and three tools of its own. In the split phase it may only propose a split; in the draft phase it
- * may only read the process being drafted and apply node operations to it, each checked by the
- * store's definition service as an edit by the signed-in person and collected into one proposal
- * the person accepts or rejects (ADR 0011). Nothing it does is saved by the agent itself.
+ * The authoring agent: a deepagents agent (ADR 0012) shown the workbook and four tools of its own.
+ * In either phase it may read cells of the workbook; in the split phase it may otherwise only
+ * propose a split; in the draft phase it may only read the process being drafted and apply node
+ * operations to it, each checked by the store's definition service as an edit by the signed-in
+ * person and collected into one proposal the person accepts or rejects (ADR 0011). Nothing it does
+ * is saved by the agent itself. The model's output is followed as it streams (ADR 0029), so the
+ * person sees its words and what it proposes while it writes them.
  */
 import {
+	BaseCallbackHandler,
+	type HandleLLMNewTokenCallbackFields,
+	type NewTokenIndices
+} from '@langchain/core/callbacks/base';
+import {
 	AIMessage,
+	AIMessageChunk,
 	HumanMessage,
 	SystemMessage,
 	ToolMessage,
 	type BaseMessage
 } from '@langchain/core/messages';
 import type { BaseLanguageModel } from '@langchain/core/language_models/base';
+import { parsePartialJson } from '@langchain/core/output_parsers';
 import { tool, type StructuredToolInterface } from '@langchain/core/tools';
 import { createDeepAgent } from 'deepagents';
 import { createMiddleware } from 'langchain';
@@ -25,7 +34,7 @@ import {
 	type Operation
 } from '@casebook/model';
 import type { Workbook } from '@casebook/sheet-import';
-import { workbookOpening, workbookText } from './context.js';
+import { rangesText, workbookOpening } from './context.js';
 import type { DraftAccess } from './drafts.js';
 import { SYSTEM_PROMPT } from './prompt.js';
 import {
@@ -34,7 +43,8 @@ import {
 	formatRange,
 	plainRange,
 	rangeProblem,
-	sourceProblem
+	sourceProblem,
+	type CellRange
 } from './sources.js';
 import {
 	pendingTurn,
@@ -52,8 +62,10 @@ export interface AgentContext {
 	workbook: Workbook;
 	/** Stops the run, such as when it takes too long. */
 	signal?: AbortSignal;
-	/** Told what the agent is doing as it goes, such as `Reading the draft`. */
+	/** Told what the agent is doing as it goes, such as `Reading the Claims sheet`. */
 	onProgress?: (activity: string) => void;
+	/** Told what the agent has written so far in the turn, as it writes it. */
+	onLive?: (live: LiveTurn) => void;
 	/**
 	 * Whether operations a model writes into its reply are read, and operations written slightly
 	 * wrong are tidied before they are checked, for small local models. Otherwise operations are
@@ -79,7 +91,23 @@ export type AgentOutcome =
 			changed: boolean;
 	  };
 
-const WORKBOOK_FILE = '/workbook.md';
+/** One thing the agent is proposing, as the person sees it while the turn runs. */
+export interface LiveItem {
+	/** `process` or `shared` while splitting; a node kind, or `change`, while drafting. */
+	kind: string;
+	title: string;
+}
+
+/** What the agent has written so far in a turn. */
+export interface LiveTurn {
+	/** Its words to the person, from the latest model call that wrote any. */
+	text: string;
+	/** What it is proposing: the processes of the split, or this turn's nodes and changes. */
+	items: LiveItem[];
+}
+
+/** Bound on the cells one read_cells call returns. */
+const READ_CHARS = 16_000;
 /** Bound on agent steps in one turn, so a confused agent cannot loop for long. */
 const RECURSION_LIMIT = 40;
 /** Refused tool calls in a row after which the agent is told to stop and explain. */
@@ -108,21 +136,30 @@ export async function runAgent(
 ): Promise<AgentOutcome> {
 	if (state.phase === 'split') {
 		const collected: { split?: Extract<AgentOutcome, { phase: 'split' }>['split'] } = {};
-		const tools = [splitTool(ctx, state, collected)];
-		let reply = await invoke(ctx, state, request, tools);
+		const tools = [readCellsTool(ctx), splitTool(ctx, state, collected)];
+		const watch = new TurnWatch(ctx, 'Reading the spreadsheet', () =>
+			collected.split ? splitItems(collected.split) : []
+		);
+		let reply = await invoke(ctx, state, request, tools, watch);
 		if (expectProposal === true && !collected.split) {
-			reply = await invoke(ctx, state, request, tools, [[reply, SPLIT_NUDGE]]);
+			reply = await invoke(ctx, state, request, tools, watch, [[reply, SPLIT_NUDGE]]);
 		}
 		return { phase: 'split', reply, ...(collected.split ? { split: collected.split } : {}) };
 	}
 	const process = processOf(state, state.activeKey);
 	const session = await draftSession(ctx, state, process.key);
 	const preface = session.dropped
-		? `(Your earlier proposal no longer fits the draft, which changed since: ${session.dropped}. Start again from read_draft.)\n\n`
+		? `(Your earlier proposal no longer fits the draft, which changed since: ${session.dropped}. Start again from the draft below.)\n\n`
 		: '';
-	const { tools, apply, outcome } = draftTools(ctx, state, session);
+	const { tools, apply, outcome, view } = draftTools(ctx, state, session);
+	// The draft comes with the request, so the agent can start proposing without reading it first.
+	const told = async () =>
+		`${preface}${request}\n\nThe draft now${session.ops.length > 0 ? ', with your proposal so far applied' : ''}:\n${JSON.stringify(await view())}`;
+	const watch = new TurnWatch(ctx, `Reading the cells of ${process.title}`, () =>
+		session.ops.slice(session.carried.length).flatMap((op) => opItem(op) ?? [])
+	);
 	const exchange: [reply: string, next: string][] = [];
-	let reply = await invoke(ctx, state, preface + request, tools, exchange);
+	let reply = await invoke(ctx, state, await told(), tools, watch, exchange);
 	// Small models sometimes describe their operations, or write them into the reply as JSON,
 	// instead of calling apply_operations. With `lenient`, operations written out are read from the
 	// reply through the same checks a call gets, and the agent is told the result so it can go on.
@@ -143,7 +180,7 @@ export async function runAgent(
 		} else break;
 		if (round >= MAX_ROUNDS) break;
 		exchange.push([reply, next]);
-		reply = await invoke(ctx, state, preface + request, tools, exchange);
+		reply = await invoke(ctx, state, await told(), tools, watch, exchange);
 	}
 	reply = reply.replace(/```[\s\S]*?```/g, '').trim() || 'I proposed the changes shown.';
 	return {
@@ -160,6 +197,7 @@ async function invoke(
 	state: WizardState,
 	request: string,
 	tools: StructuredToolInterface[],
+	watch: TurnWatch,
 	/** The agent's earlier replies in this turn, each with what it was told next. */
 	followUp: [reply: string, next: string][] = []
 ): Promise<string> {
@@ -167,13 +205,16 @@ async function invoke(
 		model: ctx.model,
 		tools,
 		systemPrompt: SYSTEM_PROMPT,
-		middleware: [focus(tools.map((t) => t.name)), plainToolResults, progress(ctx)]
+		middleware: [
+			focus(tools.map((t) => t.name)),
+			plainToolResults,
+			repairedToolCalls,
+			progress(watch)
+		]
 	});
-	const workbook = workbookText(ctx.workbook, state.fileName);
 	const drafting =
 		state.phase === 'draft' ? state.processes.find((p) => p.key === state.activeKey) : undefined;
 	const opening = workbookOpening(ctx.workbook, state.fileName, drafting);
-	const now = new Date().toISOString();
 	let result: { messages: unknown };
 	try {
 		result = await agent.invoke(
@@ -181,17 +222,13 @@ async function invoke(
 				messages: [
 					...history(state, request, opening),
 					...followUp.flatMap(([said, next]) => [new AIMessage(said), new HumanMessage(next)])
-				],
-				files: {
-					[WORKBOOK_FILE]: {
-						content: workbook,
-						mimeType: 'text/markdown',
-						created_at: now,
-						modified_at: now
-					}
-				}
+				]
 			},
-			{ recursionLimit: RECURSION_LIMIT, ...(ctx.signal ? { signal: ctx.signal } : {}) }
+			{
+				recursionLimit: RECURSION_LIMIT,
+				callbacks: [watch],
+				...(ctx.signal ? { signal: ctx.signal } : {})
+			}
 		);
 	} catch (error) {
 		// A model that keeps calling tools is stopped; what its tools accepted so far still counts.
@@ -205,41 +242,347 @@ async function invoke(
 	return last ? textOf(last).trim() : 'Done.';
 }
 
-const TOOL_ACTIVITY: Record<string, string> = {
-	read_file: 'Reading the workbook',
-	propose_split: 'Checking the proposed processes',
-	read_draft: 'Reading the draft',
-	apply_operations: 'Checking the proposed changes'
-};
+/**
+ * The first complete JSON object in `text`, when all that follows it is a little stray text, or
+ * undefined. A tool input streamed as it is written is not checked by the provider, and Claude
+ * sometimes ends one with a stray `</invoke>` or closing brace after the complete object.
+ */
+export function leadingObject(text: string): Record<string, unknown> | undefined {
+	const start = text.indexOf('{');
+	if (start < 0 || text.slice(0, start).trim() !== '') return undefined;
+	let depth = 0;
+	let quoted = false;
+	for (let i = start; i < text.length; i++) {
+		const c = text[i];
+		if (quoted) {
+			if (c === '\\') i++;
+			else if (c === '"') quoted = false;
+		} else if (c === '"') quoted = true;
+		else if (c === '{' || c === '[') depth++;
+		else if (c === '}' || c === ']') {
+			depth--;
+			if (depth > 0) continue;
+			const rest = text.slice(i + 1).trim();
+			if (rest.length > 40 || rest.includes('{')) return undefined;
+			try {
+				const value = JSON.parse(text.slice(start, i + 1)) as unknown;
+				return typeof value === 'object' && value !== null && !Array.isArray(value)
+					? (value as Record<string, unknown>)
+					: undefined;
+			} catch {
+				return undefined;
+			}
+		}
+	}
+	return undefined;
+}
 
-/** Reports each model call and tool call to `ctx.onProgress`, so a person can see it working. */
-function progress(ctx: AgentContext) {
-	let calls = 0;
+/**
+ * Takes a tool call whose input came with stray text after the complete JSON (see
+ * `leadingObject`) as the call it is, instead of dropping it and costing a round trip to ask
+ * again. The tool checks the input as it would any other.
+ */
+const repairedToolCalls = createMiddleware({
+	name: 'RepairedToolCalls',
+	wrapModelCall: async (request, handler) => {
+		const message = await handler(request);
+		const broken = message.invalid_tool_calls ?? [];
+		if (broken.length === 0) return message;
+		const repaired: NonNullable<AIMessage['tool_calls']> = [];
+		const still: typeof broken = [];
+		for (const call of broken) {
+			const args = typeof call.args === 'string' ? leadingObject(call.args) : undefined;
+			if (args && call.name && call.id) {
+				repaired.push({ name: call.name, args, id: call.id, type: 'tool_call' });
+			} else still.push(call);
+		}
+		if (repaired.length === 0) return message;
+		return new AIMessage({
+			content: message.content,
+			...(message.id ? { id: message.id } : {}),
+			additional_kwargs: message.additional_kwargs,
+			response_metadata: message.response_metadata,
+			...(message.usage_metadata ? { usage_metadata: message.usage_metadata } : {}),
+			tool_calls: [...(message.tool_calls ?? []), ...repaired],
+			invalid_tool_calls: still
+		});
+	}
+});
+
+/** Tells the turn's watch about each model call and tool call, so a person can see it working. */
+function progress(watch: TurnWatch) {
 	return createMiddleware({
 		name: 'WizardProgress',
 		wrapModelCall: (request, handler) => {
-			calls++;
-			ctx.onProgress?.(calls === 1 ? 'Reading the spreadsheet' : `Thinking (step ${calls})`);
+			watch.modelCall();
 			return handler(request);
 		},
-		wrapToolCall: (request, handler) => {
-			ctx.onProgress?.(TOOL_ACTIVITY[request.toolCall.name] ?? 'Working');
-			return handler(request);
+		wrapToolCall: async (request, handler) => {
+			const { name, args } = request.toolCall;
+			watch.toolCall(name, args);
+			const result = await handler(request);
+			watch.toolDone(ToolMessage.isInstance(result) ? textOf(result) : '');
+			return result;
 		}
 	});
 }
 
-/** The one deepagents built-in tool the wizard keeps: reading the workbook from its file. */
-const KEPT_BUILTINS = ['read_file'];
+/** `the Claims sheet`, `the Claims and Documents sheets`: the sheets some ranges are on. */
+export function sheetsOf(ranges: unknown): string {
+	const names = [
+		...new Set(
+			(Array.isArray(ranges) ? ranges : [])
+				.map((r) => (r as { sheet?: unknown } | null)?.sheet)
+				.filter((s): s is string => typeof s === 'string' && s !== '')
+		)
+	];
+	if (names.length === 0) return 'the workbook';
+	const list =
+		names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} and ${names.at(-1)!}`;
+	return `the ${list} ${names.length === 1 ? 'sheet' : 'sheets'}`;
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** `3 stages, 2 roles and 4 facts`: what some items are, by kind, in the order they came. */
+export function countItems(items: LiveItem[]): string {
+	const counts = new Map<string, number>();
+	for (const item of items) counts.set(item.kind, (counts.get(item.kind) ?? 0) + 1);
+	const words = [...counts].map(([kind, n]) =>
+		plural(n, kind === 'change' ? 'other change' : kind)
+	);
+	return words.length <= 1
+		? (words[0] ?? 'nothing')
+		: `${words.slice(0, -1).join(', ')} and ${words.at(-1)!}`;
+}
+
+/** What the agent says it is doing while it writes a call to a tool, from what it wrote so far. */
+function writingActivity(name: string, items: LiveItem[]): string {
+	switch (name) {
+		case 'propose_split': {
+			const processes = items.filter((i) => i.kind === 'process').length;
+			return processes > 0
+				? `Proposing ${plural(processes, 'process', 'processes')}`
+				: 'Proposing processes';
+		}
+		case 'apply_operations':
+			return items.length > 0 ? `Proposing ${countItems(items)}` : 'Proposing changes';
+		case 'read_cells':
+			return 'Choosing cells to read';
+		case 'read_draft':
+			return 'Reading the draft';
+		default:
+			return 'Working';
+	}
+}
+
+/** What the agent is doing while one of its tools runs, from the call's input. */
+function toolActivity(name: string, args: Record<string, unknown>, items: LiveItem[]): string {
+	switch (name) {
+		case 'read_cells':
+			return `Reading ${sheetsOf(listArg(args.ranges))}`;
+		case 'read_draft':
+			return 'Reading the draft';
+		case 'propose_split': {
+			const n = items.filter((i) => i.kind === 'process').length;
+			return `Checking the ${plural(n, 'proposed process', 'proposed processes')}`;
+		}
+		case 'apply_operations':
+			return `Checking ${plural(items.length, 'proposed change')}`;
+		default:
+			return 'Working';
+	}
+}
+
+/** A list argument, also when a model sent it as a JSON string, possibly cut short. */
+function listArg(value: unknown): unknown[] {
+	const parsed = typeof value === 'string' ? (parsePartialJson(value) as unknown) : value;
+	return Array.isArray(parsed) ? parsed : [];
+}
+
+/** The processes and shared cells of a split, as items. */
+function splitItems(input: { processes?: unknown; shared?: unknown }): LiveItem[] {
+	// The whole input written as the value of `processes` (see `argsAsMeant`).
+	const nested =
+		typeof input.processes === 'string'
+			? (parsePartialJson(input.processes) as unknown)
+			: input.processes;
+	if (isRecord(nested) && 'processes' in nested) return splitItems(nested);
+	const titled = (kind: string) => (p: unknown) => {
+		const title = (p as { title?: unknown } | null)?.title;
+		return typeof title === 'string' && title.trim() ? [{ kind, title: title.trim() }] : [];
+	};
+	return [
+		...listArg(input.processes).flatMap(titled('process')),
+		...listArg(input.shared).flatMap(titled('shared'))
+	];
+}
 
 /**
- * Shows the model only the wizard's own tools (and `read_file`) and its own instructions. The
- * deepagents harness still runs the loop and holds the workbook in its filesystem, but its other
- * built-in tools (writing files, to-do lists, subagents) only distract a model from the one job,
- * small local models most of all. A call to a hidden tool is answered with an error.
+ * An operation as an item: a node it adds by its kind and title, any other change in a few words.
+ * Undefined while it is still being written, before it says that much.
+ */
+function opItem(value: unknown): LiveItem | undefined {
+	const op = value as { op?: unknown; node?: { core?: { kind?: unknown; title?: unknown } } };
+	if (op?.op === 'add_node') {
+		const core = op.node?.core;
+		return typeof core?.kind === 'string' && typeof core.title === 'string' && core.title.trim()
+			? { kind: core.kind, title: core.title.trim() }
+			: undefined;
+	}
+	const checked = checkOperation(value);
+	return checked.valid ? { kind: 'change', title: describeOp(checked.operation) } : undefined;
+}
+
+/** The operations of an `apply_operations` call written so far, as items. */
+function opsItems(args: { operations?: unknown }): LiveItem[] {
+	return listArg(args.operations).flatMap((o) => opItem(o) ?? []);
+}
+
+/** How often what the model is writing is read again, at most. */
+const LIVE_EVERY_MS = 150;
+
+/**
+ * Follows one turn of the agent as it runs and tells the person what it is doing (`onProgress`)
+ * and what it has written so far (`onLive`): its words, and what it is proposing, read from its
+ * tool calls while they are still being written. It is a callback handler that asks for the
+ * model's output as a stream; a model that cannot stream is followed call by call.
+ */
+class TurnWatch extends BaseCallbackHandler {
+	name = 'WizardTurnWatch';
+	readonly lc_prefer_streaming = true;
+	private calls = 0;
+	private refused = false;
+	private text = '';
+	/** The text, tool calls and thinking of the model call being written. */
+	private writing = { text: '', thinking: false, tools: [] as { name: string; args: string }[] };
+	/** Items of the tool call being written or run, before its tool has taken them. */
+	private pending: LiveItem[] = [];
+	private readAt = 0;
+
+	constructor(
+		private readonly ctx: AgentContext,
+		/** What the first model call of the turn is doing, such as `Reading the spreadsheet`. */
+		private readonly opening: string,
+		/** What the turn has proposed so far that its tools have taken. */
+		private readonly taken: () => LiveItem[]
+	) {
+		super();
+	}
+
+	/** A model call starts. */
+	modelCall() {
+		this.calls++;
+		this.writing = { text: '', thinking: false, tools: [] };
+		this.pending = [];
+		this.say(
+			this.calls === 1
+				? this.opening
+				: this.refused
+					? 'Fixing what was refused'
+					: 'Thinking it over'
+		);
+	}
+
+	/** A tool starts running with the model's finished call. */
+	toolCall(name: string, args: Record<string, unknown>) {
+		this.pending =
+			name === 'propose_split'
+				? splitItems(args)
+				: name === 'apply_operations'
+					? opsItems(args)
+					: [];
+		this.say(toolActivity(name, args, this.pending));
+	}
+
+	/** A tool has answered; what it took now shows from `taken`. */
+	toolDone(result: string) {
+		this.refused = /^(Not recorded|Nothing applied|Nothing read|Error)/.test(result.trim());
+		this.pending = [];
+		this.show();
+	}
+
+	override handleLLMNewToken(
+		_token: string,
+		_idx: NewTokenIndices,
+		_runId: string,
+		_parentRunId?: string,
+		_tags?: string[],
+		fields?: HandleLLMNewTokenCallbackFields
+	) {
+		const message = fields?.chunk && 'message' in fields.chunk ? fields.chunk.message : undefined;
+		if (!message || !AIMessageChunk.isInstance(message)) return;
+		const w = this.writing;
+		if (Array.isArray(message.content)) {
+			for (const block of message.content) {
+				if (block.type === 'thinking' || block.type === 'redacted_thinking') w.thinking = true;
+				else if (block.type === 'text' && 'text' in block) w.text += String(block.text);
+			}
+		} else w.text += message.content;
+		for (const chunk of message.tool_call_chunks ?? []) {
+			const index = chunk.index ?? w.tools.length - 1;
+			const call = (w.tools[index] ??= { name: '', args: '' });
+			if (chunk.name) call.name = chunk.name;
+			if (chunk.args) call.args += chunk.args;
+		}
+		const now = Date.now();
+		if (now - this.readAt < LIVE_EVERY_MS) return;
+		this.readAt = now;
+		this.read();
+	}
+
+	/** A model call has finished: what it wrote last is read even when it came within the wait. */
+	override handleLLMEnd() {
+		this.read();
+	}
+
+	/** Reads what the model call has written so far and says what it is doing. */
+	private read() {
+		const w = this.writing;
+		const said = w.text.replace(/```[\s\S]*?(?:```|$)/g, '').trim();
+		if (said) this.text = said;
+		const last = w.tools.at(-1);
+		if (last?.name) {
+			const args = (parsePartialJson(last.args || '{}') ?? {}) as Record<string, unknown>;
+			this.pending = w.tools.flatMap((t) => {
+				if (t === last) {
+					return t.name === 'propose_split'
+						? splitItems(args)
+						: t.name === 'apply_operations'
+							? opsItems(args)
+							: [];
+				}
+				const done = (parsePartialJson(t.args || '{}') ?? {}) as Record<string, unknown>;
+				return t.name === 'apply_operations' ? opsItems(done) : [];
+			});
+			this.say(writingActivity(last.name, this.pending));
+		} else if (said) this.say('Writing');
+		else if (w.thinking) this.say('Thinking it over');
+		else this.show();
+	}
+
+	private say(activity: string) {
+		this.ctx.onProgress?.(activity);
+		this.show();
+	}
+
+	private show() {
+		if (!this.ctx.onLive) return;
+		const pending = this.pending;
+		// A split is proposed whole, so the one being written replaces the one taken before it.
+		const split = pending.some((i) => i.kind === 'process' || i.kind === 'shared');
+		this.ctx.onLive({ text: this.text, items: split ? pending : [...this.taken(), ...pending] });
+	}
+}
+
+/**
+ * Shows the model only the wizard's own tools and its own instructions. The deepagents harness
+ * still runs the loop, but its built-in tools (files, to-do lists, subagents) only distract a model
+ * from the one job, small local models most of all. A call to a hidden tool is answered with an
+ * error.
  */
 function focus(names: string[]) {
-	const allowed = new Set([...names, ...KEPT_BUILTINS]);
+	const allowed = new Set(names);
 	const system = new SystemMessage(SYSTEM_PROMPT);
 	return createMiddleware({
 		name: 'WizardFocus',
@@ -253,8 +596,11 @@ function focus(names: string[]) {
 				)
 			}),
 		wrapToolCall: (request, handler) => {
-			const { name, id } = request.toolCall;
-			if (allowed.has(name)) return handler(request);
+			const { name, id, args } = request.toolCall;
+			if (allowed.has(name)) {
+				const toolCall = { ...request.toolCall, args: argsAsMeant(name, args) };
+				return handler({ ...request, toolCall });
+			}
 			return new ToolMessage({
 				content: `Error: ${name} is not available. Use ${[...allowed].join(', ')}.`,
 				tool_call_id: id ?? '',
@@ -366,12 +712,95 @@ function refusals() {
 	};
 }
 
-// The split phase
-
 const range = z.object({
 	sheet: z.string().describe('The sheet name, exactly as in the workbook'),
 	range: z.string().describe('An A1 address or range, such as A2:F23')
 });
+
+/** Arguments of the wizard's tools that are lists, and within their items, lists of cells. */
+const LIST_ARGS: Record<string, { lists: string[]; within?: string }> = {
+	read_cells: { lists: ['ranges'] },
+	propose_split: { lists: ['processes', 'shared'], within: 'sources' },
+	apply_operations: { lists: ['operations'] }
+};
+
+/** A list or object a model sent as a JSON string, as what it holds; anything else as it is. */
+function unstring(value: unknown): unknown {
+	if (typeof value !== 'string' || !/^\s*[[{]/.test(value)) return value;
+	try {
+		const parsed = JSON.parse(value) as unknown;
+		return typeof parsed === 'object' && parsed !== null ? parsed : value;
+	} catch {
+		return value;
+	}
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * A tool call's arguments as the model meant them. Claude sometimes sends a list of objects as a
+ * JSON string, or the whole input, as an object or a JSON string, as the value of its first
+ * argument (`{"processes": "{\"processes\": [...], \"shared\": [...]}"}`); both are read as what
+ * they hold. The tool then checks the arguments as usual.
+ */
+export function argsAsMeant(name: string, args: Record<string, unknown>): Record<string, unknown> {
+	const shape = LIST_ARGS[name];
+	if (!shape) return args;
+	const keys = Object.keys(args);
+	if (keys.length === 1) {
+		const whole = unstring(args[keys[0]!]);
+		if (isRecord(whole) && keys[0]! in whole) return argsAsMeant(name, whole);
+	}
+	const out = { ...args };
+	for (const key of shape.lists) {
+		if (!(key in out)) continue;
+		const list = unstring(out[key]);
+		const within = shape.within;
+		out[key] =
+			within && Array.isArray(list)
+				? list.map((item: unknown) =>
+						isRecord(item) && within in item ? { ...item, [within]: unstring(item[within]) } : item
+					)
+				: list;
+	}
+	return out;
+}
+
+/** Reading cells of the workbook by range, in either phase. */
+function readCellsTool(ctx: AgentContext): StructuredToolInterface {
+	return tool(
+		async ({ ranges }: { ranges: CellRange[] }) => {
+			const problems: string[] = [];
+			const found: CellRange[] = [];
+			for (const r of ranges) {
+				const problem = rangeProblem(ctx.workbook, plainRange(r));
+				if (problem) problems.push(`${formatRange(r)}: ${problem}`);
+				else found.push(plainRange(r));
+			}
+			if (found.length === 0) {
+				return `Nothing read. ${problems.length ? `Not read:\n- ${problems.join('\n- ')}` : 'Name at least one range.'}`;
+			}
+			const { text, skipped } = rangesText(ctx.workbook, found, READ_CHARS);
+			for (const r of skipped) {
+				problems.push(`${formatRange(r)}: over the read limit; ask for it in another call`);
+			}
+			return problems.length ? `${text}\n\nNot read:\n- ${problems.join('\n- ')}` : text;
+		},
+		{
+			name: 'read_cells',
+			description:
+				'Read cells of the workbook, one line per row with every cell’s address. Ask for only the cells you need, several ranges in one call.',
+			schema: z.object({
+				ranges: z
+					.array(range)
+					.describe('The ranges to read, such as {"sheet": "Claims", "range": "A1:F40"}')
+			})
+		}
+	);
+}
+
+// The split phase
 
 function splitTool(
 	ctx: AgentContext,
@@ -417,6 +846,8 @@ function splitTool(
 		},
 		{
 			name: 'propose_split',
+			// The processes show as they are written (model.ts).
+			metadata: { streamInput: true },
 			description:
 				'Propose how to split the workbook into processes. Replaces any earlier proposal, so always send the whole split.',
 			schema: z.object({
@@ -666,6 +1097,7 @@ function draftTools(
 	tools: StructuredToolInterface[];
 	apply: (operations: unknown[]) => Promise<string>;
 	outcome: { kept: number; refused: number; skipped: number };
+	view: () => Promise<Record<string, unknown>>;
 } {
 	const serial = <T>(work: () => Promise<T>): Promise<T> => {
 		const run = session.queue.then(work, work);
@@ -693,34 +1125,28 @@ function draftTools(
 			}
 		};
 	};
-	const readDraft = tool(
-		() =>
-			serial(async () => {
-				const preview =
-					session.ops.length > 0
-						? await ctx.drafts.preview(session.definitionId, session.baseRevision, session.ops)
-						: undefined;
-				const document = preview?.ok ? preview.document : session.head;
-				return JSON.stringify(
-					{
-						process: process.title,
-						draftFrom: process.sources.map(describeRange),
-						sharedCells: shared.map((s) => ({ title: s.title, cells: s.sources.map(formatRange) })),
-						sourceDoc: state.fileName,
-						yourOperationsSoFar: session.ops.length,
-						nodes: document.nodes
-					},
-					null,
-					1
-				);
-			}),
-		{
-			name: 'read_draft',
-			description:
-				'Read the process being drafted, as JSON, with the operations you proposed so far applied.',
-			schema: z.object({})
-		}
-	);
+	/** The process being drafted, with the proposal so far applied, as the agent is shown it. */
+	const view = async () => {
+		const preview =
+			session.ops.length > 0
+				? await ctx.drafts.preview(session.definitionId, session.baseRevision, session.ops)
+				: undefined;
+		const document = preview?.ok ? preview.document : session.head;
+		return {
+			process: process.title,
+			draftFrom: process.sources.map(describeRange),
+			sharedCells: shared.map((s) => ({ title: s.title, cells: s.sources.map(formatRange) })),
+			sourceDoc: state.fileName,
+			yourOperationsSoFar: session.ops.length,
+			nodes: document.nodes
+		};
+	};
+	const readDraft = tool(() => serial(async () => JSON.stringify(await view(), null, 1)), {
+		name: 'read_draft',
+		description:
+			'Read the process being drafted, as JSON, with the operations you proposed so far applied.',
+		schema: z.object({})
+	});
 	/** The draft as the proposal so far would leave it. */
 	const proposalDocument = async (): Promise<DefinitionDocument> => {
 		if (session.ops.length === 0) return session.head;
@@ -814,9 +1240,11 @@ function draftTools(
 		});
 	const applyOperations = tool((input: { operations: unknown[] }) => apply(input.operations), {
 		name: 'apply_operations',
+		// Its input is a whole process's operations, so it is shown as it is written (model.ts).
+		metadata: { streamInput: true },
 		description:
 			'Apply node operations to the process being drafted, as part of this turn’s proposal. Each is checked like an edit of the draft: those that pass are applied, and each refused one is listed with the reason, for you to fix and send again. Every add_node needs core.source pointing at its cells.',
 		schema: operationsInput()
 	});
-	return { tools: [readDraft, applyOperations], apply, outcome };
+	return { tools: [readCellsTool(ctx), readDraft, applyOperations], apply, outcome, view };
 }

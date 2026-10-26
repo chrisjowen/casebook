@@ -32,3 +32,4 @@ Architecture decisions for casebook, one file per decision.
 | 0026 | [Saving a task for later and asking for information on it](0026-saving-and-asking-on-a-task.md) | Accepted (amends 0022) |
 | 0027 | [A local Kubernetes deployment, with the demo sign-in on](0027-local-kubernetes.md) | Accepted (amends 0020) |
 | 0028 | [Changing who's who on a running case](0028-changing-whos-who-on-a-running-case.md) | Accepted (amends 0017, 0022) |
+| 0029 | [A fast wizard on Claude, shown as it works](0029-a-fast-wizard-on-claude.md) | Accepted (amends 0024) |

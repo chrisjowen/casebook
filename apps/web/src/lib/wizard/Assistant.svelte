@@ -75,6 +75,23 @@
 	let failed = $state<{ request: WizardAction; label: string } | undefined>();
 	const AGENT: ReadonlySet<WizardAction['action']> = new Set(['split', 'reply', 'draft']);
 
+	/** How often a running turn's progress is read: often enough that its writing reads as live. */
+	const POLL_MS = 600;
+	/** Items of a live proposal shown at once; the newest are kept. */
+	const MAX_LIVE = 12;
+	const KIND: Record<string, string> = {
+		process: 'Process',
+		shared: 'Shared',
+		stage: 'Stage',
+		role: 'Role',
+		fact: 'Fact',
+		step: 'Step',
+		decision: 'Decision',
+		approval: 'Approval',
+		lookup: 'Lookup',
+		change: 'Change'
+	};
+
 	/** Polls the import's progress until `done` settles. */
 	async function watch(done: Promise<unknown>) {
 		let settled = false;
@@ -87,7 +104,7 @@
 			} catch {
 				// A missed poll only delays the next update.
 			}
-			await Promise.race([done, new Promise((r) => setTimeout(r, 1500))]).catch(() => undefined);
+			await Promise.race([done, new Promise((r) => setTimeout(r, POLL_MS))]).catch(() => undefined);
 		}
 		activity = undefined;
 	}
@@ -205,9 +222,12 @@
 		}
 	});
 
+	// Follows the conversation, and a running turn's writing as it grows.
 	$effect(() => {
 		void wiz.messages.length;
 		void busy;
+		void activity?.text.length;
+		void activity?.items.length;
 		tick().then(() => scroller?.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' }));
 	});
 
@@ -632,20 +652,47 @@
 	>
 		{#each wiz.messages as m (m.id)}{@render entry(m)}{/each}
 		{#if busy}
-			<div class="flex gap-2.5" role="status">
+			<div class="flex gap-2.5">
 				{@render avatar()}
 				<div class="min-w-0 flex-1 text-[13px]">
-					<p class="flex items-center gap-2 text-muted-foreground">
+					{#if activity?.text}
+						<p class="mb-1.5 leading-relaxed whitespace-pre-line">{activity.text}</p>
+					{/if}
+					{#if activity?.items.length}
+						{@const shown = activity.items.slice(-MAX_LIVE)}
+						<ul
+							class="mb-2 flex flex-col overflow-hidden rounded-xl border text-[12px]"
+							aria-label="What the assistant is proposing so far"
+						>
+							{#if activity.items.length > shown.length}
+								<li class="border-b px-3 py-1 text-[11px] text-muted-foreground">
+									and {activity.items.length - shown.length} before these
+								</li>
+							{/if}
+							{#each shown as item, i (i)}
+								<li class="flex items-baseline gap-2 border-b px-3 py-1 last:border-b-0">
+									<span class="w-16 shrink-0 text-[11px] text-muted-foreground"
+										>{KIND[item.kind] ?? item.kind}</span
+									>
+									<span class="min-w-0 truncate">{item.title}</span>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+					<p class="flex items-center gap-2 text-muted-foreground" role="status">
 						<LoaderCircle class="size-3.5 shrink-0 animate-spin" />{activity?.activity ??
 							busy}…{#if activity}<span class="ml-auto shrink-0 text-[11px] tabular-nums"
 								>{elapsed(activity.seconds)}</span
 							>{/if}
 					</p>
-					{#if activity && activity.seconds >= 20}
+					{#if activity?.waiting && activity.seconds >= 20}
 						<p class="mt-1 text-[11.5px] text-muted-foreground">
-							{activity.waiting
-								? 'It starts as soon as the model is free.'
-								: `${view.model} can take a few minutes on a large sheet. It stops after ${Math.round(view.timeoutSeconds / 60)} minutes if it gets stuck.`}
+							It starts as soon as the model is free.
+						</p>
+					{:else if activity && activity.seconds >= 90}
+						<p class="mt-1 text-[11.5px] text-muted-foreground">
+							Still working. It stops after {Math.round(view.timeoutSeconds / 60)} minutes if it gets
+							stuck.
 						</p>
 					{/if}
 				</div>

@@ -11,7 +11,7 @@ import {
 	wizard,
 	workbookOpening
 } from '../src/index.js';
-import { answer, call, ScriptedModel } from './fake-model.js';
+import { answer, call, lastToolResult, ScriptedModel } from './fake-model.js';
 
 /** A synthetic tracker large enough that it is not shown whole: 3 sheets of 250 tasks. */
 function largeWorkbook() {
@@ -38,7 +38,7 @@ describe('what of the workbook the agent is shown', () => {
 			title: 'During',
 			sources: [{ sheet: 'During', range: 'A100:D102' }]
 		});
-		expect(opening).toMatch(/It is large.*read_file/s);
+		expect(opening).toMatch(/It is large.*read_cells/s);
 		expect(opening).toContain('- "Before" A1:D251: Task, Who, When, Notes (250 rows)');
 		expect(opening).toContain('Before task 3');
 		expect(opening).not.toContain('Before task 40');
@@ -47,7 +47,7 @@ describe('what of the workbook the agent is shown', () => {
 	});
 
 	it('renders only the cells inside a range', () => {
-		const text = rangesText(largeWorkbook(), [{ sheet: 'After', range: 'A10:B11' }], 5_000);
+		const { text } = rangesText(largeWorkbook(), [{ sheet: 'After', range: 'A10:B11' }], 5_000);
 		expect(text).toContain('After task 9');
 		expect(text).toContain('After task 10');
 		expect(text).not.toContain('After task 11');
@@ -77,9 +77,40 @@ describe('a turn as it runs', () => {
 		);
 		expect(seen).toEqual([
 			'Reading the spreadsheet',
-			'Checking the proposed processes',
-			'Thinking (step 2)'
+			'Checking the 1 proposed process',
+			'Thinking it over'
 		]);
+	});
+
+	it('says which ranges it left out once the read limit ran out', async () => {
+		const model = new ScriptedModel([
+			call('read_cells', {
+				ranges: [
+					{ sheet: 'Before', range: 'A1:D251' },
+					{ sheet: 'During', range: 'A1:D251' },
+					{ sheet: 'After', range: 'A1:D20' }
+				]
+			}),
+			(messages) => {
+				const result = lastToolResult(messages);
+				expect(result).toContain('Before task 1');
+				expect(result).not.toContain('After task 1');
+				expect(result).toMatch(
+					/Not read:\n(- .*\n)*- After!A1:D20: over the read limit; ask for it in another call/
+				);
+				return call('propose_split', {
+					processes: [
+						{ title: 'Before', summary: 'Before', sources: [{ sheet: 'Before', range: 'A1:D251' }] }
+					]
+				})(messages);
+			},
+			answer('One process.')
+		]);
+		await wizard.proposeSplit(
+			{ model, drafts: memoryDrafts(), workbook: largeWorkbook() },
+			startState('big.xlsx')
+		);
+		expect(model.remaining).toBe(0);
 	});
 
 	it('stops when it is aborted', async () => {
@@ -87,7 +118,7 @@ describe('a turn as it runs', () => {
 		const model = new ScriptedModel([
 			() => {
 				controller.abort(new Error('The assistant took too long'));
-				return call('read_file', { file_path: '/workbook.md' })([]);
+				return call('read_cells', { ranges: [{ sheet: 'Claims', range: 'A1:F8' }] })([]);
 			},
 			answer('Too late.')
 		]);

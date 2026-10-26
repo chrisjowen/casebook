@@ -51,7 +51,12 @@ export function draft(ctx: AgentContext, state: WizardState, key: string): Promi
 		? `Continue drafting ${process.title}.`
 		: `Draft ${process.title} from its cells.`;
 	const cells = process.sources.map(formatRange).join(', ');
-	const request = `${shown} Its cells are ${cells}. Call read_draft, then call apply_operations three times: its stages and roles, then its facts, then its steps.`;
+	// A small local model does better a kind of node at a time; a hosted one sends it all at once,
+	// saving a round trip to the model for each kind.
+	const how = ctx.lenient
+		? 'Call apply_operations three times: its stages and roles, then its facts, then its steps.'
+		: 'Call apply_operations once with all of it: its stages and roles, then its facts, then its steps and decisions.';
+	const request = `${shown} Its cells are ${cells}. ${how}`;
 	return ask(ctx, setActive(state, key), request, shown, true);
 }
 
