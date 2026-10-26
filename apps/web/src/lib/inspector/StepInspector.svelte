@@ -12,22 +12,20 @@
 		StageId,
 		StepNode
 	} from '@casebook/model';
-	import {
-		ChevronRight,
-		Copy,
-		FlaskConical,
-		Eye,
-		FileText,
-		GitBranch,
-		Plus,
-		Repeat,
-		ShieldCheck,
-		Sparkles,
-		Split,
-		Trash2,
-		UserPlus,
-		X
-	} from '@lucide/svelte';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Copy from '@lucide/svelte/icons/copy';
+	import FlaskConical from '@lucide/svelte/icons/flask-conical';
+	import Eye from '@lucide/svelte/icons/eye';
+	import FileText from '@lucide/svelte/icons/file-text';
+	import GitBranch from '@lucide/svelte/icons/git-branch';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Repeat from '@lucide/svelte/icons/repeat';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
+	import Split from '@lucide/svelte/icons/split';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import UserPlus from '@lucide/svelte/icons/user-plus';
+	import X from '@lucide/svelte/icons/x';
 	import {
 		choiceLabel,
 		choiceValues,

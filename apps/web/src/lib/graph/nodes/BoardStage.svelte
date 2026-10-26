@@ -3,7 +3,8 @@
 	// double-clicking its name, add with the "+" in its header or the button at its foot, and drop a
 	// card on it to move that card here.
 	import type { NodeProps } from '@xyflow/svelte';
-	import { Plus, EllipsisVertical } from '@lucide/svelte';
+	import Plus from '@lucide/svelte/icons/plus';
+	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
 	import type { BoardStageData } from '../board';
 	import { getBoard, releaseFocus } from '../board-context.svelte';
 

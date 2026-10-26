@@ -2,7 +2,9 @@
 	// Dev sign-in: pick a seeded demo user. No passwords; development only.
 	import { enhance } from '$app/forms';
 	import Logo from '$lib/editor/Logo.svelte';
-	import { CircleAlert, FlaskConical, LogIn } from '@lucide/svelte';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import FlaskConical from '@lucide/svelte/icons/flask-conical';
+	import LogIn from '@lucide/svelte/icons/log-in';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();

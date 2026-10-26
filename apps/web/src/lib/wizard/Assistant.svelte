@@ -5,25 +5,23 @@
 	// board. Every request goes to the import's endpoint, which acts as the signed-in user.
 	import { tick } from 'svelte';
 	import { invalidate } from '$app/navigation';
-	import {
-		ArrowRightLeft,
-		ArrowUp,
-		Check,
-		CircleAlert,
-		CircleCheck,
-		FileSpreadsheet,
-		FolderOpen,
-		LoaderCircle,
-		Merge,
-		Minus,
-		PencilLine,
-		Plus,
-		Sparkles,
-		Split,
-		Upload,
-		Wand2,
-		X
-	} from '@lucide/svelte';
+	import ArrowRightLeft from '@lucide/svelte/icons/arrow-right-left';
+	import ArrowUp from '@lucide/svelte/icons/arrow-up';
+	import Check from '@lucide/svelte/icons/check';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import FileSpreadsheet from '@lucide/svelte/icons/file-spreadsheet';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import Merge from '@lucide/svelte/icons/merge';
+	import Minus from '@lucide/svelte/icons/minus';
+	import PencilLine from '@lucide/svelte/icons/pencil-line';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
+	import Split from '@lucide/svelte/icons/split';
+	import Upload from '@lucide/svelte/icons/upload';
+	import Wand2 from '@lucide/svelte/icons/wand-2';
+	import X from '@lucide/svelte/icons/x';
 	import type { ChatEntry, RunProgress, Turn, WizardAction, WizardView } from './types';
 	import { inlineRuns } from './inline';
 

@@ -17,27 +17,25 @@
 	} from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
 	import type { FactId, StageId } from '@casebook/model';
-	import {
-		ArrowLeftToLine,
-		ArrowRightLeft,
-		ArrowRightToLine,
-		Columns3,
-		Copy,
-		Info,
-		Link2,
-		ListPlus,
-		Maximize,
-		PencilLine,
-		Plus,
-		Search,
-		Signpost,
-		Split,
-		SquarePen,
-		SquareStack,
-		Trash2,
-		Unlink,
-		X
-	} from '@lucide/svelte';
+	import ArrowLeftToLine from '@lucide/svelte/icons/arrow-left-to-line';
+	import ArrowRightLeft from '@lucide/svelte/icons/arrow-right-left';
+	import ArrowRightToLine from '@lucide/svelte/icons/arrow-right-to-line';
+	import Columns3 from '@lucide/svelte/icons/columns-3';
+	import Copy from '@lucide/svelte/icons/copy';
+	import Info from '@lucide/svelte/icons/info';
+	import Link2 from '@lucide/svelte/icons/link-2';
+	import ListPlus from '@lucide/svelte/icons/list-plus';
+	import Maximize from '@lucide/svelte/icons/maximize';
+	import PencilLine from '@lucide/svelte/icons/pencil-line';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Search from '@lucide/svelte/icons/search';
+	import Signpost from '@lucide/svelte/icons/signpost';
+	import Split from '@lucide/svelte/icons/split';
+	import SquarePen from '@lucide/svelte/icons/square-pen';
+	import SquareStack from '@lucide/svelte/icons/square-stack';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import Unlink from '@lucide/svelte/icons/unlink';
+	import X from '@lucide/svelte/icons/x';
 	import { getEditor } from '$lib/editor/editing.svelte';
 	import * as ops from '$lib/editor/ops';
 	import Menu from '$lib/editor/Menu.svelte';

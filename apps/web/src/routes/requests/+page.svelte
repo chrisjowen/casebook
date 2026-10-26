@@ -2,7 +2,10 @@
 	// Requests for you: a guest's only home. Each request says what it is, who asked and for whom,
 	// and nothing else about the case.
 	import { page } from '$app/state';
-	import { ChevronRight, CircleCheck, CircleDot, Inbox } from '@lucide/svelte';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import CircleDot from '@lucide/svelte/icons/circle-dot';
+	import Inbox from '@lucide/svelte/icons/inbox';
 	import Frame from '$lib/runner/Frame.svelte';
 	import Notice from '$lib/runner/Notice.svelte';
 	import { links } from '$lib/runner/links';

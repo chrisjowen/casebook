@@ -3,7 +3,9 @@
 	// chosen from it with the steps that record them, and deleting it once nothing uses it. Every
 	// change is an edit of the draft, so it shows in the changes, publishes and undoes like any other.
 	import { factsUsingLookup, type LookupNode } from '@casebook/model';
-	import { ChevronRight, Share2, Trash2 } from '@lucide/svelte';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Share2 from '@lucide/svelte/icons/share-2';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { changeValues, removeLookup, renameNode, type Edit } from '$lib/editor/ops';
 	import { collectorsByFact, labelOf, requiresOf, type ProcessIndex } from '$lib/graph/derive';
 	import LookupValues from '$lib/lookups/LookupValues.svelte';

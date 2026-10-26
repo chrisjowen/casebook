@@ -1,14 +1,12 @@
 <script lang="ts">
 	// A work item's status in words, with an icon: never colour alone.
-	import {
-		CircleAlert,
-		CircleCheck,
-		CircleDot,
-		CircleSlash,
-		Hourglass,
-		Lock,
-		Repeat
-	} from '@lucide/svelte';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import CircleDot from '@lucide/svelte/icons/circle-dot';
+	import CircleSlash from '@lucide/svelte/icons/circle-slash';
+	import Hourglass from '@lucide/svelte/icons/hourglass';
+	import Lock from '@lucide/svelte/icons/lock';
+	import Repeat from '@lucide/svelte/icons/repeat';
 	import type { TaskSummary } from '@casebook/store';
 	import { names, relative } from './format';
 

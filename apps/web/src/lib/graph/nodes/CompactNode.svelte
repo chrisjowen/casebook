@@ -1,16 +1,14 @@
 <script lang="ts">
 	// Compact card for role lanes and fact flow: name, role, small definition icons.
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
-	import {
-		ShieldCheck,
-		Split,
-		Sparkles,
-		Repeat,
-		Bot,
-		Signpost,
-		TriangleAlert,
-		UserPlus
-	} from '@lucide/svelte';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import Split from '@lucide/svelte/icons/split';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
+	import Repeat from '@lucide/svelte/icons/repeat';
+	import Bot from '@lucide/svelte/icons/bot';
+	import Signpost from '@lucide/svelte/icons/signpost';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import type { CardData } from '../layout';
 	import { toneBar } from '../tones';
 

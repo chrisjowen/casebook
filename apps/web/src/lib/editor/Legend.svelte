@@ -1,16 +1,14 @@
 <script lang="ts">
-	import {
-		ShieldCheck,
-		Split,
-		Sparkles,
-		Repeat,
-		Bot,
-		Signpost,
-		TriangleAlert,
-		Info,
-		X,
-		UserPlus
-	} from '@lucide/svelte';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import Split from '@lucide/svelte/icons/split';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
+	import Repeat from '@lucide/svelte/icons/repeat';
+	import Bot from '@lucide/svelte/icons/bot';
+	import Signpost from '@lucide/svelte/icons/signpost';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import Info from '@lucide/svelte/icons/info';
+	import X from '@lucide/svelte/icons/x';
+	import UserPlus from '@lucide/svelte/icons/user-plus';
 	let { facts = false }: { facts?: boolean } = $props();
 	let open = $state(false);
 	const items = [

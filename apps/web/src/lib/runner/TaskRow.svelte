@@ -1,6 +1,7 @@
 <script lang="ts">
 	// One task in a list: what it is, which case and process, where the process stands.
-	import { ChevronRight, MessageSquareReply } from '@lucide/svelte';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import MessageSquareReply from '@lucide/svelte/icons/message-square-reply';
 	import type { ResolvedPathname } from '$app/types';
 	import type { TaskSummary } from '@casebook/store';
 	import ItemIcon from './ItemIcon.svelte';

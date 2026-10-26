@@ -1,6 +1,6 @@
 <script lang="ts">
 	// A process's stages only, never the full flow: done stages pale, the current one solid.
-	import { Check } from '@lucide/svelte';
+	import Check from '@lucide/svelte/icons/check';
 	import type { StageState } from '@casebook/model';
 
 	let {

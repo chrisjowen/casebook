@@ -3,7 +3,11 @@
 	// step that already exists. Opened by a stage's "+" and "Add step", a card's "+", dropping a
 	// dragged link in space, right-click and the "+" on a link. Naming first keeps adding and naming
 	// one edit, so one undo takes both back.
-	import { SquareStack, Signpost, CornerDownRight, ArrowRight, Check } from '@lucide/svelte';
+	import SquareStack from '@lucide/svelte/icons/square-stack';
+	import Signpost from '@lucide/svelte/icons/signpost';
+	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import Check from '@lucide/svelte/icons/check';
 	import type { FactId } from '@casebook/model';
 	import type { AddContext } from '$lib/graph/board-context.svelte';
 	import { collectsOf, labelOf, type ProcessIndex, type WorkItem } from '$lib/graph/derive';

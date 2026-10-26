@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { BadgeCheck, CircleDot, Split } from '@lucide/svelte';
+	import BadgeCheck from '@lucide/svelte/icons/badge-check';
+	import CircleDot from '@lucide/svelte/icons/circle-dot';
+	import Split from '@lucide/svelte/icons/split';
 	import type { WorkItemKind } from '@casebook/model';
 
 	let { kind }: { kind: WorkItemKind } = $props();

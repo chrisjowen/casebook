@@ -12,7 +12,12 @@
 		type Group,
 		type Guard
 	} from '@casebook/model';
-	import { Code, FlaskConical, ListFilter, Pencil, TriangleAlert, X } from '@lucide/svelte';
+	import Code from '@lucide/svelte/icons/code';
+	import FlaskConical from '@lucide/svelte/icons/flask-conical';
+	import ListFilter from '@lucide/svelte/icons/list-filter';
+	import Pencil from '@lucide/svelte/icons/pencil';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import X from '@lucide/svelte/icons/x';
 	import type { ProcessIndex } from '$lib/graph/derive';
 	import CodeEditor from './CodeEditor.svelte';
 	import { checkCode, describe, factInfo, factOptions, type FactTiming } from './conditions';

@@ -5,17 +5,15 @@
 	import type { Component } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { ResolvedPathname } from '$app/types';
-	import {
-		Briefcase,
-		FileSpreadsheet,
-		Inbox,
-		ListChecks,
-		LoaderCircle,
-		Plus,
-		Search,
-		SquareCheck,
-		Workflow
-	} from '@lucide/svelte';
+	import Briefcase from '@lucide/svelte/icons/briefcase';
+	import FileSpreadsheet from '@lucide/svelte/icons/file-spreadsheet';
+	import Inbox from '@lucide/svelte/icons/inbox';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Search from '@lucide/svelte/icons/search';
+	import SquareCheck from '@lucide/svelte/icons/square-check';
+	import Workflow from '@lucide/svelte/icons/workflow';
 	import { links } from '$lib/runner/links';
 	import { caseVerbs, processVerbs, taskVerbs, type Verb } from './actions';
 	import type { SearchData, ShellProcess } from './types';

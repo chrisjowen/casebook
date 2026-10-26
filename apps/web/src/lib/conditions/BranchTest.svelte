@@ -9,13 +9,11 @@
 		GuardSyntaxError,
 		type DecisionNode
 	} from '@casebook/model';
-	import {
-		CalendarDays,
-		CircleCheck,
-		CircleDashed,
-		CircleMinus,
-		TriangleAlert
-	} from '@lucide/svelte';
+	import CalendarDays from '@lucide/svelte/icons/calendar-days';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
+	import CircleMinus from '@lucide/svelte/icons/circle-minus';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { labelOf, type ProcessIndex } from '$lib/graph/derive';
 	import { choicesOf, factInfo, factOptions, todayIso } from './conditions';
 	import { samplesFor } from './samples.svelte';

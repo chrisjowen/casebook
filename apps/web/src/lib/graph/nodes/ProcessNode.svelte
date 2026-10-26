@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
-	import { ChevronRight } from '@lucide/svelte';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import type { ProcessCardData } from '../layout';
 	let { data, selected }: NodeProps & { data: ProcessCardData } = $props();
 </script>

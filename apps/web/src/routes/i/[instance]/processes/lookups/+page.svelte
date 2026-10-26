@@ -6,19 +6,17 @@
 	import { deserialize } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import type { LookupList, ValuesEdit } from '@casebook/model';
-	import {
-		ArrowUpRight,
-		CircleAlert,
-		CircleCheck,
-		FolderTree,
-		History,
-		ListChecks,
-		Plus,
-		Trash2,
-		Undo2,
-		Workflow,
-		X
-	} from '@lucide/svelte';
+	import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import FolderTree from '@lucide/svelte/icons/folder-tree';
+	import History from '@lucide/svelte/icons/history';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import Undo2 from '@lucide/svelte/icons/undo-2';
+	import Workflow from '@lucide/svelte/icons/workflow';
+	import X from '@lucide/svelte/icons/x';
 	import Frame from '$lib/runner/Frame.svelte';
 	import { relative, when } from '$lib/runner/format';
 	import { links } from '$lib/runner/links';

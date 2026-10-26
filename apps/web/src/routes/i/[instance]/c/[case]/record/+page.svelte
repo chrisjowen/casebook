@@ -3,7 +3,8 @@
 	// process on the case (ADR 0001), each linked to the task, person and time it came from, and
 	// who was named for each role and every change to who's who since.
 	import { page } from '$app/state';
-	import { ExternalLink, FileText } from '@lucide/svelte';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import FileText from '@lucide/svelte/icons/file-text';
 	import type { RecordEntry } from '@casebook/store';
 	import Frame from '$lib/runner/Frame.svelte';
 	import FilterChips from '$lib/runner/FilterChips.svelte';

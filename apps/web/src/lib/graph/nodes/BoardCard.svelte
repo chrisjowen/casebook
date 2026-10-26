@@ -3,15 +3,13 @@
 	// place: double-click the name to rename, "+ Add fact" under its facts, drag a fact's dot onto
 	// a step that needs it, drag or click the "+" on its right edge to add what comes next.
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
-	import {
-		EllipsisVertical,
-		GitBranch,
-		Plus,
-		Split,
-		Repeat,
-		ShieldCheck,
-		TriangleAlert
-	} from '@lucide/svelte';
+	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
+	import GitBranch from '@lucide/svelte/icons/git-branch';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Split from '@lucide/svelte/icons/split';
+	import Repeat from '@lucide/svelte/icons/repeat';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { BOARD_HEAD, BOARD_ROW, boardRowY, type BoardCardData } from '../board';
 	import { getBoard } from '../board-context.svelte';
 	import { glyphIcon } from '../glyphs';

@@ -45,26 +45,24 @@
 		type WorkItem
 	} from '$lib/graph/derive';
 	import { build, buildMap } from '$lib/graph/layout';
-	import {
-		Columns3,
-		Rows3,
-		Workflow,
-		Network,
-		Info,
-		Eye,
-		CircleCheck,
-		CircleAlert,
-		TriangleAlert,
-		SquarePen,
-		Upload,
-		LoaderCircle,
-		Play,
-		Undo2,
-		FileSpreadsheet,
-		Search,
-		Sparkles,
-		X
-	} from '@lucide/svelte';
+	import Columns3 from '@lucide/svelte/icons/columns-3';
+	import Rows3 from '@lucide/svelte/icons/rows-3';
+	import Workflow from '@lucide/svelte/icons/workflow';
+	import Network from '@lucide/svelte/icons/network';
+	import Info from '@lucide/svelte/icons/info';
+	import Eye from '@lucide/svelte/icons/eye';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import SquarePen from '@lucide/svelte/icons/square-pen';
+	import Upload from '@lucide/svelte/icons/upload';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import Play from '@lucide/svelte/icons/play';
+	import Undo2 from '@lucide/svelte/icons/undo-2';
+	import FileSpreadsheet from '@lucide/svelte/icons/file-spreadsheet';
+	import Search from '@lucide/svelte/icons/search';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
+	import X from '@lucide/svelte/icons/x';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();

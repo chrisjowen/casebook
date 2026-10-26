@@ -8,7 +8,10 @@
 		type FactInfo,
 		type GuardTrace
 	} from '@casebook/model';
-	import { CircleCheck, CircleDashed, CircleMinus, TriangleAlert } from '@lucide/svelte';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
+	import CircleMinus from '@lucide/svelte/icons/circle-minus';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Trace from './Trace.svelte';
 
 	let {

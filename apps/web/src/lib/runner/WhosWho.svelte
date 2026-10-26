@@ -4,7 +4,8 @@
 	// people holding a role on this case; everyone else reads it.
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
-	import { CircleAlert, Pencil } from '@lucide/svelte';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import Pencil from '@lucide/svelte/icons/pencil';
 	import type { CaseRole, PersonView } from '@casebook/store';
 	import { names } from './format';
 	import { links } from './links';

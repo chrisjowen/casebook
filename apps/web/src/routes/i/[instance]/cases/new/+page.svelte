@@ -3,7 +3,9 @@
 	// for and who's who, then a check of what happens next before starting. Every step is part of
 	// one form, so Back never loses an answer, and the URL can preselect the process (?process=)
 	// or the case (?case=, to add a process to it).
-	import { Check, ChevronLeft, CircleDot } from '@lucide/svelte';
+	import Check from '@lucide/svelte/icons/check';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+	import CircleDot from '@lucide/svelte/icons/circle-dot';
 	import { runnableProcess } from '@casebook/model';
 	import Frame from '$lib/runner/Frame.svelte';
 	import StageStrip from '$lib/runner/StageStrip.svelte';

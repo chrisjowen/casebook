@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Plus } from '@lucide/svelte';
+	import Plus from '@lucide/svelte/icons/plus';
 	import Frame from '$lib/runner/Frame.svelte';
 	import ActionsMenu from '$lib/shell/ActionsMenu.svelte';
 	import { caseVerbs } from '$lib/shell/actions';

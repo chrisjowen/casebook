@@ -2,7 +2,8 @@
 	// A process's home, Overview tab: what it is, its status and change policy, the draft-pending
 	// note, the cases running it at a glance and its stages and steps. Edit (the board) and Cases
 	// are the other tabs of the same page.
-	import { ArrowRight, SquarePen } from '@lucide/svelte';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import SquarePen from '@lucide/svelte/icons/square-pen';
 	import { runnableProcess } from '@casebook/model';
 	import Frame from '$lib/runner/Frame.svelte';
 	import DefinitionMeta from '$lib/runner/DefinitionMeta.svelte';

@@ -1,0 +1,9 @@
+# Per-repo no-mistakes overrides.
+
+# The test pass runs the wizard agent's and the web app's suites once, through moon so the packages
+# they import are built first. moon comes from the root devDependencies (@moonrepo/cli, pinned to
+# the version in .prototools), and a fresh run worktree has no node_modules, so it installs first.
+# The suites use local stubs (a fake model and test keys), never a live model. The store-backed
+# wizard-agent tests need DATABASE_URL, as in CI; without it they are skipped.
+commands:
+  test: 'pnpm install --frozen-lockfile && pnpm exec moon run wizard-agent:test web:test'
