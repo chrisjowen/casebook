@@ -5,6 +5,8 @@
 # The script needs no installed dependencies or .env, and never uses the current kubectl context:
 # it unsets KUBECONFIG and uses the cluster's own kubeconfig file, so only CASEBOOK_LOCAL_PORT
 # (the port for a cluster it creates) is passed through.
+# pnpm refuses to run under a Node other than 22 (engine-strict, package.json engines), so Wheelhouse
+# must be started with Node 22 first on its PATH, as .prototools pins.
 # Command checks stay off until the captain allows them on casebook's passage page in Wheelhouse.
 version: 1
 extends: ship

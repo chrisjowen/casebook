@@ -261,6 +261,7 @@ Everything in `deploy/k8s` is for a throwaway cluster on this machine: the datab
 The spreadsheet wizard reaches an Ollama running on this machine through `host.k3d.internal`.
 
 `.wheelhouse.yaml` adds a **Deployed locally** step to casebook's [Wheelhouse](https://github.com/chrisjowen/wheelhouse) passage, after the merge: Wheelhouse runs `pnpm deploy:local` on each task's merge commit, in a fresh checkout, with a 20-minute limit and only `CASEBOOK_LOCAL_PORT` passed through.
+It runs pnpm with Wheelhouse's own `PATH`, so start Wheelhouse with Node 22 first on it; under another Node, pnpm refuses to run the script.
 The step stays off until the captain allows command checks for casebook on its passage page in Wheelhouse; changing the command line turns them off again.
 
 ## Checks
