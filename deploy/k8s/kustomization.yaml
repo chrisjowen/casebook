@@ -1,0 +1,19 @@
+# casebook on a local cluster, applied by `pnpm deploy:local` (README, "Local Kubernetes").
+# Every value here is for a throwaway cluster on this machine: the passwords are not secrets and
+# the web app runs with the passwordless demo sign-in on.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: casebook
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: casebook
+    includeSelectors: false
+resources:
+  - namespace.yaml
+  - config.yaml
+  - postgres.yaml
+  - files.yaml
+  - setup-job.yaml
+  - web.yaml
+  - mcp.yaml
+  - ingress.yaml

@@ -30,3 +30,4 @@ Architecture decisions for casebook, one file per decision.
 | 0024 | [The spreadsheet wizard on the board](0024-the-wizard-on-the-board.md) | Accepted (amends 0011, 0012, 0013) |
 | 0025 | [Lookups: lists of values for choice facts](0025-lookups.md) | Accepted (amends 0003, 0006) |
 | 0026 | [Saving a task for later and asking for information on it](0026-saving-and-asking-on-a-task.md) | Accepted (amends 0022) |
+| 0027 | [A local Kubernetes deployment, with the demo sign-in on](0027-local-kubernetes.md) | Accepted (amends 0020) |

@@ -1,0 +1,47 @@
+# One address for both: the MCP endpoint and its OAuth sign-in go to the MCP server, everything
+# else to the web app. k3d's Traefik serves it on http://localhost:8480.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: casebook
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          # Prefix, not Exact: Traefik ranks rules by length, and an exact /mcp would lose to /.
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: mcp
+                port:
+                  name: http
+          - path: /oauth
+            pathType: Prefix
+            backend:
+              service:
+                name: mcp
+                port:
+                  name: http
+          - path: /.well-known/oauth-protected-resource
+            pathType: Prefix
+            backend:
+              service:
+                name: mcp
+                port:
+                  name: http
+          - path: /.well-known/oauth-authorization-server
+            pathType: Prefix
+            backend:
+              service:
+                name: mcp
+                port:
+                  name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  name: http

@@ -74,11 +74,13 @@ A [moon](https://moonrepo.dev) workspace with pnpm workspaces underneath, all Ty
 | `packages/mcp`          | The MCP server: tools for agents to work cases as the user they sign in as, over Streamable HTTP with OAuth.                           |
 | `packages/sheet-import` | Reads .xlsx workbooks into neutral rows and cells for the wizard.                                                                      |
 | `packages/wizard-agent` | The spreadsheet wizard's authoring agent (deepagents), its state and the sample tracker.                                               |
+| `deploy`                | Kubernetes manifests for the image the root `Dockerfile` builds, and the local deploy scripts.                                         |
 
 ## Prerequisites
 
 - [proto](https://moonrepo.dev/proto) 0.60 or later. It installs the pinned moon, Node and pnpm versions from `.prototools`.
 - Docker, for the local Postgres.
+- [k3d](https://k3d.io) and kubectl, only for the local Kubernetes deployment.
 
 ## Getting started
 
@@ -178,7 +180,7 @@ Small local models are slower and propose less, which shows up as proposals to r
 The assistant runs one turn at a time on Ollama (turns on a hosted model run side by side), stops a turn still unfinished `CASEBOOK_WIZARD_TIMEOUT_SECONDS` after its request arrived, and shows what it is doing while it works; a large workbook is shown to the model as its tables and first rows, with the rest read on demand, so a turn stays within minutes on a local model.
 
 Sign-in is a dev-only stand-in for OIDC: pick one of the seeded users at `/signin`, with no password.
-It is on only in `pnpm dev`, never in a production build.
+It is on only in `pnpm dev`, and in a production build only when `CASEBOOK_DEMO_SIGNIN=on`, as the local Kubernetes deployment sets it (ADR 0027).
 Every read and write acts as that user and goes through `can()`, and actions they cannot take are disabled with the reason.
 The seed (`packages/store/src/seed.ts`) creates two accounts, `acme` ("Acme") and `example-family` ("Example family"), with these users, loads the model's synthetic fixtures as published definitions, adds two shared lookups (Acme's service catalog and the family's ISO countries), and starts five cases:
 
@@ -231,6 +233,32 @@ Claude Desktop reaches a local server through the `mcp-remote` bridge, in `claud
 ```
 
 Set `CASEBOOK_MCP_PORT` to use another port, and `CASEBOOK_MCP_URL` when clients reach the server at another origin.
+
+## Local Kubernetes
+
+`pnpm deploy:local` runs casebook as a production build on a local [k3d](https://k3d.io) cluster named `casebook-local` (ADR 0027), the way a shared deployment would run it.
+It needs Docker, k3d and kubectl, and nothing from `.env`.
+
+```sh
+pnpm deploy:local        # create the cluster if missing, build and load the image, apply, migrate and seed
+pnpm deploy:local:down   # delete the casebook-local cluster, its database and case files
+```
+
+It creates the cluster when it is missing, builds the image from the root `Dockerfile` and loads it into the cluster, applies the manifests in `deploy/k8s`, waits for Postgres, runs the setup job that migrates and seeds like `pnpm db:seed`, waits for the web app and the MCP server, and prints the address: `http://localhost:8480`.
+Sign in there as one of the demo users below; agents connect to the MCP server at `http://localhost:8480/mcp`.
+Set `CASEBOOK_LOCAL_PORT` before the first deploy to use another port; the cluster keeps the port it was created with.
+Running it again rebuilds and rolls out any change and keeps the data; to start afresh, run `pnpm deploy:local:down` first.
+
+The scripts never use your current kubectl context.
+They keep the cluster's kubeconfig in its own file, `~/.config/k3d/kubeconfig-casebook-local.yaml`, leave your default kubeconfig alone, pin every kubectl call to `k3d-casebook-local`, and refuse to run if that file names another context or a server off this machine.
+To look around yourself, use the same file:
+
+```sh
+kubectl --kubeconfig ~/.config/k3d/kubeconfig-casebook-local.yaml --context k3d-casebook-local -n casebook get pods
+```
+
+Everything in `deploy/k8s` is for a throwaway cluster on this machine: the database password is not a secret, and the web app runs with the passwordless demo sign-in on.
+The spreadsheet wizard reaches an Ollama running on this machine through `host.k3d.internal`.
 
 ## Checks
 

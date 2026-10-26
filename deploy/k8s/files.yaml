@@ -1,0 +1,11 @@
+# Files attached to cases. The web app, the MCP server and the setup job share it; the local
+# cluster has one node, so a ReadWriteOnce volume serves them all.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: casebook-files
+spec:
+  accessModes: ['ReadWriteOnce']
+  resources:
+    requests:
+      storage: 1Gi

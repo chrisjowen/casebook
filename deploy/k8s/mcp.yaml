@@ -1,0 +1,61 @@
+# The MCP server with its dev sign-in (README, "Agents over MCP"). It refuses NODE_ENV=production,
+# which the image sets for the web app.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp
+spec:
+  selector:
+    app.kubernetes.io/name: mcp
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: mcp
+          image: casebook:local
+          imagePullPolicy: IfNotPresent
+          command: ['node', 'packages/mcp/dist/cli/serve.js']
+          envFrom:
+            - configMapRef:
+                name: casebook
+            - secretRef:
+                name: casebook-db
+          env:
+            - name: NODE_ENV
+              value: development
+          ports:
+            - name: http
+              containerPort: 5190
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+          volumeMounts:
+            - name: files
+              mountPath: /data/files
+      volumes:
+        - name: files
+          persistentVolumeClaim:
+            claimName: casebook-files

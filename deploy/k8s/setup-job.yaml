@@ -1,0 +1,39 @@
+# Migrates the database, then loads the demo accounts, users, processes and cases once, like
+# `pnpm db:seed`. The deploy script deletes and re-creates it on every run.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: setup
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: setup
+    spec:
+      restartPolicy: Never
+      securityContext:
+        fsGroup: 1000
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:17
+          imagePullPolicy: IfNotPresent
+          command:
+            ['sh', '-c', 'until pg_isready -h postgres -U casebook -d casebook; do sleep 2; done']
+      containers:
+        - name: setup
+          image: casebook:local
+          imagePullPolicy: IfNotPresent
+          command: ['node', 'packages/store/dist/cli/seed.js']
+          envFrom:
+            - configMapRef:
+                name: casebook
+            - secretRef:
+                name: casebook-db
+          volumeMounts:
+            - name: files
+              mountPath: /data/files
+      volumes:
+        - name: files
+          persistentVolumeClaim:
+            claimName: casebook-files
