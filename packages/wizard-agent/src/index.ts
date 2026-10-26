@@ -10,7 +10,7 @@ export {
 	operationsInText,
 	countItems,
 	leadingObject,
-	listsUnstrung,
+	argsAsMeant,
 	sheetsOf,
 	type AgentContext,
 	type AgentOutcome,

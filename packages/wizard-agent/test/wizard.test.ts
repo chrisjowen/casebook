@@ -905,6 +905,23 @@ describe('a turn on a hosted model, fast and in the open', () => {
 		]);
 	});
 
+	it('records a split sent whole as the value of its first argument', async () => {
+		const whole = { processes: [birth, claims], shared: [documents] };
+		for (const processes of [JSON.stringify(whole), whole]) {
+			const { ctx, model } = context([
+				call('propose_split', { processes }),
+				answer('Two processes and the documents.')
+			]);
+			const state = await wizard.proposeSplit(ctx, startState(FILE));
+			expect(model.remaining).toBe(0);
+			expect(state.split?.processes.map((p) => p.title)).toEqual([
+				'Birth registration',
+				'Medical claims'
+			]);
+			expect(state.split?.shared).toEqual([documents]);
+		}
+	});
+
 	it('reads only the cells asked for, saying which could not be read', async () => {
 		const { ctx } = context([
 			call('read_cells', {

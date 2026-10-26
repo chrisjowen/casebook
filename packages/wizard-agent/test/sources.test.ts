@@ -203,7 +203,7 @@ describe('the model setting', () => {
 		expect(takesEffort('claude-haiku-4-5')).toBe(false);
 	});
 
-	it('starts Claude with its effort, streaming each tool input as it is written', () => {
+	it('starts Claude with its effort, streaming the input of tools marked for it', () => {
 		process.env.ANTHROPIC_API_KEY = 'test-key';
 		delete process.env.CASEBOOK_WIZARD_EFFORT;
 		const claude = createChatModel('anthropic:claude-sonnet-5') as unknown as {
@@ -216,10 +216,16 @@ describe('the model setting', () => {
 			description: 'Echoes',
 			schema: z.object({ text: z.string() })
 		});
-		expect(claude.formatStructuredToolToAnthropic([echo])[0]).toMatchObject({
-			name: 'echo',
-			eager_input_streaming: true
+		const long = tool(async () => 'ok', {
+			name: 'long',
+			description: 'Takes a long input',
+			schema: z.object({ text: z.string() }),
+			metadata: { streamInput: true }
 		});
+		const [plain, streamed] = claude.formatStructuredToolToAnthropic([echo, long]);
+		expect(plain).toMatchObject({ name: 'echo' });
+		expect(plain).not.toHaveProperty('eager_input_streaming');
+		expect(streamed).toMatchObject({ name: 'long', eager_input_streaming: true });
 		const haiku = createChatModel('anthropic:claude-haiku-4-5') as unknown as {
 			outputConfig?: unknown;
 		};

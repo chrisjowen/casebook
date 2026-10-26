@@ -81,18 +81,31 @@ export function takesEffort(model: string): boolean {
 }
 
 /**
- * Claude with its tool inputs streamed as they are written (`eager_input_streaming`), so a long list
- * of operations reaches the panel as it is generated instead of all at once at the end. The tools
- * still check every input in full once it has arrived.
+ * Claude with the inputs of tools marked `metadata.streamInput` streamed as they are written
+ * (`eager_input_streaming`), so a long list of operations reaches the panel as it is generated
+ * instead of all at once at the end. Claude does not check such an input itself, so only tools
+ * whose input is long enough to be worth it are marked; the tool checks every input in full once
+ * it has arrived.
  */
 class StreamingToolsAnthropic extends ChatAnthropic {
 	override formatStructuredToolToAnthropic(
 		...args: Parameters<ChatAnthropic['formatStructuredToolToAnthropic']>
 	): ReturnType<ChatAnthropic['formatStructuredToolToAnthropic']> {
+		const streamed = new Set(
+			(args[0] ?? []).flatMap((tool) =>
+				typeof tool === 'object' &&
+				tool !== null &&
+				'metadata' in tool &&
+				(tool.metadata as { streamInput?: unknown } | undefined)?.streamInput === true &&
+				'name' in tool
+					? [String(tool.name)]
+					: []
+			)
+		);
 		return super
 			.formatStructuredToolToAnthropic(...args)
 			?.map((tool) =>
-				'input_schema' in tool && !('type' in tool && tool.type)
+				'name' in tool && streamed.has(tool.name) && 'input_schema' in tool
 					? ({ ...tool, eager_input_streaming: true } as typeof tool)
 					: tool
 			);

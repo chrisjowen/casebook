@@ -179,7 +179,7 @@ It runs on any tool-calling chat model LangChain supports, set in `.env`:
 | `CASEBOOK_WIZARD_TIMEOUT_SECONDS` | `480`                                                                                 | How long one assistant turn may run before it is stopped with a message.                                     |
 
 While a turn runs, the panel shows what the assistant is doing ("Reading the Claims sheet", "Proposing 3 processes"), its words as it writes them, and the processes or nodes it is proposing as they arrive (ADR 0029).
-On Claude the sample's split appears in under 10 seconds and a first process's draft in about 30, with the first words within 2 seconds.
+On Claude the sample's split appears in about 7 seconds and a first process's draft in under 35, each showing its first words and items within about 2 seconds.
 The model is shown the whole of a small workbook and, for a large one, its tables with their headers and first rows; it reads any other cells it needs by range.
 Small local models are slower and propose less, which shows up as proposals to reject or push back on rather than broken drafts; on Ollama the assistant runs one turn at a time (turns on a hosted model run side by side) and asks for a draft a kind of node at a time.
 A turn still unfinished `CASEBOOK_WIZARD_TIMEOUT_SECONDS` after its request arrived is stopped.

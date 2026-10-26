@@ -402,6 +402,12 @@ function listArg(value: unknown): unknown[] {
 
 /** The processes and shared cells of a split, as items. */
 function splitItems(input: { processes?: unknown; shared?: unknown }): LiveItem[] {
+	// The whole input written as the value of `processes` (see `argsAsMeant`).
+	const nested =
+		typeof input.processes === 'string'
+			? (parsePartialJson(input.processes) as unknown)
+			: input.processes;
+	if (isRecord(nested) && 'processes' in nested) return splitItems(nested);
 	const titled = (kind: string) => (p: unknown) => {
 		const title = (p as { title?: unknown } | null)?.title;
 		return typeof title === 'string' && title.trim() ? [{ kind, title: title.trim() }] : [];
@@ -592,7 +598,7 @@ function focus(names: string[]) {
 		wrapToolCall: (request, handler) => {
 			const { name, id, args } = request.toolCall;
 			if (allowed.has(name)) {
-				const toolCall = { ...request.toolCall, args: listsUnstrung(name, args) };
+				const toolCall = { ...request.toolCall, args: argsAsMeant(name, args) };
 				return handler({ ...request, toolCall });
 			}
 			return new ToolMessage({
@@ -718,27 +724,34 @@ const LIST_ARGS: Record<string, { lists: string[]; within?: string }> = {
 	apply_operations: { lists: ['operations'] }
 };
 
-/** A list a model sent as a JSON string, as the list; anything else as it is. */
+/** A list or object a model sent as a JSON string, as what it holds; anything else as it is. */
 function unstring(value: unknown): unknown {
-	if (typeof value !== 'string' || !value.trim().startsWith('[')) return value;
+	if (typeof value !== 'string' || !/^\s*[[{]/.test(value)) return value;
 	try {
 		const parsed = JSON.parse(value) as unknown;
-		return Array.isArray(parsed) ? parsed : value;
+		return typeof parsed === 'object' && parsed !== null ? parsed : value;
 	} catch {
 		return value;
 	}
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === 'object' && value !== null && !Array.isArray(value);
+
 /**
- * A tool call's arguments with any list the model sent as a JSON string (as Claude sometimes does
- * with a list of objects) read as that list. The tool then checks them as usual.
+ * A tool call's arguments as the model meant them. Claude sometimes sends a list of objects as a
+ * JSON string, or the whole input, as an object or a JSON string, as the value of its first
+ * argument (`{"processes": "{\"processes\": [...], \"shared\": [...]}"}`); both are read as what
+ * they hold. The tool then checks the arguments as usual.
  */
-export function listsUnstrung(
-	name: string,
-	args: Record<string, unknown>
-): Record<string, unknown> {
+export function argsAsMeant(name: string, args: Record<string, unknown>): Record<string, unknown> {
 	const shape = LIST_ARGS[name];
 	if (!shape) return args;
+	const keys = Object.keys(args);
+	if (keys.length === 1) {
+		const whole = unstring(args[keys[0]!]);
+		if (isRecord(whole) && keys[0]! in whole) return argsAsMeant(name, whole);
+	}
 	const out = { ...args };
 	for (const key of shape.lists) {
 		if (!(key in out)) continue;
@@ -747,9 +760,7 @@ export function listsUnstrung(
 		out[key] =
 			within && Array.isArray(list)
 				? list.map((item: unknown) =>
-						typeof item === 'object' && item !== null && within in item
-							? { ...item, [within]: unstring((item as Record<string, unknown>)[within]) }
-							: item
+						isRecord(item) && within in item ? { ...item, [within]: unstring(item[within]) } : item
 					)
 				: list;
 	}
@@ -831,6 +842,8 @@ function splitTool(
 		},
 		{
 			name: 'propose_split',
+			// The processes show as they are written (model.ts).
+			metadata: { streamInput: true },
 			description:
 				'Propose how to split the workbook into processes. Replaces any earlier proposal, so always send the whole split.',
 			schema: z.object({
@@ -1223,6 +1236,8 @@ function draftTools(
 		});
 	const applyOperations = tool((input: { operations: unknown[] }) => apply(input.operations), {
 		name: 'apply_operations',
+		// Its input is a whole process's operations, so it is shown as it is written (model.ts).
+		metadata: { streamInput: true },
 		description:
 			'Apply node operations to the process being drafted, as part of this turn’s proposal. Each is checked like an edit of the draft: those that pass are applied, and each refused one is listed with the reason, for you to fix and send again. Every add_node needs core.source pointing at its cells.',
 		schema: operationsInput()
