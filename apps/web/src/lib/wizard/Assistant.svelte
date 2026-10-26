@@ -222,9 +222,12 @@
 		}
 	});
 
+	// Follows the conversation, and a running turn's writing as it grows.
 	$effect(() => {
 		void wiz.messages.length;
 		void busy;
+		void activity?.text.length;
+		void activity?.items.length;
 		tick().then(() => scroller?.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' }));
 	});
 
