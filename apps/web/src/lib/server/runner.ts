@@ -56,11 +56,15 @@ const STATUS: Record<RuntimeRefusal['code'], number> = {
 	'human-only': 403
 };
 
-/** A refused write as a form failure, keeping its reason and the problem with each field. */
-export function refused(result: RuntimeRefusal) {
+/**
+ * A refused write as a form failure, keeping its reason and the problem with each field, plus
+ * anything the page needs to show it in the right place.
+ */
+export function refused<T extends Record<string, unknown>>(result: RuntimeRefusal, extra?: T) {
 	return fail(STATUS[result.code], {
 		code: result.code,
 		reason: result.reason,
-		problems: Object.fromEntries(result.problems.map((p) => [p.field, p.message]))
+		problems: Object.fromEntries(result.problems.map((p) => [p.field, p.message])),
+		...(extra ?? ({} as T))
 	});
 }

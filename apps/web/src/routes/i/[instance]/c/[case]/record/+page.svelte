@@ -1,6 +1,7 @@
 <script lang="ts">
 	// The case record: every captured value, file and document, recorded once and shared by every
-	// process on the case (ADR 0001), each linked to the task, person and time it came from.
+	// process on the case (ADR 0001), each linked to the task, person and time it came from, and
+	// who was named for each role and every change to who's who since.
 	import { page } from '$app/state';
 	import { ExternalLink, FileText } from '@lucide/svelte';
 	import type { RecordEntry } from '@casebook/store';
@@ -35,6 +36,8 @@
 		);
 	};
 	const files = $derived(c.record.filter((r) => r.file && keep(r)));
+	const who = (people: { name: string }[], nobody = 'nobody') =>
+		people.length ? people.map((p) => p.name).join(', ') : nobody;
 	const values = $derived(c.record.filter((r) => !r.file && keep(r)));
 </script>
 
@@ -141,5 +144,30 @@
 				</p>
 			{/if}
 		</section>
+
+		{#if c.roleChanges.length && !filter}
+			<section class="mt-8">
+				<h2 class="mb-2 px-1 text-[13px] font-semibold">Who’s who</h2>
+				<ul class="divide-y rounded-xl border bg-card">
+					{#each c.roleChanges as r, i (i)}
+						<li class="grid gap-x-4 gap-y-1 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,15rem)]">
+							<div class="min-w-0">
+								<p class="text-[13px] text-muted-foreground">{r.role}</p>
+								<p class="text-[14px] font-medium break-words">
+									{#if r.before}
+										{who(r.before, 'Nobody')} → {who(r.after)}
+									{:else}
+										{who(r.after)} named
+									{/if}
+								</p>
+							</div>
+							<span class="text-[12px] text-muted-foreground">
+								{`${r.by.name}${r.onBehalfOf ? ` for ${r.onBehalfOf.name}` : ''} · ${when(r.at)}`}
+							</span>
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
 	</div>
 </Frame>

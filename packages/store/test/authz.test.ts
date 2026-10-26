@@ -348,6 +348,29 @@ describe.skipIf(!url)('permission resolution (Postgres)', () => {
 			);
 			await expectAllowed(check(writer.id, 'case.bind_version', incident));
 		});
+
+		it("changes who's who on a case only for account owners, admins and namespace admins", async () => {
+			const w = await world();
+			const incident = { type: 'case', caseId: w.incident.id } as const;
+			const admin = await w.holder('account-admin');
+			const nsAdmin = await w.holder('namespace-admin', { namespaceId: w.ns.eng });
+			const writer = await w.holder('write', { namespaceId: w.ns.sre });
+			const commander = await w.holder('commander', { caseId: w.incident.id });
+			await expectAllowed(
+				check(w.owner.id, 'case.manage_roles', incident),
+				/is account-owner of account/
+			);
+			await expectAllowed(check(admin.id, 'case.manage_roles', incident));
+			await expectAllowed(
+				check(nsAdmin.id, 'case.manage_roles', incident),
+				/holds namespace-admin on acme\/eng, inherited by acme\/eng\/sre/
+			);
+			await expectRefused(
+				check(writer.id, 'case.manage_roles', incident),
+				/cannot change who's who on case "Outage".*needs namespace-admin on acme\/eng\/sre or an ancestor/
+			);
+			await expectRefused(check(commander.id, 'case.manage_roles', incident));
+		});
 	});
 
 	describe('account isolation and resources', () => {

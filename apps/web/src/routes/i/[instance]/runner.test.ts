@@ -3,6 +3,7 @@ import { render } from 'svelte/server';
 import WorkPage from './+page.svelte';
 import ProcessesPage from './processes/+page.svelte';
 import CasePage from './c/[case]/+page.svelte';
+import RecordPage from './c/[case]/record/+page.svelte';
 import TaskPage from './c/[case]/t/[attachment]/[item]/+page.svelte';
 import type { CaseView, ProcessRow } from '@casebook/store';
 import {
@@ -266,10 +267,46 @@ describe('a case', () => {
 				sharedBy: []
 			}
 		],
-		can: { addProcess: false }
+		roles: [
+			{
+				id: 'role.parent',
+				title: 'Parent',
+				holders: [],
+				standing: [],
+				work: [
+					{
+						attachmentId: 'run-birth',
+						item: 'step.register-locally',
+						title: 'Register the birth locally',
+						process: 'Register a birth abroad'
+					}
+				]
+			},
+			{ id: 'role.claimant', title: 'Claimant', holders: [alex], standing: [], work: [] },
+			{ id: 'role.insurer', title: 'Insurer', holders: [], standing: [dana], work: [] }
+		],
+		roleChanges: [
+			{
+				role: 'Parent',
+				before: [sam],
+				after: [],
+				at: '2026-10-20T10:00:00Z',
+				by: alex
+			},
+			{ role: 'Claimant', after: [alex], at: '2026-10-05T10:00:00Z', by: alex }
+		],
+		can: { addProcess: false, manageRoles: false }
 	};
-	const page = (c: CaseView) =>
-		text(render(CasePage, { props: { data: { ...frame, case: c }, params: {} } as never }).body);
+	const page = (c: CaseView, extra: Record<string, unknown> = {}, form: unknown = null) =>
+		text(
+			render(CasePage, {
+				props: { data: { ...frame, case: c, people: [], ...extra }, form, params: {} } as never
+			}).body
+		);
+	const raw = (c: CaseView, extra: Record<string, unknown> = {}, form: unknown = null) =>
+		render(CasePage, {
+			props: { data: { ...frame, case: c, people: [], ...extra }, form, params: {} } as never
+		}).body;
 
 	it('shows the user’s tasks, one stage strip per process, what others are doing, and the record', () => {
 		const html = page(view);
@@ -282,6 +319,48 @@ describe('a case', () => {
 		expect(html).toContain('Patient name · Mira Example');
 		expect(html).not.toContain('Add a process');
 		expect(page({ ...view, can: { ...view.can, addProcess: true } })).toContain('Add a process');
+	});
+
+	it("shows who's who read-only, with a role nobody holds and the work waiting on it", () => {
+		const html = page(view);
+		expect(html).toContain('Who’s who');
+		expect(html).toContain(
+			'Parent Nobody yet Waiting on someone in this role: Register the birth locally (Register a birth abroad)'
+		);
+		expect(html).toContain('Claimant Alex Example');
+		expect(html).toContain('Insurer Dana Cole Dana Cole holds it across the workspace');
+		expect(html).not.toContain('Name someone');
+		expect(html).not.toContain('Change');
+		expect(raw(view)).not.toContain('action="?/roles"');
+	});
+
+	it('lets an owner or admin name, replace or remove who holds a role', () => {
+		const editable = { ...view, can: { ...view.can, manageRoles: true } };
+		const people = { people: [alex, sam] };
+		const html = page(editable, people);
+		expect(html).toContain('Name someone');
+		expect(html).toContain('Change');
+		expect(html).toContain('Changes show in the case record.');
+		// A refused change reopens that role's form, with each person to check and the reason.
+		const form = {
+			code: 'invalid-input',
+			reason: 'Parent: choose someone who belongs to this casebook',
+			role: 'role.parent'
+		};
+		const markup = raw(editable, people, form);
+		expect(markup).toContain('action="?/roles"');
+		expect(markup).toContain('name="role" value="role.parent"');
+		expect(markup).toMatch(/name="holder" value="sam"/);
+		expect(text(markup)).toContain('Alex Example (you)');
+		expect(text(markup)).toContain('Parent: choose someone who belongs to this casebook');
+	});
+
+	it("lists who's who changes in the case record, with who made them", () => {
+		const html = text(
+			render(RecordPage, { props: { data: { ...frame, case: view }, params: {} } as never }).body
+		);
+		expect(html).toContain('Who’s who Parent Sam Example → nobody Alex Example ·');
+		expect(html).toContain('Claimant Alex Example named Alex Example ·');
 	});
 });
 

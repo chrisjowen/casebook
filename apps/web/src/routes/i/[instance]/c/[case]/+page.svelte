@@ -1,7 +1,7 @@
 <script lang="ts">
 	// A case's own workspace: what to do next on it (the user's first ready task, up front), the
 	// rest of their tasks, one stage strip per attached process with a plain line about what
-	// others are doing, and the latest from the case record.
+	// others are doing, who's who, and the latest from the case record.
 	import { page } from '$app/state';
 	import { ArrowRight, FileText, Plus, Workflow } from '@lucide/svelte';
 	import Frame from '$lib/runner/Frame.svelte';
@@ -10,13 +10,14 @@
 	import Section from '$lib/runner/Section.svelte';
 	import StageStrip from '$lib/runner/StageStrip.svelte';
 	import TaskRow from '$lib/runner/TaskRow.svelte';
+	import WhosWho from '$lib/runner/WhosWho.svelte';
 	import { day } from '$lib/runner/format';
 	import { links } from '$lib/runner/links';
 	import ActionsMenu from '$lib/shell/ActionsMenu.svelte';
 	import { caseVerbs } from '$lib/shell/actions';
 	import type { PageProps } from './$types';
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
 
 	const c = $derived(data.case);
 	const slug = $derived(data.instance.slug);
@@ -177,6 +178,20 @@
 				{/each}
 			</div>
 		</section>
+
+		{#if c.roles.length}
+			<WhosWho
+				roles={c.roles}
+				people={data.people}
+				me={data.user.id}
+				instance={slug}
+				caseId={c.id}
+				editable={c.can.manageRoles}
+				problem={form && 'reason' in form && typeof form.role === 'string'
+					? { role: form.role, reason: form.reason }
+					: undefined}
+			/>
+		{/if}
 
 		<section class="mt-8">
 			<div class="mb-2 flex items-baseline px-1">
