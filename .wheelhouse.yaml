@@ -1,0 +1,31 @@
+# Wheelhouse passage for casebook (Wheelhouse docs/passages.md).
+# Adds a "Deployed locally" step after the merge: Wheelhouse runs `pnpm deploy:local` on the tip of
+# the default branch, in a fresh checkout of it, so the local k3d cluster casebook-local always runs
+# the latest main; it builds the image from the root Dockerfile (README, "Local Kubernetes").
+# A failed deploy is retried hourly for a day.
+# The script needs no installed dependencies or .env, and never uses the current kubectl context:
+# it unsets KUBECONFIG and uses the cluster's own kubeconfig file, so only CASEBOOK_LOCAL_PORT
+# (the port for a cluster it creates) is passed through.
+# pnpm refuses to run under a Node other than 22 (engine-strict, package.json engines), so Wheelhouse
+# must be started with Node 22 first on its PATH, as .prototools pins.
+# Command checks stay off until the captain allows them on casebook's passage page in Wheelhouse.
+version: 1
+extends: ship
+checks:
+  local-deploy:
+    type: command
+    label: Local deploy
+    run: [pnpm, 'deploy:local']
+    when: merged
+    timeout: 20m
+    interval: 1h
+    env: [CASEBOOK_LOCAL_PORT]
+stages:
+  - id: deployed-locally
+    label: Deployed locally
+    short: Local
+    after: landed
+    reached_when: local-deploy.passed
+    failed_when: local-deploy.failed
+    evidence: ['check:local-deploy']
+    give_up_after: 1d
