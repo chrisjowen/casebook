@@ -3,7 +3,10 @@
 	// their own inspector, and the shared lookups its workspace offers, which are managed on the
 	// Lookups page. A new lookup is named first, then filled in its inspector.
 	import { factsUsingLookup, factsUsingShared, labelOfValue } from '@casebook/model';
-	import { ChevronRight, ExternalLink, ListChecks, Plus } from '@lucide/svelte';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import Plus from '@lucide/svelte/icons/plus';
 	import type { ResolvedPathname } from '$app/types';
 	import type { SharedLookupRef } from '$lib/definitions/types';
 	import { newLookup, type Edit } from '$lib/editor/ops';

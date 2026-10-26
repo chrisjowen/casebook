@@ -3,7 +3,10 @@
 	// rest of their tasks, one stage strip per attached process with a plain line about what
 	// others are doing, who's who, and the latest from the case record.
 	import { page } from '$app/state';
-	import { ArrowRight, FileText, Plus, Workflow } from '@lucide/svelte';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import FileText from '@lucide/svelte/icons/file-text';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Workflow from '@lucide/svelte/icons/workflow';
 	import Frame from '$lib/runner/Frame.svelte';
 	import FilterChips from '$lib/runner/FilterChips.svelte';
 	import Notice from '$lib/runner/Notice.svelte';

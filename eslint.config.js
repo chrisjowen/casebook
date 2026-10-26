@@ -25,7 +25,19 @@ export default defineConfig(
 		},
 		rules: {
 			// typescript-eslint recommends disabling no-undef for TypeScript projects.
-			'no-undef': 'off'
+			'no-undef': 'off',
+			// The barrel re-exports every icon, and Vitest compiles each one for any test that reaches it.
+			'no-restricted-imports': [
+				'error',
+				{
+					paths: [
+						{
+							name: '@lucide/svelte',
+							message: "Import each icon from '@lucide/svelte/icons/<name>' instead."
+						}
+					]
+				}
+			]
 		}
 	},
 	{

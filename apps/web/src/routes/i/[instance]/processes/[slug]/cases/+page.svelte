@@ -1,7 +1,7 @@
 <script lang="ts">
 	// A process's home, Cases tab: every case running it that the user can open, with its stage,
 	// the version it runs, and moving a pinned case to the latest version; Start a case on top.
-	import { Play } from '@lucide/svelte';
+	import Play from '@lucide/svelte/icons/play';
 	import Frame from '$lib/runner/Frame.svelte';
 	import Notice from '$lib/runner/Notice.svelte';
 	import StageStrip from '$lib/runner/StageStrip.svelte';

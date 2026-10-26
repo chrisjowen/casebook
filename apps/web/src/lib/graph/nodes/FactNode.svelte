@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
-	import { TriangleAlert, Lock } from '@lucide/svelte';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import Lock from '@lucide/svelte/icons/lock';
 	import type { FactData } from '../layout';
 	import { glyphIcon } from '../glyphs';
 	let { data, selected }: NodeProps & { data: FactData } = $props();

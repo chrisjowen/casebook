@@ -1,7 +1,12 @@
 <script lang="ts">
 	// The task's process as a task list, one group per stage: where this task sits, what is done,
 	// what is yours, and what comes after. Every item opens; others' items open read-only.
-	import { Check, CircleDot, CircleAlert, Hourglass, Lock, CircleSlash } from '@lucide/svelte';
+	import Check from '@lucide/svelte/icons/check';
+	import CircleDot from '@lucide/svelte/icons/circle-dot';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import Hourglass from '@lucide/svelte/icons/hourglass';
+	import Lock from '@lucide/svelte/icons/lock';
+	import CircleSlash from '@lucide/svelte/icons/circle-slash';
 	import type { ResolvedPathname } from '$app/types';
 	import type { OutlineStage } from '@casebook/store';
 

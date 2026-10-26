@@ -21,15 +21,13 @@
 	import Field from './Field.svelte';
 	import EditText from './EditText.svelte';
 	import Group from './Group.svelte';
-	import {
-		CircleCheck,
-		CircleAlert,
-		TriangleAlert,
-		Plus,
-		Undo2,
-		Upload,
-		GitCommitHorizontal
-	} from '@lucide/svelte';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Undo2 from '@lucide/svelte/icons/undo-2';
+	import Upload from '@lucide/svelte/icons/upload';
+	import GitCommitHorizontal from '@lucide/svelte/icons/git-commit-horizontal';
 
 	let {
 		ix,

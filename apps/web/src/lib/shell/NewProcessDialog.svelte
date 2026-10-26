@@ -4,7 +4,8 @@
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import { Dialog } from 'bits-ui';
-	import { LoaderCircle, X } from '@lucide/svelte';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import X from '@lucide/svelte/icons/x';
 	import { links } from '$lib/runner/links';
 	import type { ShellSpace } from './types';
 

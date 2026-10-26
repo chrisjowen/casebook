@@ -2,7 +2,8 @@
 	// One thing to record, as a field typed from the fact's schema: a file slot for a document, chips
 	// for choices and yes/no, people to pick, dates, numbers, lists or text. A value already on the
 	// case fills the field, since facts are shared case-wide.
-	import { Paperclip, X } from '@lucide/svelte';
+	import Paperclip from '@lucide/svelte/icons/paperclip';
+	import X from '@lucide/svelte/icons/x';
 	import type { FormField } from '@casebook/store';
 	import { lowerFirst } from './format';
 

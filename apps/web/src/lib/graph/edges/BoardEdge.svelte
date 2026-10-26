@@ -4,7 +4,7 @@
 	// what is handed over and, for someone who can edit, a "+" to put a step in between; clicking
 	// opens the link box.
 	import { BaseEdge, EdgeLabel, getSmoothStepPath, type EdgeProps } from '@xyflow/svelte';
-	import { Plus } from '@lucide/svelte';
+	import Plus from '@lucide/svelte/icons/plus';
 	import type { BoardEdgeData } from '../board';
 	import { getBoard } from '../board-context.svelte';
 

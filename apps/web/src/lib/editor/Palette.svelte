@@ -1,7 +1,7 @@
 <script lang="ts">
 	// ⌘K: one box to add anything or jump to anything, so nothing needs a side tree to be found.
 	import type { Component } from 'svelte';
-	import { Search } from '@lucide/svelte';
+	import Search from '@lucide/svelte/icons/search';
 	import type { Command } from '$lib/graph/board-context.svelte';
 
 	let { commands, onclose }: { commands: Command[]; onclose: () => void } = $props();

@@ -1,7 +1,7 @@
 <script lang="ts">
 	// A process's actions at the right of the top bar on each of its tabs: Start a case when it
 	// can run, and its "…" menu with every verb.
-	import { Play } from '@lucide/svelte';
+	import Play from '@lucide/svelte/icons/play';
 	import { links } from '$lib/runner/links';
 	import ActionsMenu from './ActionsMenu.svelte';
 	import { processVerbs, type ProcessTarget } from './actions';

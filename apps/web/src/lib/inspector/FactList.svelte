@@ -8,7 +8,12 @@
 	// shared ones, and "New lookup…" makes one named after the fact, holding its current choices,
 	// whose values then open in place under the row.
 	import type { FactId, FactNode, FactSchema, LookupNode } from '@casebook/model';
-	import { ArrowLeft, ChevronDown, ChevronRight, Plus, TriangleAlert, X } from '@lucide/svelte';
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Plus from '@lucide/svelte/icons/plus';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import X from '@lucide/svelte/icons/x';
 	import {
 		choicesOf,
 		collectorsByFact,

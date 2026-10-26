@@ -7,16 +7,14 @@
 	import { tick } from 'svelte';
 	import { deserialize, enhance } from '$app/forms';
 	import { beforeNavigate } from '$app/navigation';
-	import {
-		ChevronRight,
-		CircleAlert,
-		CircleCheck,
-		CircleSlash,
-		Hourglass,
-		Lock,
-		Repeat,
-		Undo2
-	} from '@lucide/svelte';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import CircleSlash from '@lucide/svelte/icons/circle-slash';
+	import Hourglass from '@lucide/svelte/icons/hourglass';
+	import Lock from '@lucide/svelte/icons/lock';
+	import Repeat from '@lucide/svelte/icons/repeat';
+	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import type { ResolvedPathname } from '$app/types';
 	import type { TaskView } from '@casebook/store';
 	import FactField from './FactField.svelte';

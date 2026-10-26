@@ -3,7 +3,7 @@
 	// palette. Unavailable verbs stay visible, disabled, with the reason underneath.
 	import { goto } from '$app/navigation';
 	import { DropdownMenu } from 'bits-ui';
-	import { Ellipsis } from '@lucide/svelte';
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import type { Verb } from './actions';
 
 	let {

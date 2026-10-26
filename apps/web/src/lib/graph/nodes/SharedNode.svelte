@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
-	import { FolderOpen } from '@lucide/svelte';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	let { data, selected }: NodeProps & { data: { facts: string[] } } = $props();
 </script>
 

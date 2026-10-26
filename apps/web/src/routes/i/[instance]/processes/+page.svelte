@@ -2,7 +2,11 @@
 	// Processes: the definitions in this instance, with status, version, change policy and live
 	// cases. Each opens on its own home, with Overview, Edit (the board) and Cases tabs; each row
 	// has the same actions menu as the process's own page.
-	import { FileSpreadsheet, FolderTree, ListChecks, Network, Plus } from '@lucide/svelte';
+	import FileSpreadsheet from '@lucide/svelte/icons/file-spreadsheet';
+	import FolderTree from '@lucide/svelte/icons/folder-tree';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import Network from '@lucide/svelte/icons/network';
+	import Plus from '@lucide/svelte/icons/plus';
 	import Frame from '$lib/runner/Frame.svelte';
 	import DefinitionMeta from '$lib/runner/DefinitionMeta.svelte';
 	import { day } from '$lib/runner/format';

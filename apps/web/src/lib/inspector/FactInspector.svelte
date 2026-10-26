@@ -4,7 +4,8 @@
 	// choice's values are its own options or come from a lookup of the process or a shared one
 	// (ADR 0025), and switching between them is one edit.
 	import type { FactNode, LookupNode, Operation } from '@casebook/model';
-	import { ChevronRight, Trash2 } from '@lucide/svelte';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type { ResolvedPathname } from '$app/types';
 	import type { SharedLookupRef } from '$lib/definitions/types';
 	import {

@@ -19,7 +19,11 @@
 		type LookupValue,
 		type ValuesEdit
 	} from '@casebook/model';
-	import { ArrowDownAZ, GripVertical, Plus, Search, X } from '@lucide/svelte';
+	import ArrowDownAZ from '@lucide/svelte/icons/arrow-down-a-z';
+	import GripVertical from '@lucide/svelte/icons/grip-vertical';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Search from '@lucide/svelte/icons/search';
+	import X from '@lucide/svelte/icons/x';
 
 	let {
 		values,

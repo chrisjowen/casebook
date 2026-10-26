@@ -4,7 +4,10 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { Dialog } from 'bits-ui';
-	import { Download, FileSpreadsheet, LoaderCircle, X } from '@lucide/svelte';
+	import Download from '@lucide/svelte/icons/download';
+	import FileSpreadsheet from '@lucide/svelte/icons/file-spreadsheet';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import X from '@lucide/svelte/icons/x';
 	import { day } from '$lib/runner/format';
 	import { links } from '$lib/runner/links';
 	import type { ShellImport, ShellSpace } from './types';

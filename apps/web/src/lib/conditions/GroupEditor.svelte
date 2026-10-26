@@ -10,7 +10,8 @@
 		type Rule,
 		type RuleOp
 	} from '@casebook/model';
-	import { Plus, X } from '@lucide/svelte';
+	import Plus from '@lucide/svelte/icons/plus';
+	import X from '@lucide/svelte/icons/x';
 	import type { ProcessIndex } from '$lib/graph/derive';
 	import type { PersonView } from '@casebook/store';
 	import { choicesOf, factInfo, type FactOption, type FactTiming } from './conditions';

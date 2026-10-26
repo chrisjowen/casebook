@@ -3,7 +3,9 @@
 	// form with one action bar, its questions thread, and a rail with who it is for and the
 	// process's other tasks. Right after completing it, a hand-off says what comes next.
 	import { page } from '$app/state';
-	import { ArrowRight, CircleCheck, Workflow } from '@lucide/svelte';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import Workflow from '@lucide/svelte/icons/workflow';
 	import Frame from '$lib/runner/Frame.svelte';
 	import Notice from '$lib/runner/Notice.svelte';
 	import Questions from '$lib/runner/Questions.svelte';

@@ -5,19 +5,17 @@
  */
 import type { Component } from 'svelte';
 import type { ResolvedPathname } from '$app/types';
-import {
-	Briefcase,
-	Eye,
-	FileText,
-	LayoutList,
-	Link2,
-	ListChecks,
-	Play,
-	Workflow,
-	Plus,
-	SquarePen,
-	SquareCheck
-} from '@lucide/svelte';
+import Briefcase from '@lucide/svelte/icons/briefcase';
+import Eye from '@lucide/svelte/icons/eye';
+import FileText from '@lucide/svelte/icons/file-text';
+import LayoutList from '@lucide/svelte/icons/layout-list';
+import Link2 from '@lucide/svelte/icons/link-2';
+import ListChecks from '@lucide/svelte/icons/list-checks';
+import Play from '@lucide/svelte/icons/play';
+import Workflow from '@lucide/svelte/icons/workflow';
+import Plus from '@lucide/svelte/icons/plus';
+import SquarePen from '@lucide/svelte/icons/square-pen';
+import SquareCheck from '@lucide/svelte/icons/square-check';
 import { links } from '$lib/runner/links';
 import type { Permission } from './types';
 

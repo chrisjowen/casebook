@@ -3,7 +3,9 @@
 	// facts the earlier one records. Tick the ones it needs, or name a new one for the earlier step
 	// to record. From a decision, pick which choice the later step runs for.
 	import type { DecisionNode, FactId, FactNode, Operation } from '@casebook/model';
-	import { ArrowRight, Check, Plus } from '@lucide/svelte';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import Check from '@lucide/svelte/icons/check';
+	import Plus from '@lucide/svelte/icons/plus';
 	import { branchChoices } from '$lib/conditions/conditions';
 	import type { PickerState } from '$lib/graph/board-context.svelte';
 	import {

@@ -1,7 +1,12 @@
 <script lang="ts">
 	// Read-only sketch of the input a fact type will produce at run time. Never an input itself.
 	import type { FactNode } from '@casebook/model';
-	import { Upload, Lock, ChevronDown, Users, Search, Plus } from '@lucide/svelte';
+	import Upload from '@lucide/svelte/icons/upload';
+	import Lock from '@lucide/svelte/icons/lock';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Users from '@lucide/svelte/icons/users';
+	import Search from '@lucide/svelte/icons/search';
+	import Plus from '@lucide/svelte/icons/plus';
 	import { choicesOf, describeEvidence, labelOf, type ProcessIndex } from '$lib/graph/derive';
 	let { ix, fact }: { ix: ProcessIndex; fact: FactNode } = $props();
 	const schema = $derived(fact.core.schema);

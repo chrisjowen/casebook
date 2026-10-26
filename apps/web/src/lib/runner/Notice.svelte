@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { CircleAlert, CircleCheck } from '@lucide/svelte';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
 
 	let { tone = 'done', children }: { tone?: 'done' | 'problem'; children: Snippet } = $props();
 </script>

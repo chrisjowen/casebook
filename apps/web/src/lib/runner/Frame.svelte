@@ -26,22 +26,20 @@
 	import { goto } from '$app/navigation';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { DropdownMenu } from 'bits-ui';
-	import {
-		Briefcase,
-		Check,
-		ChevronRight,
-		ChevronsUpDown,
-		FileSpreadsheet,
-		FlaskConical,
-		Inbox,
-		LogOut,
-		Menu,
-		Plus,
-		Search,
-		UserRound,
-		Workflow,
-		X
-	} from '@lucide/svelte';
+	import Briefcase from '@lucide/svelte/icons/briefcase';
+	import Check from '@lucide/svelte/icons/check';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
+	import FileSpreadsheet from '@lucide/svelte/icons/file-spreadsheet';
+	import FlaskConical from '@lucide/svelte/icons/flask-conical';
+	import Inbox from '@lucide/svelte/icons/inbox';
+	import LogOut from '@lucide/svelte/icons/log-out';
+	import Menu from '@lucide/svelte/icons/menu';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Search from '@lucide/svelte/icons/search';
+	import UserRound from '@lucide/svelte/icons/user-round';
+	import Workflow from '@lucide/svelte/icons/workflow';
+	import X from '@lucide/svelte/icons/x';
 	import type { Instance } from '@casebook/store';
 	import Logo from '$lib/editor/Logo.svelte';
 	import CommandPalette from '$lib/shell/CommandPalette.svelte';

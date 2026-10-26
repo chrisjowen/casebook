@@ -2,7 +2,11 @@
 	// A stage's details: its name, what is in it, and, with `edit`, adding to it, moving it left or
 	// right and deleting it. Its steps move to the stage beside it when it is deleted.
 	import type { StageId } from '@casebook/model';
-	import { ArrowLeftToLine, ArrowRightToLine, Signpost, SquareStack, Trash2 } from '@lucide/svelte';
+	import ArrowLeftToLine from '@lucide/svelte/icons/arrow-left-to-line';
+	import ArrowRightToLine from '@lucide/svelte/icons/arrow-right-to-line';
+	import Signpost from '@lucide/svelte/icons/signpost';
+	import SquareStack from '@lucide/svelte/icons/square-stack';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { labelOf, type ProcessIndex } from '$lib/graph/derive';
 	import { addWork, removeStage, renameNode, shiftStage, type Edit } from '$lib/editor/ops';
 	import EditText from './EditText.svelte';

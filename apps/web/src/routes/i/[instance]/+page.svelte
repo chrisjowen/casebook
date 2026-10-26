@@ -3,7 +3,10 @@
 	// questions others asked them, ready, paused for missing information, waiting on someone else,
 	// and repeating work last and quiet.
 	import { page } from '$app/state';
-	import { ChevronRight, Hourglass, Inbox, MessageCircleQuestion } from '@lucide/svelte';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Hourglass from '@lucide/svelte/icons/hourglass';
+	import Inbox from '@lucide/svelte/icons/inbox';
+	import MessageCircleQuestion from '@lucide/svelte/icons/message-circle-question';
 	import Frame from '$lib/runner/Frame.svelte';
 	import FilterChips from '$lib/runner/FilterChips.svelte';
 	import Notice from '$lib/runner/Notice.svelte';

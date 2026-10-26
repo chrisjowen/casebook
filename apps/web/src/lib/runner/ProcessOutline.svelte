@@ -2,7 +2,7 @@
 	// The read-only whole process: stages in order and the work in each, with who does it, its
 	// condition, what it uses and records. Given a case's item states, it marks done and current
 	// stages and each item's status there. A list, not the editor's graph.
-	import { Check } from '@lucide/svelte';
+	import Check from '@lucide/svelte/icons/check';
 	import { runnableProcess, type DefinitionDocument, type StageState } from '@casebook/model';
 	import type { ItemBrief } from '@casebook/store';
 	import ItemIcon from './ItemIcon.svelte';

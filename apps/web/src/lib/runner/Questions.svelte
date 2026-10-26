@@ -3,12 +3,10 @@
 	// they answer from My work. Asking happens in the task's "I can't finish this yet" panel
 	// (`onAsk` opens it); whoever asked, was asked or can do the task replies and marks it resolved.
 	import { enhance } from '$app/forms';
-	import {
-		CircleCheck,
-		Hourglass,
-		MessageCircleQuestion,
-		MessageSquareReply
-	} from '@lucide/svelte';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import Hourglass from '@lucide/svelte/icons/hourglass';
+	import MessageCircleQuestion from '@lucide/svelte/icons/message-circle-question';
+	import MessageSquareReply from '@lucide/svelte/icons/message-square-reply';
 	import type { PersonView, QuestionView } from '@casebook/store';
 	import { relative } from './format';
 

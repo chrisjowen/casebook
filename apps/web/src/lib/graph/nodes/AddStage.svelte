@@ -1,7 +1,7 @@
 <script lang="ts">
 	// The column after the last stage: click, type the new stage's name and press Enter.
 	import type { NodeProps } from '@xyflow/svelte';
-	import { Plus } from '@lucide/svelte';
+	import Plus from '@lucide/svelte/icons/plus';
 	import { getBoard } from '../board-context.svelte';
 
 	let { id }: NodeProps = $props();

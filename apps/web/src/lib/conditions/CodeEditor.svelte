@@ -4,7 +4,10 @@
 	// a live check that shows what is wrong and where, and the helpers' reference.
 	import { tick } from 'svelte';
 	import { GUARD_HELPERS } from '@casebook/model';
-	import { BookOpen, ChevronRight, CircleCheck, TriangleAlert } from '@lucide/svelte';
+	import BookOpen from '@lucide/svelte/icons/book-open';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import type { ProcessIndex } from '$lib/graph/derive';
 	import { checkCode, complete, helperExample, type Completion } from './conditions';
 
