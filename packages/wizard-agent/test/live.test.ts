@@ -1,5 +1,5 @@
-// Runs the wizard on the configured model (CASEBOOK_WIZARD_MODEL; unset, Claude when ANTHROPIC_API_KEY
-// is set and a local Ollama when not), so it is slow and, on a hosted provider, costs money.
+// Runs the wizard on the configured model (CASEBOOK_WIZARD_MODEL, a local Ollama unless set), so it is
+// slow and, on a hosted provider, costs money.
 // Skipped unless CASEBOOK_LIVE_AGENT is set:
 // `CASEBOOK_LIVE_AGENT=1 pnpm --filter @casebook/wizard-agent test`.
 import { describe, expect, it } from 'vitest';

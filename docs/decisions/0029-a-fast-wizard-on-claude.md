@@ -13,8 +13,8 @@ Timing each model call showed where the time went:
 The workbook itself was not the cost: the sample is about 1,300 tokens, and the prompt was already cached.
 
 ## Decision
-- **Claude by default when its key is set.** With `CASEBOOK_WIZARD_MODEL` unset, the wizard runs on `anthropic:claude-sonnet-5` when `ANTHROPIC_API_KEY` is set, else on `ollama:qwen2.5:7b`. A model that is named still wins.
-- **Low effort.** Claude runs at the effort `CASEBOOK_WIZARD_EFFORT`, `low` unless set. The sample's drafts kept the same processes and number of operations at `low` as at `high`.
+- **Claude when it is chosen.** The wizard runs on Claude only when `CASEBOOK_WIZARD_MODEL` names it, such as `anthropic:claude-sonnet-5` with `ANTHROPIC_API_KEY` set; unset, it stays on `ollama:qwen2.5:7b`, so a workbook goes to a hosted model only by choice.
+- **Low effort.** Claude runs at the effort `low` on the models that take one. The sample's drafts kept the same processes and number of operations at `low` as at `high`.
 - **Fewer round trips.** Each draft-phase request carries the draft as it stands, so the agent starts proposing without reading it first. A hosted model is asked for a process's whole draft in one `apply_operations` call. A local model is still asked for one kind of node at a time.
 - **Only the cells needed.** A small workbook is still shown whole and a large one as its tables with their headers and first rows. Other cells are read with `read_cells`, by range and several ranges in one call, in place of the harness's `read_file` over a copy of the whole workbook.
 - **Shown as it works.** The model's output is streamed, and the inputs of the two tools whose input is long (`propose_split`, `apply_operations`) are streamed as Claude writes them. While a turn runs, the panel shows what the assistant is doing ("Reading the Claims sheet", "Proposing 3 processes", "Checking 26 proposed changes"), its words, and the processes or nodes it proposes, read from tool calls that are still being written. The panel reads this every 600 ms.
@@ -23,5 +23,4 @@ The workbook itself was not the cost: the sample is about 1,300 tokens, and the 
 ## Consequences
 - On the sample, Claude's split appears in 6 to 7 seconds, with its first words within about 1 and its first process within about 2. Drafting the first process takes 24 to 32 seconds, with its first node listed within about 2 and the rest as they are written.
 - The one-at-a-time queue, lenient reading and the timeout still apply to Ollama as before.
-- Claude's effort can be raised for a hard workbook at the cost of time.
 - The live view is read from this server process, as the turn's progress already was, so it needs the request to reach the process running the turn.

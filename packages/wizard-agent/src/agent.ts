@@ -153,13 +153,13 @@ export async function runAgent(
 		: '';
 	const { tools, apply, outcome, view } = draftTools(ctx, state, session);
 	// The draft comes with the request, so the agent can start proposing without reading it first.
-	const now = await view();
-	const told = `${preface}${request}\n\nThe draft now${session.ops.length > 0 ? ', with your proposal so far applied' : ''}:\n${JSON.stringify(now)}`;
+	const told = async () =>
+		`${preface}${request}\n\nThe draft now${session.ops.length > 0 ? ', with your proposal so far applied' : ''}:\n${JSON.stringify(await view())}`;
 	const watch = new TurnWatch(ctx, `Reading the cells of ${process.title}`, () =>
 		session.ops.slice(session.carried.length).flatMap((op) => opItem(op) ?? [])
 	);
 	const exchange: [reply: string, next: string][] = [];
-	let reply = await invoke(ctx, state, told, tools, watch, exchange);
+	let reply = await invoke(ctx, state, await told(), tools, watch, exchange);
 	// Small models sometimes describe their operations, or write them into the reply as JSON,
 	// instead of calling apply_operations. With `lenient`, operations written out are read from the
 	// reply through the same checks a call gets, and the agent is told the result so it can go on.
@@ -180,7 +180,7 @@ export async function runAgent(
 		} else break;
 		if (round >= MAX_ROUNDS) break;
 		exchange.push([reply, next]);
-		reply = await invoke(ctx, state, told, tools, watch, exchange);
+		reply = await invoke(ctx, state, await told(), tools, watch, exchange);
 	}
 	reply = reply.replace(/```[\s\S]*?```/g, '').trim() || 'I proposed the changes shown.';
 	return {

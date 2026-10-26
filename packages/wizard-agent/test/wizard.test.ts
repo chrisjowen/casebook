@@ -566,6 +566,11 @@ describe('a model that struggles', () => {
 					expect(String(messages.at(-1)!.content)).toMatch(
 						/I read the operations from your reply\. Applied 3 of 3 operations/
 					);
+					const asked = messages
+						.map((m) => String(m.content))
+						.find((text) => text.includes('The draft now'));
+					expect(asked).toContain('The draft now, with your proposal so far applied:');
+					expect(asked).toContain('"yourOperationsSoFar":3');
 					return answer(`Now the rest:\n${json(firstDraft.slice(3))}`)(messages);
 				},
 				answer('That is the whole draft.')

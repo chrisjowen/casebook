@@ -169,14 +169,13 @@ The board stays in view, with the assistant in a slide-over beside it that can b
 The agent only proposes node operations, which the store checks as edits by the signed-in user, and every node it adds links back to its source cells.
 It runs on any tool-calling chat model LangChain supports, set in `.env`:
 
-| Setting                           | Default                                                                               | Meaning                                                                                                      |
-| --------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `CASEBOOK_WIZARD_MODEL`           | `anthropic:claude-sonnet-5` when `ANTHROPIC_API_KEY` is set, else `ollama:qwen2.5:7b` | `provider:model`, where the provider is `ollama`, `anthropic` or `openai`. Setting it wins over the default. |
-| `ANTHROPIC_API_KEY`               |                                                                                       | For `anthropic:` models; set alone, it makes Claude the default.                                             |
-| `CASEBOOK_WIZARD_EFFORT`          | `low`                                                                                 | How hard Claude thinks before it answers: `low`, `medium`, `high`, `xhigh` or `max`. Higher is slower.       |
-| `OLLAMA_BASE_URL`                 | `http://127.0.0.1:11434`                                                              | Where Ollama runs; pull the model first with `ollama pull qwen2.5:7b`.                                       |
-| `OPENAI_API_KEY`                  |                                                                                       | For `openai:` models; `OPENAI_BASE_URL` points it at a compatible server.                                    |
-| `CASEBOOK_WIZARD_TIMEOUT_SECONDS` | `480`                                                                                 | How long one assistant turn may run before it is stopped with a message.                                     |
+| Setting                           | Default                  | Meaning                                                                                                            |
+| --------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `CASEBOOK_WIZARD_MODEL`           | `ollama:qwen2.5:7b`      | `provider:model`, where the provider is `ollama`, `anthropic` or `openai`; `anthropic:claude-sonnet-5` for Claude. |
+| `ANTHROPIC_API_KEY`               |                          | For `anthropic:` models, which run at a low effort.                                                                |
+| `OLLAMA_BASE_URL`                 | `http://127.0.0.1:11434` | Where Ollama runs; pull the model first with `ollama pull qwen2.5:7b`.                                             |
+| `OPENAI_API_KEY`                  |                          | For `openai:` models; `OPENAI_BASE_URL` points it at a compatible server.                                          |
+| `CASEBOOK_WIZARD_TIMEOUT_SECONDS` | `480`                    | How long one assistant turn may run before it is stopped with a message.                                           |
 
 While a turn runs, the panel shows what the assistant is doing ("Reading the Claims sheet", "Proposing 3 processes"), its words as it writes them, and the processes or nodes it is proposing as they arrive (ADR 0029).
 On Claude the sample's split appears in about 7 seconds and a first process's draft in under 35, each showing its first words and items within about 2 seconds.

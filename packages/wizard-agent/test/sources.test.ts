@@ -6,13 +6,11 @@ import { OPERATION_NAMES } from '@casebook/model';
 import {
 	completeSource,
 	createChatModel,
-	defaultModel,
 	formatRange,
 	modelName,
 	operationsSchema,
 	parseModel,
 	takesEffort,
-	wizardEffort,
 	parseRanges,
 	plainRange,
 	sampleWorkbook,
@@ -167,35 +165,26 @@ describe('the model setting', () => {
 
 	const saved = {
 		model: process.env.CASEBOOK_WIZARD_MODEL,
-		key: process.env.ANTHROPIC_API_KEY,
-		effort: process.env.CASEBOOK_WIZARD_EFFORT
+		key: process.env.ANTHROPIC_API_KEY
 	};
 	const restore = (name: string, value: string | undefined) =>
 		value === undefined ? delete process.env[name] : (process.env[name] = value);
 	afterEach(() => {
 		restore('CASEBOOK_WIZARD_MODEL', saved.model);
 		restore('ANTHROPIC_API_KEY', saved.key);
-		restore('CASEBOOK_WIZARD_EFFORT', saved.effort);
 	});
 
-	it('defaults to Claude when its key is set and to a local Ollama when not; a named model wins', () => {
+	it('stays on a local Ollama when no model is named, even with a Claude key set', () => {
 		delete process.env.CASEBOOK_WIZARD_MODEL;
 		delete process.env.ANTHROPIC_API_KEY;
-		expect(defaultModel()).toBe('ollama:qwen2.5:7b');
 		expect(modelName()).toBe('ollama:qwen2.5:7b');
 		process.env.ANTHROPIC_API_KEY = 'test-key';
+		expect(modelName()).toBe('ollama:qwen2.5:7b');
+		process.env.CASEBOOK_WIZARD_MODEL = 'anthropic:claude-sonnet-5';
 		expect(modelName()).toBe('anthropic:claude-sonnet-5');
-		process.env.CASEBOOK_WIZARD_MODEL = 'ollama:llama3.1:8b';
-		expect(modelName()).toBe('ollama:llama3.1:8b');
 	});
 
-	it('runs Claude at a low effort unless told otherwise, on models that take one', () => {
-		delete process.env.CASEBOOK_WIZARD_EFFORT;
-		expect(wizardEffort()).toBe('low');
-		process.env.CASEBOOK_WIZARD_EFFORT = 'Medium';
-		expect(wizardEffort()).toBe('medium');
-		process.env.CASEBOOK_WIZARD_EFFORT = 'fast';
-		expect(() => wizardEffort()).toThrow(/low, medium, high, xhigh, max/);
+	it('knows which Claude models take an effort level', () => {
 		expect(takesEffort('claude-sonnet-5')).toBe(true);
 		expect(takesEffort('claude-opus-4-6')).toBe(true);
 		expect(takesEffort('claude-sonnet-4-5')).toBe(false);
@@ -203,9 +192,8 @@ describe('the model setting', () => {
 		expect(takesEffort('claude-haiku-4-5')).toBe(false);
 	});
 
-	it('starts Claude with its effort, streaming the input of tools marked for it', () => {
+	it('starts Claude at a low effort, streaming the input of tools marked for it', () => {
 		process.env.ANTHROPIC_API_KEY = 'test-key';
-		delete process.env.CASEBOOK_WIZARD_EFFORT;
 		const claude = createChatModel('anthropic:claude-sonnet-5') as unknown as {
 			outputConfig?: { effort?: string };
 			formatStructuredToolToAnthropic: (tools: unknown[]) => Record<string, unknown>[];
