@@ -1,15 +1,17 @@
 /**
  * Dev sign-in: choose one of the seeded demo users, with no password. It stands in for the OIDC
- * sign-in to come and is on only in development builds.
+ * sign-in to come and is on only in development builds, or in a production build that sets
+ * CASEBOOK_DEMO_SIGNIN=on, as the local Kubernetes deploy does.
  */
 import { dev } from '$app/environment';
+import { env } from '$env/dynamic/private';
 import type { Cookies } from '@sveltejs/kit';
 import { DEMO_ISSUER, findUser, listUsers, type UserSummary } from '@casebook/store';
 import { getDb } from './db';
 
 const COOKIE = 'casebook_dev_user';
 
-export const devSignInEnabled = () => dev;
+export const devSignInEnabled = () => dev || env.CASEBOOK_DEMO_SIGNIN === 'on';
 
 /** The signed-in demo user, if the cookie names one. */
 export async function currentUser(cookies: Cookies): Promise<UserSummary | undefined> {

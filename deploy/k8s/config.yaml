@@ -1,0 +1,31 @@
+# Dev-only values for the local cluster. The deploy script replaces http://localhost:8480 with the
+# address the cluster is reachable on when CASEBOOK_LOCAL_PORT names another port.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: casebook-db
+type: Opaque
+stringData:
+  POSTGRES_USER: casebook
+  POSTGRES_PASSWORD: casebook
+  POSTGRES_DB: casebook
+  DATABASE_URL: postgres://casebook:casebook@postgres:5432/casebook
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: casebook
+data:
+  # The web app's public origin, which SvelteKit checks form posts against.
+  ORIGIN: http://localhost:8480
+  # The passwordless demo sign-in, otherwise on only under `pnpm dev`.
+  CASEBOOK_DEMO_SIGNIN: 'on'
+  CASEBOOK_FILES_DIR: /data/files
+  CASEBOOK_TIMEZONE: UTC
+  # The MCP server shares the web app's address, under /mcp.
+  CASEBOOK_MCP_URL: http://localhost:8480
+  CASEBOOK_MCP_HOST: 0.0.0.0
+  CASEBOOK_MCP_PORT: '5190'
+  # The spreadsheet wizard reaches an Ollama running on this machine.
+  CASEBOOK_WIZARD_MODEL: ollama:qwen2.5:7b
+  OLLAMA_BASE_URL: http://host.k3d.internal:11434

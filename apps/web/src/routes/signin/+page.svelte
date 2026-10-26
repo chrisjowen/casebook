@@ -25,7 +25,8 @@
 
 		{#if !data.enabled}
 			<p class="mt-4 text-[13px] text-muted-foreground">
-				Dev sign-in is off in this build. It runs only under <code>pnpm dev</code>.
+				Dev sign-in is off in this build. It runs only under <code>pnpm dev</code> and
+				<code>pnpm deploy:local</code>.
 			</p>
 		{:else if data.problem}
 			<p class="mt-4 flex items-start gap-2 text-[13px]">
