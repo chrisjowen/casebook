@@ -1,11 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { tool } from '@langchain/core/tools';
+import { z } from 'zod';
 import { readWorkbook } from '@casebook/sheet-import';
 import { OPERATION_NAMES } from '@casebook/model';
 import {
 	completeSource,
+	createChatModel,
+	defaultModel,
 	formatRange,
+	modelName,
 	operationsSchema,
 	parseModel,
+	takesEffort,
+	wizardEffort,
 	parseRanges,
 	plainRange,
 	sampleWorkbook,
@@ -156,5 +163,66 @@ describe('the model setting', () => {
 		});
 		expect(() => parseModel('claude-sonnet-5')).toThrow(/provider:model/);
 		expect(() => parseModel('bedrock:x')).toThrow(/not "bedrock"/);
+	});
+
+	const saved = {
+		model: process.env.CASEBOOK_WIZARD_MODEL,
+		key: process.env.ANTHROPIC_API_KEY,
+		effort: process.env.CASEBOOK_WIZARD_EFFORT
+	};
+	const restore = (name: string, value: string | undefined) =>
+		value === undefined ? delete process.env[name] : (process.env[name] = value);
+	afterEach(() => {
+		restore('CASEBOOK_WIZARD_MODEL', saved.model);
+		restore('ANTHROPIC_API_KEY', saved.key);
+		restore('CASEBOOK_WIZARD_EFFORT', saved.effort);
+	});
+
+	it('defaults to Claude when its key is set and to a local Ollama when not; a named model wins', () => {
+		delete process.env.CASEBOOK_WIZARD_MODEL;
+		delete process.env.ANTHROPIC_API_KEY;
+		expect(defaultModel()).toBe('ollama:qwen2.5:7b');
+		expect(modelName()).toBe('ollama:qwen2.5:7b');
+		process.env.ANTHROPIC_API_KEY = 'test-key';
+		expect(modelName()).toBe('anthropic:claude-sonnet-5');
+		process.env.CASEBOOK_WIZARD_MODEL = 'ollama:llama3.1:8b';
+		expect(modelName()).toBe('ollama:llama3.1:8b');
+	});
+
+	it('runs Claude at a low effort unless told otherwise, on models that take one', () => {
+		delete process.env.CASEBOOK_WIZARD_EFFORT;
+		expect(wizardEffort()).toBe('low');
+		process.env.CASEBOOK_WIZARD_EFFORT = 'Medium';
+		expect(wizardEffort()).toBe('medium');
+		process.env.CASEBOOK_WIZARD_EFFORT = 'fast';
+		expect(() => wizardEffort()).toThrow(/low, medium, high, xhigh, max/);
+		expect(takesEffort('claude-sonnet-5')).toBe(true);
+		expect(takesEffort('claude-opus-4-6')).toBe(true);
+		expect(takesEffort('claude-sonnet-4-5')).toBe(false);
+		expect(takesEffort('claude-sonnet-4-20250514')).toBe(false);
+		expect(takesEffort('claude-haiku-4-5')).toBe(false);
+	});
+
+	it('starts Claude with its effort, streaming each tool input as it is written', () => {
+		process.env.ANTHROPIC_API_KEY = 'test-key';
+		delete process.env.CASEBOOK_WIZARD_EFFORT;
+		const claude = createChatModel('anthropic:claude-sonnet-5') as unknown as {
+			outputConfig?: { effort?: string };
+			formatStructuredToolToAnthropic: (tools: unknown[]) => Record<string, unknown>[];
+		};
+		expect(claude.outputConfig).toEqual({ effort: 'low' });
+		const echo = tool(async () => 'ok', {
+			name: 'echo',
+			description: 'Echoes',
+			schema: z.object({ text: z.string() })
+		});
+		expect(claude.formatStructuredToolToAnthropic([echo])[0]).toMatchObject({
+			name: 'echo',
+			eager_input_streaming: true
+		});
+		const haiku = createChatModel('anthropic:claude-haiku-4-5') as unknown as {
+			outputConfig?: unknown;
+		};
+		expect(haiku.outputConfig).toBeUndefined();
 	});
 });

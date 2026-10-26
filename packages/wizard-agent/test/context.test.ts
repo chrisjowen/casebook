@@ -38,7 +38,7 @@ describe('what of the workbook the agent is shown', () => {
 			title: 'During',
 			sources: [{ sheet: 'During', range: 'A100:D102' }]
 		});
-		expect(opening).toMatch(/It is large.*read_file/s);
+		expect(opening).toMatch(/It is large.*read_cells/s);
 		expect(opening).toContain('- "Before" A1:D251: Task, Who, When, Notes (250 rows)');
 		expect(opening).toContain('Before task 3');
 		expect(opening).not.toContain('Before task 40');
@@ -77,8 +77,8 @@ describe('a turn as it runs', () => {
 		);
 		expect(seen).toEqual([
 			'Reading the spreadsheet',
-			'Checking the proposed processes',
-			'Thinking (step 2)'
+			'Checking the 1 proposed process',
+			'Thinking it over'
 		]);
 	});
 
@@ -87,7 +87,7 @@ describe('a turn as it runs', () => {
 		const model = new ScriptedModel([
 			() => {
 				controller.abort(new Error('The assistant took too long'));
-				return call('read_file', { file_path: '/workbook.md' })([]);
+				return call('read_cells', { ranges: [{ sheet: 'Claims', range: 'A1:F8' }] })([]);
 			},
 			answer('Too late.')
 		]);

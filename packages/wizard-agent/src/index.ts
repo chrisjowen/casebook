@@ -8,8 +8,14 @@ export {
 	textOf,
 	tidyOperation,
 	operationsInText,
+	countItems,
+	leadingObject,
+	listsUnstrung,
+	sheetsOf,
 	type AgentContext,
-	type AgentOutcome
+	type AgentOutcome,
+	type LiveItem,
+	type LiveTurn
 } from './agent.js';
 export * as wizard from './wizard.js';
 export {
@@ -26,7 +32,14 @@ export {
 	modelName,
 	modelSpec,
 	parseModel,
+	defaultModel,
+	takesEffort,
+	wizardEffort,
+	DEFAULT_CLAUDE_MODEL,
+	DEFAULT_EFFORT,
 	DEFAULT_MODEL,
+	EFFORTS,
+	type Effort,
 	DEFAULT_OLLAMA_URL,
 	PROVIDERS,
 	type ModelSpec,

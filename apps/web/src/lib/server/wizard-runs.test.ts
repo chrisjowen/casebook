@@ -14,15 +14,32 @@ afterEach(() => {
 
 describe('agent turns', () => {
 	it('on Ollama run one at a time, showing what each is doing and that the next is waiting', async () => {
+		process.env.CASEBOOK_WIZARD_MODEL = 'ollama:qwen2.5:7b';
 		const first = later();
-		const a = runTurn('s1', 'u1', async ({ onProgress }) => {
-			onProgress('Thinking (step 2)');
+		const a = runTurn('s1', 'u1', async ({ onProgress, onLive }) => {
+			onProgress('Proposing 2 processes');
+			onLive({
+				text: 'I will propose one process per sheet.',
+				items: [
+					{ kind: 'process', title: 'Birth registration' },
+					{ kind: 'process', title: 'Medical claims' }
+				]
+			});
 			await first.gate;
 			return 'a';
 		});
 		const b = runTurn('s2', 'u1', async () => 'b');
 		await new Promise((r) => setTimeout(r, 10));
-		expect(progressOf('s1', 'u1')).toMatchObject({ activity: 'Thinking (step 2)', waiting: false });
+		expect(progressOf('s1', 'u1')).toMatchObject({
+			activity: 'Proposing 2 processes',
+			waiting: false,
+			text: 'I will propose one process per sheet.',
+			items: [
+				{ kind: 'process', title: 'Birth registration' },
+				{ kind: 'process', title: 'Medical claims' }
+			]
+		});
+		expect(progressOf('s2', 'u1')).toMatchObject({ text: '', items: [] });
 		expect(progressOf('s2', 'u1')).toMatchObject({ waiting: true });
 		expect(progressOf('s2', 'u1')?.activity).toMatch(/another request is ahead of this one/);
 		expect(progressOf('s1', 'someone-else')).toBeUndefined();
@@ -48,6 +65,7 @@ describe('agent turns', () => {
 	});
 
 	it('stop a turn that waited past the timeout without running it', async () => {
+		process.env.CASEBOOK_WIZARD_MODEL = 'ollama:qwen2.5:7b';
 		const first = later();
 		const a = runTurn('s5', 'u1', async ({ signal }) => {
 			await first.gate;

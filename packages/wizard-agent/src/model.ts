@@ -1,10 +1,10 @@
 /**
  * The chat model the wizard runs on. Any tool-calling chat model LangChain can start will do, named
- * by CASEBOOK_WIZARD_MODEL as `provider:model`:
+ * by CASEBOOK_WIZARD_MODEL as `provider:model`. Unset, it is Claude when ANTHROPIC_API_KEY is set
+ * and a local Ollama otherwise:
  *
- * - `ollama:qwen2.5:7b` (the default): a local Ollama at OLLAMA_BASE_URL, http://127.0.0.1:11434
- *   unless set;
  * - `anthropic:claude-sonnet-5`: Claude, keyed by ANTHROPIC_API_KEY;
+ * - `ollama:qwen2.5:7b`: a local Ollama at OLLAMA_BASE_URL, http://127.0.0.1:11434 unless set;
  * - `openai:<model>`: keyed by OPENAI_API_KEY, with OPENAI_BASE_URL for compatible servers.
  *
  * The agent itself is deepagents either way; only the chat model changes.
@@ -14,8 +14,15 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { ChatOllama } from '@langchain/ollama';
 import { ChatOpenAI } from '@langchain/openai';
 
+/** The model when ANTHROPIC_API_KEY is set and CASEBOOK_WIZARD_MODEL is not. */
+export const DEFAULT_CLAUDE_MODEL = 'anthropic:claude-sonnet-5';
+/** The model when neither is set. */
 export const DEFAULT_MODEL = 'ollama:qwen2.5:7b';
 export const DEFAULT_OLLAMA_URL = 'http://127.0.0.1:11434';
+/** How hard Claude thinks before it answers, unless CASEBOOK_WIZARD_EFFORT says otherwise. */
+export const DEFAULT_EFFORT = 'low';
+export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type Effort = (typeof EFFORTS)[number];
 
 /** Providers whose LangChain package this package installs. */
 export const PROVIDERS = ['ollama', 'anthropic', 'openai'] as const;
@@ -42,9 +49,54 @@ export function parseModel(spec: string): ModelSpec {
 	return { provider: provider as Provider, model };
 }
 
+/** The model used when none is named: Claude when its key is set, else the local default. */
+export const defaultModel = () =>
+	process.env.ANTHROPIC_API_KEY?.trim() ? DEFAULT_CLAUDE_MODEL : DEFAULT_MODEL;
+
 /** The configured model, from `spec`, else CASEBOOK_WIZARD_MODEL, else the default. */
 export function modelSpec(spec?: string): ModelSpec {
-	return parseModel(spec ?? (process.env.CASEBOOK_WIZARD_MODEL?.trim() || DEFAULT_MODEL));
+	return parseModel(spec ?? (process.env.CASEBOOK_WIZARD_MODEL?.trim() || defaultModel()));
+}
+
+/** The thinking effort for Claude, from CASEBOOK_WIZARD_EFFORT, else `low`. */
+export function wizardEffort(): Effort {
+	const set = process.env.CASEBOOK_WIZARD_EFFORT?.trim().toLowerCase();
+	if (!set) return DEFAULT_EFFORT;
+	if (!EFFORTS.includes(set as Effort)) {
+		throw new Error(`CASEBOOK_WIZARD_EFFORT must be one of ${EFFORTS.join(', ')}, not "${set}"`);
+	}
+	return set as Effort;
+}
+
+/**
+ * Whether a Claude model takes an effort level: Sonnet, Opus and later families from 4.6 on (Haiku
+ * and older models refuse the setting).
+ */
+export function takesEffort(model: string): boolean {
+	const match = /^claude-(opus|sonnet|fable|mythos)-(\d+)(?:-(\d+))?(?:$|-)/.exec(model);
+	if (!match) return false;
+	const major = Number(match[2]);
+	const minor = match[3] && match[3].length <= 2 ? Number(match[3]) : 0;
+	return major > 4 || (major === 4 && minor >= 6);
+}
+
+/**
+ * Claude with its tool inputs streamed as they are written (`eager_input_streaming`), so a long list
+ * of operations reaches the panel as it is generated instead of all at once at the end. The tools
+ * still check every input in full once it has arrived.
+ */
+class StreamingToolsAnthropic extends ChatAnthropic {
+	override formatStructuredToolToAnthropic(
+		...args: Parameters<ChatAnthropic['formatStructuredToolToAnthropic']>
+	): ReturnType<ChatAnthropic['formatStructuredToolToAnthropic']> {
+		return super
+			.formatStructuredToolToAnthropic(...args)
+			?.map((tool) =>
+				'input_schema' in tool && !('type' in tool && tool.type)
+					? ({ ...tool, eager_input_streaming: true } as typeof tool)
+					: tool
+			);
+	}
 }
 
 /** `ollama:qwen2.5:7b`, for showing which model the assistant runs on. */
@@ -66,8 +118,16 @@ export function createChatModel(spec?: string): BaseChatModel {
 				temperature: 0
 			});
 		case 'anthropic':
-			// Current Claude models choose their own sampling; leave room for a whole turn.
-			return new ChatAnthropic({ model, maxTokens: 16_000, maxRetries: 2 });
+			// Current Claude models choose their own sampling. They think before answering, which at
+			// the default effort took most of a minute per call on the wizard's turns, unseen; a low
+			// effort keeps a whole draft to well under a minute. max_tokens leaves room for one call
+			// holding a whole process's operations (about 4,000 tokens) with its thinking.
+			return new StreamingToolsAnthropic({
+				model,
+				maxTokens: 16_000,
+				maxRetries: 2,
+				...(takesEffort(model) ? { outputConfig: { effort: wizardEffort() } } : {})
+			});
 		case 'openai':
 			return new ChatOpenAI({
 				model,

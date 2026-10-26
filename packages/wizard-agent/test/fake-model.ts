@@ -1,6 +1,7 @@
+import type { CallbackManagerForLLMRun } from '@langchain/core/callbacks/manager';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
-import type { ChatResult } from '@langchain/core/outputs';
+import { AIMessage, AIMessageChunk, ToolMessage, type BaseMessage } from '@langchain/core/messages';
+import { ChatGenerationChunk, type ChatResult } from '@langchain/core/outputs';
 
 /** One scripted model response, given every message the model was sent. */
 export type Step = (messages: BaseMessage[]) => AIMessage;
@@ -63,5 +64,66 @@ export class ScriptedModel extends BaseChatModel {
 	/** Steps not yet used; a finished test expects none. */
 	get remaining() {
 		return this.script.length;
+	}
+}
+
+/**
+ * A scripted model that streams each response, as Claude does: its text in a few pieces, then each
+ * tool call's arguments as JSON in pieces of `piece` characters, waiting `pause` ms between pieces.
+ */
+export class StreamingScriptedModel extends ScriptedModel {
+	constructor(
+		script: Step[],
+		readonly piece = 40,
+		readonly pause = 20
+	) {
+		super(script);
+	}
+
+	override async *_streamResponseChunks(
+		messages: BaseMessage[],
+		_options: this['ParsedCallOptions'],
+		runManager?: CallbackManagerForLLMRun
+	): AsyncGenerator<ChatGenerationChunk> {
+		this.sent.push(messages);
+		const step = this.script.shift();
+		if (!step) throw new Error('The scripted model ran out of steps');
+		const message = step(messages);
+		const text = typeof message.content === 'string' ? message.content : '';
+		const chunks: AIMessageChunk[] = [];
+		for (const words of text.match(/.{1,20}/gs) ?? []) chunks.push(new AIMessageChunk(words));
+		(message.tool_calls ?? []).forEach((call, index) => {
+			const json = JSON.stringify(call.args);
+			for (let at = 0; at < json.length; at += this.piece) {
+				chunks.push(
+					new AIMessageChunk({
+						content: '',
+						tool_call_chunks: [
+							{
+								index,
+								type: 'tool_call_chunk',
+								args: json.slice(at, at + this.piece),
+								...(at === 0 ? { name: call.name, id: call.id } : {})
+							}
+						]
+					})
+				);
+			}
+		});
+		for (const chunk of chunks) {
+			await new Promise((r) => setTimeout(r, this.pause));
+			const generation = new ChatGenerationChunk({ message: chunk, text: String(chunk.content) });
+			yield generation;
+			await runManager?.handleLLMNewToken(
+				generation.text,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				{
+					chunk: generation
+				}
+			);
+		}
 	}
 }
