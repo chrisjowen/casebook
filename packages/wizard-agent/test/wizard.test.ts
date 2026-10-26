@@ -972,72 +972,82 @@ describe('a turn on a hosted model, fast and in the open', () => {
 		expect(String(model.sent[0]!.at(-1)!.content)).toContain('Call apply_operations three times');
 	});
 
-	it('says what it is doing and shows what it proposes while the model is still writing', async () => {
-		const activities: string[] = [];
-		const lives: LiveTurn[] = [];
-		const model = new StreamingScriptedModel(
-			[
-				() =>
-					new AIMessage({
-						content: 'I will propose one process per sheet.',
-						tool_calls: [
-							{
-								name: 'read_cells',
-								args: { ranges: [{ sheet: 'Claims', range: 'A2:F8' }] },
-								id: 'r1',
-								type: 'tool_call'
-							}
-						]
-					}),
-				call('propose_split', { processes: [birth, passport, claims], shared: [documents] }),
-				answer('Three processes, plus the documents.')
-			],
-			24,
-			40
-		);
-		const drafts = memoryDrafts();
-		const ctx: AgentContext = {
-			model,
-			drafts,
-			workbook,
-			onProgress: (a) => activities.push(a),
-			onLive: (l) => lives.push(structuredClone(l))
-		};
-		let state = await wizard.proposeSplit(ctx, startState(FILE));
-		expect(activities[0]).toBe('Reading the spreadsheet');
-		expect(activities).toContain('Reading the Claims sheet');
-		expect(lives.some((l) => l.text === 'I will propose one process per sheet.')).toBe(true);
-		// Processes show as they are written, before the tool has checked the split.
-		const checking = activities.indexOf('Checking the 3 proposed processes');
-		expect(activities.slice(0, checking)).toContain('Proposing 1 process');
-		expect(activities.slice(0, checking)).toContain('Proposing 2 processes');
-		expect(lives.at(-1)!.items).toEqual([
-			{ kind: 'process', title: 'Birth registration' },
-			{ kind: 'process', title: 'Child passport and ID' },
-			{ kind: 'process', title: 'Medical claims' },
-			{ kind: 'shared', title: 'Shared document set' }
-		]);
-		expect(state.split?.processes).toHaveLength(3);
+	// The scripted model streams in timed pieces, about 4 seconds in all, so allow more than the
+	// default 5 seconds.
+	it(
+		'says what it is doing and shows what it proposes while the model is still writing',
+		{
+			timeout: 30_000
+		},
+		async () => {
+			const activities: string[] = [];
+			const lives: LiveTurn[] = [];
+			const model = new StreamingScriptedModel(
+				[
+					() =>
+						new AIMessage({
+							content: 'I will propose one process per sheet.',
+							tool_calls: [
+								{
+									name: 'read_cells',
+									args: { ranges: [{ sheet: 'Claims', range: 'A2:F8' }] },
+									id: 'r1',
+									type: 'tool_call'
+								}
+							]
+						}),
+					call('propose_split', { processes: [birth, passport, claims], shared: [documents] }),
+					answer('Three processes, plus the documents.')
+				],
+				24,
+				40
+			);
+			const drafts = memoryDrafts();
+			const ctx: AgentContext = {
+				model,
+				drafts,
+				workbook,
+				onProgress: (a) => activities.push(a),
+				onLive: (l) => lives.push(structuredClone(l))
+			};
+			let state = await wizard.proposeSplit(ctx, startState(FILE));
+			expect(activities[0]).toBe('Reading the spreadsheet');
+			expect(activities).toContain('Reading the Claims sheet');
+			expect(lives.some((l) => l.text === 'I will propose one process per sheet.')).toBe(true);
+			// Processes show as they are written, before the tool has checked the split.
+			const checking = activities.indexOf('Checking the 3 proposed processes');
+			expect(activities.slice(0, checking)).toContain('Proposing 1 process');
+			expect(activities.slice(0, checking)).toContain('Proposing 2 processes');
+			expect(lives.at(-1)!.items).toEqual([
+				{ kind: 'process', title: 'Birth registration' },
+				{ kind: 'process', title: 'Child passport and ID' },
+				{ kind: 'process', title: 'Medical claims' },
+				{ kind: 'shared', title: 'Shared document set' }
+			]);
+			expect(state.split?.processes).toHaveLength(3);
 
-		state = await wizard.acceptSplit(drafts, state, 'ns-1');
-		activities.length = 0;
-		lives.length = 0;
-		model.script.push(call('apply_operations', { operations: firstDraft }), answer('Drafted.'));
-		state = await wizard.draft(ctx, state, state.activeKey!);
-		expect(activities[0]).toBe('Reading the cells of Birth registration');
-		const midway = lives.filter((l) => l.items.length > 0 && l.items.length < firstDraft.length);
-		expect(midway.length).toBeGreaterThan(0);
-		expect(activities).toContain('Checking 7 proposed changes');
-		expect(activities.some((a) => /^Proposing 2 stages, 1 role and \d facts?$/.test(a))).toBe(true);
-		expect(lives.at(-1)!.items.map((i) => `${i.kind}: ${i.title}`)).toEqual([
-			'stage: Before the birth',
-			'stage: Registration',
-			'role: Parent',
-			'fact: Home address',
-			'fact: Birth certificate',
-			'step: Gather the family document set',
-			'step: Register the birth'
-		]);
-		expect(pendingTurn(state, state.activeKey!)?.ops).toEqual(firstDraft);
-	});
+			state = await wizard.acceptSplit(drafts, state, 'ns-1');
+			activities.length = 0;
+			lives.length = 0;
+			model.script.push(call('apply_operations', { operations: firstDraft }), answer('Drafted.'));
+			state = await wizard.draft(ctx, state, state.activeKey!);
+			expect(activities[0]).toBe('Reading the cells of Birth registration');
+			const midway = lives.filter((l) => l.items.length > 0 && l.items.length < firstDraft.length);
+			expect(midway.length).toBeGreaterThan(0);
+			expect(activities).toContain('Checking 7 proposed changes');
+			expect(activities.some((a) => /^Proposing 2 stages, 1 role and \d facts?$/.test(a))).toBe(
+				true
+			);
+			expect(lives.at(-1)!.items.map((i) => `${i.kind}: ${i.title}`)).toEqual([
+				'stage: Before the birth',
+				'stage: Registration',
+				'role: Parent',
+				'fact: Home address',
+				'fact: Birth certificate',
+				'step: Gather the family document set',
+				'step: Register the birth'
+			]);
+			expect(pendingTurn(state, state.activeKey!)?.ops).toEqual(firstDraft);
+		}
+	);
 });
