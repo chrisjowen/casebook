@@ -17,3 +17,7 @@ docs/
 # Local agent tooling
 .claude/
 .serena/
+
+# The docket: canonical knowledge files in docket's own format
+.docket/
+.docket.yaml
